@@ -149,8 +149,8 @@ class ExampleIntegrationTest {
 ```
 
 **전제조건**:
-- PostgreSQL 테스트 DB 필요: `mjusugangsincheonghelperdb_test`
-- 테스트 DB 생성: `createdb mjusugangsincheonghelperdb_test`
+ - PostgreSQL 테스트 DB 필요: `mjusugangsincheonghelperdb`
+- 테스트 DB 생성: `createdb mjusugangsincheonghelperdb`
 
 ---
 
@@ -243,7 +243,7 @@ verify(repository).findById(1L);
 ### 통합 테스트 실행 (DB 필요)
 ```bash
 # 먼저 테스트 DB 생성
-createdb mjusugangsincheonghelperdb_test
+createdb mjusugangsincheonghelperdb
 
 # 테스트 실행
 ./gradlew test --tests "com.mjusugangsincheonghelper.example.ExampleIntegrationTest" \

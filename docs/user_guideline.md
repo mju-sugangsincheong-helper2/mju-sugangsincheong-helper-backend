@@ -51,6 +51,7 @@ src/main/java/com/mjusugangsincheonghelper/
 │       ├── GlobalOpenApiConfig.java
 │       ├── GlobalSecurityConfig.java
 │       ├── GlobalWebMvcConfig.java
+│       ├── HibernateStatisticsConfig.java
 │       └── RedisConfig.java
 ├── example/
 │   ├── controller/
@@ -63,7 +64,6 @@ src/main/java/com/mjusugangsincheonghelper/
 │   │   ├── ExampleResponse.java
 │   │   └── ExampleUpdateRequest.java
 │   └── service/
-│       ├── ExampleService.java
 │       └── ExampleService.java
 └── system/
     ├── controller/
@@ -72,14 +72,20 @@ src/main/java/com/mjusugangsincheonghelper/
     │   ├── SystemConfigResponse.java
     │   └── SystemConfigUpdateRequest.java
     └── service/
-        ├── SystemConfigService.java
         └── SystemConfigService.java
 
 src/main/resources/
 ├── application.yml              # spring.profiles.active=dev
 ├── application-dev.yml          # 개발 환경
-└── application-prod.yml         # 운영 환경
+├── application-prod.yml         # 운영 환경
+└── logback-spring.xml           # 프로파일별 로깅 설정
 ```
+
+> 여기서 database 의 도메인과 각 도메인명이 같지 않을 수 있다
+>
+> auth 의 경우 auth 도메인이지만 table 에서는 member, member_device, member_auth 를 모두 사용한다 즉 database 레이어 에서는 memberDevice 로 처리된다
+>
+> 현재 예시에서는 따로 명기하지 않았다
 
 ### 패키지 규칙
 
@@ -110,7 +116,7 @@ src/main/resources/
 
 | 대상 | 규칙 | 예시 |
 |------|------|------|
-| 테이블명 | snake_case, 복수형 | `examples`, `system_config` |
+| 테이블명 | snake_case, 단수형 | `examples`, `system_config` |
 | 컬럼명 | snake_case | `config_key`, `created_at` |
 | Redis 키 | snake_case, `::` 구분자 | `system_config::expose_error_details` |
 | Cache name | snake_case | `system_config` |

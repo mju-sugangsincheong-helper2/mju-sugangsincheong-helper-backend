@@ -398,6 +398,26 @@ public class GlobalAsyncConfig implements AsyncConfigurer {
 
 **주의**: `globalTaskExecutor`는 `CustomResponseMetaContextHolder`의 ThreadLocal 컨텍스트를 전파하지 않으므로, `@Async` 메서드 내에서는 `MetaGenerator.generate()` 호출 시 null-safe fallback 처리(임의 UUID, durationMs=0)로 대응합니다.
 
+### HibernateStatisticsConfig
+
+```java
+@Configuration
+@RequiredArgsConstructor
+public class HibernateStatisticsConfig {
+
+    private final EntityManagerFactory entityManagerFactory;
+
+    @PostConstruct
+    public void enableStatistics() {
+        entityManagerFactory.unwrap(SessionFactory.class)
+                .getStatistics()
+                .setStatisticsEnabled(true);
+    }
+}
+```
+
+**도입 의도**: Hibernate Statistics를 활성화하여 느린 DB 쿼리 감지를 가능하게 합니다. Slow query 임계값은 `application.yml`의 `hibernate.log_slow_query` 프로퍼티로 설정합니다.
+
 ### GlobalOpenApiConfig
 
 ```java
@@ -463,7 +483,7 @@ public class RedisConfig {
 
 **설계 결정**:
 - `@EnableCaching`: Spring Cache 추상화 활성화 (`@Cacheable`, `@CacheEvict` 사용)
-- `RedisCacheManager`를 명시적 `@Bean`으로 등록하여 Spring Boot auto-configuration 대신 사용. `spring.cache.type=redis`를 `application-dev.yml`에 설정하여 cache provider를 명시
+- `RedisCacheManager`를 명시적 `@Bean`으로 등록하여 Spring Boot auto-configuration 대신 사용
 - JSON 직렬화: `RedisSerializer.json()`으로 Java 객체를 JSON으로 변환하여 Redis에 저장
 - TTL 24시간: 극저빈도 쓰기 패턴이므로 긴 TTL 유지
 - `CacheErrorHandler`를 `@Bean`으로 등록: Redis 장애 시에도 예외를 무시하고 로깅만 수행하여 캐시 장애가 서비스 장애로 전파되지 않도록 함
@@ -511,7 +531,12 @@ updated_at   TIMESTAMP WITH TIME ZONE
 
 ### 초기화
 
-`@PostConstruct`에서 `expose_error_details`가 없으면 기본값 `true`로 INSERT. 앱 시작 시 자동 초기화.
+`@PostConstruct`에서 다음 키들이 없으면 기본값으로 INSERT. 앱 시작 시 자동 초기화.
+
+| 키 | 기본값 | 타입 | 설명 |
+|----|--------|------|------|
+| `expose_error_details` | `true` | BOOLEAN | 에러 응답에 원본 예외 상세 정보 포함 여부 |
+| `performance_thresholds` | `{"slow_ms":1000,"very_slow_ms":5000}` | JSON | 느린 HTTP 요청 임계값 (ms) |
 
 ### 캐시 전략
 

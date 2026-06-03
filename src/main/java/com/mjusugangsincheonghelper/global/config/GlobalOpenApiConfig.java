@@ -20,7 +20,7 @@ public class GlobalOpenApiConfig {
 		return new ErrorResponsesOperationCustomizer();
 	}
 
-	@SuppressWarnings({"rawtypes", "unchecked"})
+	@SuppressWarnings({"rawtypes"})
 	@Bean
 	public OpenApiCustomizer errorEnvelopeSchemaCustomizer() {
 		return openApi -> {

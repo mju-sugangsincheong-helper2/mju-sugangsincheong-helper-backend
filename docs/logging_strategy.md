@@ -130,29 +130,31 @@ protected void doFilterInternal(HttpServletRequest request, HttpServletResponse 
 | > 1,000ms | WARN | `log.warn("Slow request: {} {} took {}ms", method, path, durationMs)` |
 | > 5,000ms | ERROR | `log.error("Very slow request: {} {} took {}ms", method, path, durationMs)` |
 
-임계값은 `application.yml`에서 설정 가능하게:
+임계값은 `system_config` 테이블의 `performance_thresholds` 키로 관리:
 
-```yaml
-app:
-  performance:
-    slow-request-threshold-ms: 1000
-    very-slow-request-threshold-ms: 5000
+```json
+{"slow_ms": 1000, "very_slow_ms": 5000}
 ```
+
+- `slow_ms`: WARN 로그 임계값 (기본 1000ms)
+- `very_slow_ms`: ERROR 로그 임계값 (기본 5000ms)
+
+admin API로 실시간 변경 가능 (`PUT /api/v1/system/configs/performance_thresholds`).
 
 ### 느린 DB 쿼리
 
-Hibernate 설정으로 감지:
+Hibernate `log_slow_query` 프로퍼티로 감지:
 
 ```yaml
 spring:
   jpa:
     properties:
       hibernate:
-        session:
-          events:
-            log:
-              LOG_QUERIES_SLOWER_THAN_MS: 1000
+        generate_statistics: true
+        log_slow_query: 1000
 ```
+
+임계값은 `application.yml`에서 설정하며, 변경 시 재시작이 필요합니다. 느린 쿼리는 `org.hibernate.SQL_SLOW` 로거에 기록됩니다.
 
 ---
 
@@ -163,7 +165,7 @@ spring:
 | 상황 | 레벨 | 내용 | 비고 |
 |------|------|------|------|
 | 쓰기 작업 완료 | `DEBUG` | 엔티티 ID, 작업 타입 | create/update/delete |
-| 외부 API 호출 | `INFO` | 대상, 소요 시간, 응답 코드 | 추후 MSA 전환 시 |
+| 외부 API 호출 | `INFO` | 대상, 소요 시간, 응답 코드 | - |
 | 예외 발생 | — | 서비스에서는 로깅 금지 | `GlobalExceptionHandler`가 일괄 처리 |
 
 ### 금지 사항
@@ -184,6 +186,9 @@ spring:
 | `MethodArgumentNotValidException` | `WARN` | X | `details={}` (필드 개수) |
 | `ConstraintViolationException` | `WARN` | X | `details={}` (필드 개수) |
 | `HttpMessageNotReadableException` | `WARN` | X | `{}` (원본 메시지) |
+| `MissingServletRequestParameterException` | `WARN` | X | `{}` (원본 메시지) |
+| `MethodArgumentTypeMismatchException` | `WARN` | X | `{}` (원본 메시지) |
+| `NoResourceFoundException` | `WARN` | X | `{}` (원본 메시지) |
 | `Exception` (기타) | `ERROR` | O | 전체 스택 (`log.error("...", exception)`) |
 
 ### 원칙

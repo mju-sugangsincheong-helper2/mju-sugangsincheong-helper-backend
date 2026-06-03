@@ -15,8 +15,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -64,6 +67,33 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponseEnvelope> handleMessageNotReadable(HttpMessageNotReadableException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
 		log.warn("Message not readable: {}", exception.getMessage());
+		return ResponseEntity
+				.status(errorCode.getStatus())
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+	}
+
+	@ExceptionHandler(MissingServletRequestParameterException.class)
+	public ResponseEntity<ErrorResponseEnvelope> handleMissingServletRequestParameter(MissingServletRequestParameterException exception) {
+		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
+		log.warn("Missing request parameter: {}", exception.getMessage());
+		return ResponseEntity
+				.status(errorCode.getStatus())
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+	}
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ErrorResponseEnvelope> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException exception) {
+		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
+		log.warn("Type mismatch: {}", exception.getMessage());
+		return ResponseEntity
+				.status(errorCode.getStatus())
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+	}
+
+	@ExceptionHandler(NoResourceFoundException.class)
+	public ResponseEntity<ErrorResponseEnvelope> handleNoResourceFound(NoResourceFoundException exception) {
+		ErrorCode errorCode = ErrorCode.GLOBAL_NOT_FOUND;
+		log.warn("Resource not found: {}", exception.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
 				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
