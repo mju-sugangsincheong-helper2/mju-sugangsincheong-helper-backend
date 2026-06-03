@@ -13,8 +13,6 @@ import com.mjusugangsincheonghelper.global.api.envelope.PagedSuccessResponseEnve
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -47,8 +45,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "조회 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "조회 성공"
 					)
 			}
 	)
@@ -71,8 +68,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "에코 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "에코 성공"
 					)
 			}
 	)
@@ -95,8 +91,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "201",
-							description = "생성 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "생성 성공"
 					)
 			}
 	)
@@ -119,8 +114,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "조회 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "조회 성공"
 					)
 			}
 	)
@@ -144,8 +138,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "조회 성공",
-							content = @Content(schema = @Schema(implementation = PagedSuccessResponseEnvelope.class))
+							description = "조회 성공"
 					)
 			}
 	)
@@ -171,8 +164,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "수정 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "수정 성공"
 					)
 			}
 	)
@@ -198,8 +190,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "삭제 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "삭제 성공"
 					)
 			}
 	)
@@ -223,8 +214,7 @@ public class ExampleController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "정상 응답 (에러 발생 없음)",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "정상 응답 (에러 발생 없음)"
 					)
 			}
 	)

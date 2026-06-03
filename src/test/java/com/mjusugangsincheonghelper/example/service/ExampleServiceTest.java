@@ -31,14 +31,14 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ExampleServiceImpl 단위 테스트")
-class ExampleServiceImplTest {
+@DisplayName("ExampleService 단위 테스트")
+class ExampleServiceTest {
 
 	@Mock
 	private ExampleRepository exampleRepository;
 
 	@InjectMocks
-	private ExampleServiceImpl exampleService;
+	private ExampleService exampleService;
 
 	@Nested
 	@DisplayName("hello 메서드는")

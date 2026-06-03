@@ -6,6 +6,7 @@ import com.mjusugangsincheonghelper.global.api.exception.ErrorDetail.FieldViolat
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -30,33 +31,33 @@ public class GlobalExceptionHandler {
 		log.warn("BaseException: code={}, message={}", errorCode.getCode(), errorCode.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(errorCode), isExposeErrorDetails()));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleMethodArgumentNotValid(MethodArgumentNotValidException exception) {
-		List<FieldViolation> fields = exception.getBindingResult().getFieldErrors().stream()
+		List<FieldViolation> details = exception.getBindingResult().getFieldErrors().stream()
 				.map(this::toFieldViolation)
 				.collect(Collectors.toList());
 
 		ErrorCode errorCode = ErrorCode.GLOBAL_VALIDATION_ERROR;
-		log.warn("Validation failed: fields={}", fields.size());
+		log.warn("Validation failed: details={}", details.size());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, fields, isExposeFieldDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, details, isExposeErrorDetails()));
 	}
 
 	@ExceptionHandler(ConstraintViolationException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleConstraintViolation(ConstraintViolationException exception) {
-		List<FieldViolation> fields = exception.getConstraintViolations().stream()
+		List<FieldViolation> details = exception.getConstraintViolations().stream()
 				.map(this::toFieldViolation)
 				.collect(Collectors.toList());
 
 		ErrorCode errorCode = ErrorCode.GLOBAL_VALIDATION_ERROR;
-		log.warn("Constraint violation: fields={}", fields.size());
+		log.warn("Constraint violation: details={}", details.size());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, fields, isExposeFieldDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, details, isExposeErrorDetails()));
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
@@ -65,7 +66,7 @@ public class GlobalExceptionHandler {
 		log.warn("Message not readable: {}", exception.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
 	}
 
 	@ExceptionHandler(Exception.class)
@@ -74,11 +75,23 @@ public class GlobalExceptionHandler {
 		log.error("Unexpected error", exception);
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
 	}
 
-	private boolean isExposeFieldDetails() {
-		return systemConfigService.getBoolean(SystemConfigService.EXPOSE_FIELD_DETAILS_KEY, true);
+	private boolean isExposeErrorDetails() {
+		return systemConfigService.getBoolean(SystemConfigService.EXPOSE_ERROR_DETAILS_KEY, true);
+	}
+
+	private List<FieldViolation> errorDetailFrom(ErrorCode errorCode) {
+		return Collections.singletonList(FieldViolation.builder()
+				.message(errorCode.getMessage())
+				.build());
+	}
+
+	private List<FieldViolation> errorDetailFrom(Exception exception) {
+		return Collections.singletonList(FieldViolation.builder()
+				.message(exception.getClass().getSimpleName() + ": " + exception.getMessage())
+				.build());
 	}
 
 	private FieldViolation toFieldViolation(FieldError fieldError) {

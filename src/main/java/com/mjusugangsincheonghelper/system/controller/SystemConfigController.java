@@ -8,8 +8,6 @@ import com.mjusugangsincheonghelper.system.dto.SystemConfigUpdateRequest;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,8 +35,7 @@ public class SystemConfigController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "조회 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "조회 성공"
 					)
 			}
 	)
@@ -47,7 +44,7 @@ public class SystemConfigController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<SystemConfigResponse>> find(
-			@Parameter(description = "설정 키", example = "expose-field-details")
+			@Parameter(description = "설정 키", example = "expose_error_details")
 			@PathVariable String key) {
 		SystemConfigResponse response = systemConfigService.find(key);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
@@ -60,8 +57,7 @@ public class SystemConfigController {
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "수정 성공",
-							content = @Content(schema = @Schema(implementation = SingleSuccessResponseEnvelope.class))
+							description = "수정 성공"
 					)
 			}
 	)
@@ -71,7 +67,7 @@ public class SystemConfigController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<SystemConfigResponse>> update(
-			@Parameter(description = "설정 키", example = "expose-field-details")
+			@Parameter(description = "설정 키", example = "expose_error_details")
 			@PathVariable String key,
 			@Valid @RequestBody SystemConfigUpdateRequest request) {
 		SystemConfigResponse response = systemConfigService.update(key, request);

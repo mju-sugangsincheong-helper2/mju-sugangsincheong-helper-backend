@@ -49,9 +49,9 @@ Strategy Rationale
 
 ```java
 @ExtendWith(MockitoExtension.class)
-class ExampleServiceImplTest {
-    @Mock ExampleRepository repository;
-    @InjectMocks ExampleServiceImpl service;
+class ExampleServiceTest {
+
+    @InjectMocks ExampleService service;
     
     @Test
     void create_shouldSaveAndReturn() {
@@ -167,7 +167,7 @@ src/test/java/com/mjusugangsincheonghelper/
     ├── controller/
     │   └── ExampleControllerTest.java      (슬라이스)
     ├── service/
-    │   └── ExampleServiceImplTest.java     (단위)
+    │   └── ExampleServiceTest.java     (단위)
     └── ExampleIntegrationTest.java         (통합)
 ```
 
@@ -307,7 +307,7 @@ class ExampleRepositoryTest {
 ## 8. 테스트 우선순위
 
 ### Phase 1: 핵심 비즈니스 로직 (단위)
-1. `ExampleServiceImplTest` - CRUD, 예외 발생
+1. `ExampleServiceTest` - CRUD, 예외 발생
 2. `ExampleEntityTest` - 도메인 메서드
 
 ### Phase 2: API 계층 (슬라이스)

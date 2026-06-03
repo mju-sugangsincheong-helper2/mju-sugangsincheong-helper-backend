@@ -13,7 +13,7 @@ public class ErrorDetail {
 
 	private final String code;
 	private final String message;
-	private final List<FieldViolation> fields;
+	private final List<FieldViolation> details;
 
 	public static ErrorDetail from(ErrorCode errorCode) {
 		return ErrorDetail.builder()
@@ -22,15 +22,15 @@ public class ErrorDetail {
 				.build();
 	}
 
-	public static ErrorDetail from(ErrorCode errorCode, List<FieldViolation> fields) {
-		return from(errorCode, fields, true);
+	public static ErrorDetail from(ErrorCode errorCode, List<FieldViolation> details) {
+		return from(errorCode, details, true);
 	}
 
-	public static ErrorDetail from(ErrorCode errorCode, List<FieldViolation> fields, boolean exposeFieldDetails) {
+	public static ErrorDetail from(ErrorCode errorCode, List<FieldViolation> details, boolean exposeErrorDetails) {
 		return ErrorDetail.builder()
 				.code(errorCode.getCode())
 				.message(errorCode.getMessage())
-				.fields(exposeFieldDetails ? fields : null)
+				.details(exposeErrorDetails ? details : null)
 				.build();
 	}
 

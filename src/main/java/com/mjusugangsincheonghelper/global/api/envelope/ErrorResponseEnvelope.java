@@ -22,11 +22,11 @@ public class ErrorResponseEnvelope extends ResponseEnvelope {
 		return new ErrorResponseEnvelope(MetaGenerator.generate(), ErrorDetail.from(errorCode));
 	}
 
-	public static ErrorResponseEnvelope from(ErrorCode errorCode, List<FieldViolation> fields) {
-		return new ErrorResponseEnvelope(MetaGenerator.generate(), ErrorDetail.from(errorCode, fields));
+	public static ErrorResponseEnvelope from(ErrorCode errorCode, List<FieldViolation> details) {
+		return new ErrorResponseEnvelope(MetaGenerator.generate(), ErrorDetail.from(errorCode, details));
 	}
 
-	public static ErrorResponseEnvelope from(ErrorCode errorCode, List<FieldViolation> fields, boolean exposeFieldDetails) {
-		return new ErrorResponseEnvelope(MetaGenerator.generate(), ErrorDetail.from(errorCode, fields, exposeFieldDetails));
+	public static ErrorResponseEnvelope from(ErrorCode errorCode, List<FieldViolation> details, boolean exposeErrorDetails) {
+		return new ErrorResponseEnvelope(MetaGenerator.generate(), ErrorDetail.from(errorCode, details, exposeErrorDetails));
 	}
 }

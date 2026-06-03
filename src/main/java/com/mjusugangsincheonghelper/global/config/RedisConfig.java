@@ -2,10 +2,7 @@ package com.mjusugangsincheonghelper.global.config;
 
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
@@ -21,8 +18,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 @Slf4j
 @EnableCaching
 @Configuration
-@ConditionalOnBean(RedisConnectionFactory.class)
-public class RedisConfig implements CachingConfigurer {
+public class RedisConfig {
 
 	@Bean
 	public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
@@ -49,8 +45,8 @@ public class RedisConfig implements CachingConfigurer {
 				.build();
 	}
 
-	@Override
-	public CacheErrorHandler errorHandler() {
+	@Bean
+	public CacheErrorHandler cacheErrorHandler() {
 		return new CacheErrorHandler() {
 			@Override
 			public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
