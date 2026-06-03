@@ -1,0 +1,28 @@
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb
+    username: shinnk
+    password: "1253"
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.data.redis.autoconfigure.RedisAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.RedisRepositoriesAutoConfiguration
+
+  data:
+    redis:
+      repositories:
+        enabled: false
+
+logging:
+  level:
+    root: WARN
