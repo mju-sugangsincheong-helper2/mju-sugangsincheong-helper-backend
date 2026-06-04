@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: mjusugangsincheonghelper
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb
+    username: mjusugangsincheonghelperuser
+    password: mjusugangsincheonghelperpassword
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        generate_statistics: true
+        log_slow_query: 1000
+    open-in-view: false
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: "{baseUrl}/login/oauth2/code/google"
+            scope:
+              - openid
+              - profile
+              - email
+
+logging:
+  level:
+    root: INFO
+    com.mjusugangsincheonghelper: DEBUG
+    org.hibernate.SQL: DEBUG
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiry-ms: 3600000       # 1시간 
+    refresh-token-expiry-ms: 604800000    # 7일
+    merge-ticket-expiry-ms: 300000        # 5분
+  oauth2:
+    google:
+      redirect-uri: http://localhost:8080/login/oauth2/code/google
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+      user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+      success-redirect-uri: http://localhost:3000/auth/callback?status=success
+      merge-redirect-uri: http://localhost:3000/auth/merge?status=conflict
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # include: "health,info,logfile,loggers" 
+        include: "*"

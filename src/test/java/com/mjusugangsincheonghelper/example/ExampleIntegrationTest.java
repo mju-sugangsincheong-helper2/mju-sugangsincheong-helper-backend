@@ -192,8 +192,8 @@ class ExampleIntegrationTest {
 							.content(objectMapper.writeValueAsString(invalidRequest)))
 					.andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.error.code").value("GLOBAL_002"))
-					.andExpect(jsonPath("$.error.fields").isArray())
-					.andExpect(jsonPath("$.error.fields[0].field").value("title"));
+					.andExpect(jsonPath("$.error.details").isArray())
+					.andExpect(jsonPath("$.error.details[0].field").value("title"));
 		}
 	}
 }

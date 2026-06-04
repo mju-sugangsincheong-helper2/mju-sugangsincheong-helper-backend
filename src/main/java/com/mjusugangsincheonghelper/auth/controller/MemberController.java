@@ -1,0 +1,52 @@
+package com.mjusugangsincheonghelper.auth.controller;
+
+import com.mjusugangsincheonghelper.auth.dto.MemberMeResponse;
+import com.mjusugangsincheonghelper.auth.service.MemberService;
+import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
+import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
+import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@Tag(name = "Member", description = "회원 API")
+@RestController
+@RequestMapping("/api/{version}/members")
+@RequiredArgsConstructor
+public class MemberController {
+
+	private final MemberService memberService;
+
+	@GetMapping(value = "/me", version = "1+")
+	@Operation(
+			summary = "Member me",
+			description = "내 정보 조회 API",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_SECURITY_UNAUTHORIZED_ACCESS,
+			ErrorCode.AUTH_MEMBER_NOT_FOUND,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<MemberMeResponse>> getMe() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Long memberId = (Long) authentication.getPrincipal();
+		MemberMeResponse response = memberService.getMe(memberId);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+}

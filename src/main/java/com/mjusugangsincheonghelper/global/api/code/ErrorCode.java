@@ -18,6 +18,17 @@ public enum ErrorCode {
 
 	SYSTEM_CONFIG_NOT_FOUND(HttpStatus.NOT_FOUND, "SYSTEM_001", "System config not found."),
 
+	AUTH_PRIVACY_POLICY_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_001", "Privacy policy agreement is required."),
+	AUTH_GOOGLE_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_002", "Google authentication failed."),
+	AUTH_INVALID_TOKEN_SIGNATURE(HttpStatus.UNAUTHORIZED, "AUTH_003", "Invalid token signature."),
+	AUTH_INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_004", "Invalid or expired refresh token."),
+	AUTH_MERGE_REQUIRED(HttpStatus.CONFLICT, "AUTH_005", "Guest data merge is required."),
+	AUTH_MERGE_TICKET_EXPIRED(HttpStatus.BAD_REQUEST, "AUTH_006", "Merge ticket has expired."),
+	AUTH_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "AUTH_007", "Member not found."),
+	AUTH_GUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "AUTH_008", "Guest not found."),
+	AUTH_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH_009", "Auth key already exists."),
+	AUTH_NOT_MJU_DOMAIN(HttpStatus.FORBIDDEN, "AUTH_010", "Only MJU (mju.ac.kr) accounts are allowed."),
+
 	EXAMPLE_NOT_FOUND(HttpStatus.NOT_FOUND, "EXAMPLE_001", "Example not found."),
 	EXAMPLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "EXAMPLE_002", "Example already exists.");
 

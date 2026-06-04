@@ -41,3 +41,5 @@ database_start.sh
 docker-compose-postgres-dev.yml
 docker-compose-dev-env.yml
 data/
+client_secret*.json
+**/application-dev.yml

@@ -1,6 +1,9 @@
 package com.mjusugangsincheonghelper.example.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mjusugangsincheonghelper.auth.infrastructure.CustomOidcUserService;
+import com.mjusugangsincheonghelper.auth.infrastructure.JwtAuthenticationFilter;
+import com.mjusugangsincheonghelper.auth.infrastructure.OAuth2LoginSuccessHandler;
 import com.mjusugangsincheonghelper.example.dto.ExampleCreateRequest;
 import com.mjusugangsincheonghelper.example.dto.ExampleDetailResponse;
 import com.mjusugangsincheonghelper.example.dto.ExampleEchoRequest;
@@ -13,10 +16,14 @@ import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.global.api.exception.GlobalExceptionHandler;
 import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
+import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
@@ -31,6 +38,8 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
@@ -44,6 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ExampleController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import({GlobalExceptionHandler.class, GlobalMetaFilter.class, ClientInfoExtractor.class})
 @WithMockUser
 @DisplayName("ExampleController 슬라이스 테스트")
@@ -56,6 +66,26 @@ class ExampleControllerTest {
 
 	@MockitoBean
 	private ExampleService exampleService;
+
+	@MockitoBean
+	private SystemConfigService systemConfigService;
+
+	@MockitoBean
+	private InstanceIdProvider instanceIdProvider;
+
+	@MockitoBean
+	private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+	@MockitoBean
+	private CustomOidcUserService customOidcUserService;
+
+	@MockitoBean
+	private OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
+
+	@BeforeEach
+	void setUp() {
+		given(systemConfigService.getBoolean(anyString(), anyBoolean())).willReturn(true);
+	}
 
 	@Nested
 	@DisplayName("GET /api/v1/example/hello 엔드포인트는")
@@ -120,7 +150,7 @@ class ExampleControllerTest {
 							.content(objectMapper.writeValueAsString(request)))
 					.andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.error.code").value("GLOBAL_002"))
-					.andExpect(jsonPath("$.error.fields").isArray());
+					.andExpect(jsonPath("$.error.details").isArray());
 		}
 	}
 

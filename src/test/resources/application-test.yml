@@ -1,0 +1,56 @@
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb
+    username: mjusugangsincheonghelperuser
+    password: mjusugangsincheonghelperpassword
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.data.redis.autoconfigure.RedisAutoConfiguration
+      - org.springframework.boot.data.redis.autoconfigure.RedisRepositoriesAutoConfiguration
+
+  data:
+    redis:
+      repositories:
+        enabled: false
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-client-id
+            client-secret: test-client-secret
+            redirect-uri: http://localhost:8080/login/oauth2/code/google
+            scope:
+              - openid
+              - profile
+              - email
+
+app:
+  jwt:
+    secret: test-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
+    access-token-expiry-ms: 3600000
+    refresh-token-expiry-ms: 604800000
+    merge-ticket-expiry-ms: 300000
+  oauth2:
+    google:
+      redirect-uri: http://localhost:8080/login/oauth2/code/google
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+      user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+      success-redirect-uri: http://localhost:3000/auth/callback?status=success
+      merge-redirect-uri: http://localhost:3000/auth/merge?status=conflict
+
+logging:
+  level:
+    root: WARN

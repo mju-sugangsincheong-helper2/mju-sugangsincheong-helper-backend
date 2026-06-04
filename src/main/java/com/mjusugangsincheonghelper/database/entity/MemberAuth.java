@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -17,29 +19,32 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
-@Table(name = "system_config")
+@Table(name = "member_auth")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)
-public class SystemConfig {
+public class MemberAuth {
 
-	public enum ConfigType {
-		STRING, JSON, BOOLEAN
+	public enum AuthType {
+		GUEST_KEY, GOOGLE
 	}
 
 	@Id
-	@Column(name = "config_key", length = 100)
-	private String configKey;
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 
-	@Column(name = "config_value", nullable = false, columnDefinition = "TEXT")
-	private String configValue;
+	@Column(nullable = false, unique = true)
+	private Long memberId;
 
 	@Enumerated(EnumType.STRING)
-	@Column(name = "config_type", nullable = false, length = 20)
-	private ConfigType configType;
+	@Column(nullable = false, length = 20)
+	private AuthType authType;
 
-	@Column(columnDefinition = "TEXT")
-	private String description;
+	@Column(nullable = false, unique = true, length = 255)
+	private String authKey;
+
+	@Column(name = "last_login_at")
+	private Instant lastLoginAt;
 
 	@CreatedDate
 	@Column(nullable = false, updatable = false)
@@ -50,17 +55,19 @@ public class SystemConfig {
 	private Instant updatedAt;
 
 	@Builder
-	public SystemConfig(String configKey, String configValue, ConfigType configType, String description) {
-		this.configKey = configKey;
-		this.configValue = configValue;
-		this.configType = configType;
-		this.description = description;
+	public MemberAuth(Long memberId, AuthType authType, String authKey) {
+		this.memberId = memberId;
+		this.authType = authType;
+		this.authKey = authKey;
 	}
 
-	public void updateValue(String configValue, String description) {
-		this.configValue = configValue;
-		if (description != null) {
-			this.description = description;
-		}
+	public void switchAuthKey(AuthType authType, String authKey) {
+		this.authType = authType;
+		this.authKey = authKey;
+		this.lastLoginAt = Instant.now();
+	}
+
+	public void updateLastLoginAt() {
+		this.lastLoginAt = Instant.now();
 	}
 }

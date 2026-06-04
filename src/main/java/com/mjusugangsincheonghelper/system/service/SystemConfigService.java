@@ -2,7 +2,7 @@ package com.mjusugangsincheonghelper.system.service;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import com.mjusugangsincheonghelper.database.entity.ConfigType;
+import com.mjusugangsincheonghelper.database.entity.SystemConfig.ConfigType;
 import com.mjusugangsincheonghelper.database.entity.SystemConfig;
 import com.mjusugangsincheonghelper.database.repository.SystemConfigRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
@@ -14,12 +14,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@DependsOn("entityManagerFactory")
 public class SystemConfigService {
 
 	public static final String EXPOSE_ERROR_DETAILS_KEY = "expose_error_details";
