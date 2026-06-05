@@ -3,6 +3,7 @@ package com.mjusugangsincheonghelper.global.api.exception;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.ErrorResponseEnvelope;
 import com.mjusugangsincheonghelper.global.api.exception.ErrorDetail.FieldViolation;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -109,7 +110,7 @@ public class GlobalExceptionHandler {
 	}
 
 	private boolean isExposeErrorDetails() {
-		return systemConfigService.getBoolean(SystemConfigService.EXPOSE_ERROR_DETAILS_KEY, true);
+		return SettingDefinition.EXPOSE_ERROR_DETAILS.getFrom(systemConfigService);
 	}
 
 	private List<FieldViolation> errorDetailFrom(ErrorCode errorCode) {

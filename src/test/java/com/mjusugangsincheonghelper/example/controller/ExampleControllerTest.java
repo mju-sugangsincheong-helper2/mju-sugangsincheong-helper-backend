@@ -76,7 +76,7 @@ class ExampleControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		given(systemConfigService.getBoolean(anyString(), anyBoolean())).willReturn(true);
+		given(systemConfigService.getRaw(anyString())).willReturn("true");
 	}
 
 	@Nested

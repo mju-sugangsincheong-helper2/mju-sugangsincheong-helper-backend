@@ -3,6 +3,8 @@ package com.mjusugangsincheonghelper.global.api.filter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.CustomResponseMetaContextHolder;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition.PerformanceThresholds;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -66,7 +68,7 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 	}
 
 	private void logSlowRequest(String method, String path, long durationMs) {
-		SystemConfigService.PerformanceThresholds thresholds = systemConfigService.getPerformanceThresholds();
+		PerformanceThresholds thresholds = SettingDefinition.PERFORMANCE_THRESHOLDS.getFrom(systemConfigService);
 		if (durationMs > thresholds.verySlowMs()) {
 			log.error("Very slow request: {} {} took {}ms", method, path, durationMs);
 		} else if (durationMs > thresholds.slowMs()) {

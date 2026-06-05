@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +28,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class SystemConfigController {
 
 	private final SystemConfigService systemConfigService;
+
+	@GetMapping(version = "1+")
+	@Operation(
+			summary = "System config list",
+			description = "시스템 설정 전체 목록 조회 API",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<List<SystemConfigResponse>>> findAll() {
+		List<SystemConfigResponse> response = systemConfigService.findAll();
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
 
 	@GetMapping(value = "/{key}", version = "1+")
 	@Operation(
