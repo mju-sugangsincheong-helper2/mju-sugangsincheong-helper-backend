@@ -77,10 +77,13 @@ public class GlobalOpenApiConfig {
 				.info(new io.swagger.v3.oas.models.info.Info()
 						.title("MJU Sugangsincheong Helper API")
 						.version("1.0")
-						.description("### 🔐 인증 방법\n\n" +
-								"1. `/api/v1/auth/guest` API를 호출하여 토큰을 발급받으세요.\n" +
-								"2. 응답의 `Set-Cookie` 헤더에서 `access_token` 값을 확인하세요.\n" +
-								"3. 상단 [Authorize] 버튼 클릭 후 `Bearer {token}` 형식으로 입력하세요.")
+						.description("### 인증 방법\n\n" +
+								"1. `GET /api/v1/auth/config/google` → Client ID 확인\n" +
+								"2. `POST /api/v1/auth/oauth/start` → Google 인증 URL 획득\n" +
+								"3. Google 로그인 후 code 획득\n" +
+								"4. `POST /api/v1/auth/token` {code, state} → JWT 발급\n" +
+								"5. 발급받은 accessToken을 Bearer Auth에 입력\n\n" +
+								"또는 `/api/v1/auth/guest` 응답의 accessToken을 Bearer Auth에 수동 입력")
 				);
 	}
 }

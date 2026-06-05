@@ -1,4 +1,4 @@
-package com.mjusugangsincheonghelper.auth.infrastructure;
+package com.mjusugangsincheonghelper.auth.authentication.token;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -75,6 +75,14 @@ public class TokenProvider {
 				.build()
 				.parseSignedClaims(ticket)
 				.getPayload();
+	}
+
+	public long getAccessTokenExpiryMs() {
+		return accessTokenExpiryMs;
+	}
+
+	public long getRefreshTokenExpiryMs() {
+		return refreshTokenExpiryMs;
 	}
 
 	public record TokenClaims(Long memberId, String role) {

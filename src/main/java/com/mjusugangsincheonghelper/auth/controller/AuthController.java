@@ -1,12 +1,16 @@
 package com.mjusugangsincheonghelper.auth.controller;
 
+import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
+import com.mjusugangsincheonghelper.auth.authentication.merge.MergeService;
+import com.mjusugangsincheonghelper.auth.authentication.guest.GuestAuthenticationProvider;
 import com.mjusugangsincheonghelper.auth.dto.GuestCreateRequest;
 import com.mjusugangsincheonghelper.auth.dto.GuestResponse;
 import com.mjusugangsincheonghelper.auth.dto.LogoutRequest;
 import com.mjusugangsincheonghelper.auth.dto.MergeRequest;
 import com.mjusugangsincheonghelper.auth.dto.MergeResponse;
 import com.mjusugangsincheonghelper.auth.dto.RefreshResponse;
-import com.mjusugangsincheonghelper.auth.service.AuthService;
+import com.mjusugangsincheonghelper.auth.session.SessionResult;
+import com.mjusugangsincheonghelper.auth.session.SessionService;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
@@ -18,6 +22,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -33,7 +38,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AuthController {
 
-	private final AuthService authService;
+	private final GuestAuthenticationProvider guestAuthenticationProvider;
+	private final MergeService mergeService;
+	private final SessionService sessionService;
+
+	@Value("${app.auth.token-in-response:false}")
+	private boolean tokenInResponse;
 
 	@PostMapping(value = "/guest", version = "1+")
 	@Operation(
@@ -54,7 +64,12 @@ public class AuthController {
 			@Valid @RequestBody(required = false) GuestCreateRequest request,
 			HttpServletResponse response) {
 		GuestCreateRequest safeRequest = request != null ? request : GuestCreateRequest.builder().build();
-		GuestResponse guestResponse = authService.createGuest(safeRequest, response);
+
+		AuthenticatedIdentity identity = guestAuthenticationProvider.authenticate();
+		SessionResult session = sessionService.createSession(identity, safeRequest.getDevice(),
+				safeRequest.getFcmToken(), response);
+
+		GuestResponse guestResponse = buildGuestResponse(session);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(SingleSuccessResponseEnvelope.of(guestResponse));
 	}
@@ -77,8 +92,10 @@ public class AuthController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<RefreshResponse>> refreshToken(
 			HttpServletRequest request,
 			HttpServletResponse response) {
-		String refreshToken = extractCookie(request, "refresh_token");
-		RefreshResponse refreshResponse = authService.refreshToken(refreshToken, response);
+		String refreshToken = extractRefreshToken(request);
+		SessionResult session = sessionService.refreshSession(refreshToken, response);
+
+		RefreshResponse refreshResponse = buildRefreshResponse(session);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(refreshResponse));
 	}
 
@@ -99,10 +116,14 @@ public class AuthController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<Void>> logout(
 			@RequestBody(required = false) LogoutRequest request,
+			HttpServletRequest request_,
 			HttpServletResponse response) {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		Long memberId = (Long) authentication.getPrincipal();
-		authService.logout(memberId, request != null ? request : new LogoutRequest(), response);
+		String refreshToken = extractRefreshToken(request_);
+		String fcmToken = request != null ? request.getFcmToken() : null;
+
+		sessionService.destroySession(refreshToken, fcmToken, memberId, response);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.empty());
 	}
 
@@ -123,18 +144,58 @@ public class AuthController {
 			ErrorCode.AUTH_MEMBER_NOT_FOUND,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
-	public ResponseEntity<SingleSuccessResponseEnvelope<MergeResponse>> mergeGuestToMember(
+	public ResponseEntity<SingleSuccessResponseEnvelope<MergeResponse>> merge(
 			@Valid @RequestBody MergeRequest request,
 			HttpServletResponse response) {
-		MergeResponse mergeResponse = authService.mergeGuestToMember(request, response);
+		AuthenticatedIdentity identity = mergeService.merge(request.getMergeTicket());
+		SessionResult session = sessionService.createSession(identity, request.getDevice(),
+				request.getFcmToken(), response);
+
+		MergeResponse mergeResponse = buildMergeResponse(session);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(mergeResponse));
 	}
 
-	private String extractCookie(HttpServletRequest request, String name) {
-		Cookie[] cookies = request.getCookies();
-		if (cookies != null) {
-			for (Cookie cookie : cookies) {
-				if (name.equals(cookie.getName())) {
+	private GuestResponse buildGuestResponse(SessionResult session) {
+		GuestResponse.GuestResponseBuilder builder = GuestResponse.builder()
+				.memberId(session.getMemberId())
+				.role(session.getRole())
+				.name(session.getName());
+		if (tokenInResponse) {
+			builder.accessToken(session.getAccessToken())
+					.refreshToken(session.getRefreshToken());
+		}
+		return builder.build();
+	}
+
+	private RefreshResponse buildRefreshResponse(SessionResult session) {
+		RefreshResponse.RefreshResponseBuilder builder = RefreshResponse.builder()
+				.status("success")
+				.role(session.getRole());
+		if (tokenInResponse) {
+			builder.accessToken(session.getAccessToken())
+					.refreshToken(session.getRefreshToken());
+		}
+		return builder.build();
+	}
+
+	private MergeResponse buildMergeResponse(SessionResult session) {
+		MergeResponse.MergeResponseBuilder builder = MergeResponse.builder()
+				.memberId(session.getMemberId())
+				.role(session.getRole())
+				.name(session.getName())
+				.position(session.getPosition())
+				.department(session.getDepartment());
+		if (tokenInResponse) {
+			builder.accessToken(session.getAccessToken())
+					.refreshToken(session.getRefreshToken());
+		}
+		return builder.build();
+	}
+
+	private String extractRefreshToken(HttpServletRequest request) {
+		if (request.getCookies() != null) {
+			for (Cookie cookie : request.getCookies()) {
+				if ("refresh_token".equals(cookie.getName())) {
 					return cookie.getValue();
 				}
 			}

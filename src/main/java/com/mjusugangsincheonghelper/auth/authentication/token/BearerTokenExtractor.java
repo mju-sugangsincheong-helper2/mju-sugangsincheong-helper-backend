@@ -1,11 +1,11 @@
-package com.mjusugangsincheonghelper.auth.infrastructure;
+package com.mjusugangsincheonghelper.auth.authentication.token;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile("dev")
+@Profile({"dev", "test"})
 public class BearerTokenExtractor implements TokenExtractor {
 
 	private static final String AUTHORIZATION_HEADER = "Authorization";

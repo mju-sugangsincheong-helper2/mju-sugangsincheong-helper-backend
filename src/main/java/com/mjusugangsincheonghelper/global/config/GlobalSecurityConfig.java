@@ -1,8 +1,6 @@
 package com.mjusugangsincheonghelper.global.config;
 
-import com.mjusugangsincheonghelper.auth.infrastructure.CustomOidcUserService;
-import com.mjusugangsincheonghelper.auth.infrastructure.JwtAuthenticationFilter;
-import com.mjusugangsincheonghelper.auth.infrastructure.OAuth2LoginSuccessHandler;
+import com.mjusugangsincheonghelper.auth.authentication.token.JwtAuthenticationFilter;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -24,8 +22,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class GlobalSecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
-	private final CustomOidcUserService customOidcUserService;
-	private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -39,11 +35,12 @@ public class GlobalSecurityConfig {
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/api/v1/auth/guest").permitAll()
-						.requestMatchers("/api/v1/auth/refresh").permitAll()
-						.requestMatchers("/api/v1/auth/login/google/merge").permitAll()
-						.requestMatchers("/oauth2/authorization/**").permitAll()
-						.requestMatchers("/login/oauth2/code/**").permitAll()
+						.requestMatchers("/api/*/auth/guest").permitAll()
+						.requestMatchers("/api/*/auth/refresh").permitAll()
+						.requestMatchers("/api/*/auth/login/google/merge").permitAll()
+						.requestMatchers("/api/*/auth/oauth/start").permitAll()
+						.requestMatchers("/api/*/auth/token").permitAll()
+						.requestMatchers("/api/*/auth/config/google").permitAll()
 						.requestMatchers("/api/*/example/**").permitAll()
 						.requestMatchers("/api/*/system/**").permitAll()
 						.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
@@ -51,13 +48,7 @@ public class GlobalSecurityConfig {
 						.requestMatchers("/*.html").permitAll()
 						.anyRequest().authenticated()
 				)
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-				.oauth2Login(oauth2 -> oauth2
-						.userInfoEndpoint(userInfo -> userInfo
-								.oidcUserService(customOidcUserService)
-						)
-						.successHandler(oAuth2LoginSuccessHandler)
-				);
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}

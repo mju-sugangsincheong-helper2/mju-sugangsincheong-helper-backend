@@ -1,4 +1,4 @@
-package com.mjusugangsincheonghelper.auth.infrastructure;
+package com.mjusugangsincheonghelper.auth.authentication.token;
 
 import jakarta.servlet.http.HttpServletRequest;
 

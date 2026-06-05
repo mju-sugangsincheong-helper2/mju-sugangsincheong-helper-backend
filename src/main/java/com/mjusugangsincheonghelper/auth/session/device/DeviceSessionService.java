@@ -1,26 +1,23 @@
-package com.mjusugangsincheonghelper.auth.service;
+package com.mjusugangsincheonghelper.auth.session.device;
 
 import com.mjusugangsincheonghelper.auth.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class DeviceService {
+public class DeviceSessionService {
 
 	private final MemberDeviceRepository memberDeviceRepository;
 
-	@Value("${app.jwt.refresh-token-expiry-ms}")
-	private long refreshTokenExpiryMs;
-
 	@Transactional
-	public void upsert(Long memberId, String refreshToken, String fcmToken, DeviceInfo deviceInfo) {
+	public void upsert(Long memberId, String refreshToken, String fcmToken, DeviceInfo deviceInfo, long expiryMs) {
 		if (deviceInfo == null) {
 			deviceInfo = DeviceInfo.builder().build();
 		}
@@ -52,9 +49,26 @@ public class DeviceService {
 					.platformjsProduct(deviceInfo.getProduct())
 					.platformjsDescription(deviceInfo.getDescription())
 					.platformjsUa(deviceInfo.getUa())
-					.expiresAt(Instant.now().plusMillis(refreshTokenExpiryMs))
+					.expiresAt(Instant.now().plusMillis(expiryMs))
 					.build();
 			memberDeviceRepository.save(device);
 		}
+	}
+
+	@Transactional
+	public void deleteByFcmToken(Long memberId, String fcmToken) {
+		if (fcmToken != null) {
+			memberDeviceRepository.deleteByMemberIdAndFcmToken(memberId, fcmToken);
+		}
+	}
+
+	@Transactional(readOnly = true)
+	public List<MemberDevice> findByMemberId(Long memberId) {
+		return memberDeviceRepository.findByMemberId(memberId);
+	}
+
+	@Transactional
+	public void switchMember(Long memberId, Long newMemberId) {
+		memberDeviceRepository.findByMemberId(memberId).forEach(device -> device.switchMember(newMemberId));
 	}
 }

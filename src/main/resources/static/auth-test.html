@@ -3,194 +3,284 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auth API 테스트</title>
+    <title>OAuth Login Helper</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        h1 { text-align: center; margin-bottom: 30px; color: #333; }
-        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .card h2 { margin-bottom: 15px; color: #555; font-size: 18px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .btn { display: inline-block; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin: 5px; transition: background 0.2s; }
-        .btn-primary { background: #007bff; color: white; }
-        .btn-primary:hover { background: #0056b3; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-success:hover { background: #1e7e34; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn-danger:hover { background: #c82333; }
-        .btn-secondary { background: #6c757d; color: white; }
-        .btn-secondary:hover { background: #545b62; }
-        .result { margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
-        .result.success { border-left: 4px solid #28a745; }
-        .result.error { border-left: 4px solid #dc3545; }
-        .status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px; }
-        .status.ok { background: #d4edda; color: #155724; }
-        .status.fail { background: #f8d7da; color: #721c24; }
-        .info { background: #e7f3ff; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; color: #004085; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+            font-size: 24px;
+        }
+        .status {
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .status.waiting {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .status.loading {
+            background: #cce5ff;
+            color: #004085;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-google {
+            background: #4285f4;
+            color: white;
+        }
+        .btn-google:hover {
+            background: #3367d6;
+        }
+        .btn-copy {
+            background: #28a745;
+            color: white;
+            margin-top: 15px;
+        }
+        .btn-copy:hover {
+            background: #218838;
+        }
+        .btn-swagger {
+            background: #85ea2d;
+            color: #1a1a1a;
+            margin-top: 10px;
+            text-decoration: none;
+            text-align: center;
+        }
+        .btn-swagger:hover {
+            background: #6fc41f;
+        }
+        .user-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .user-info p {
+            margin: 8px 0;
+            color: #555;
+        }
+        .user-info strong {
+            color: #333;
+        }
+        .token-section {
+            margin-top: 20px;
+        }
+        .token-section label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .token-box {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 11px;
+            word-break: break-all;
+            resize: vertical;
+            background: #fafafa;
+        }
+        .hidden {
+            display: none;
+        }
+        .divider {
+            height: 1px;
+            background: #eee;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Auth API 테스트</h1>
-        
         <div class="card">
-            <h2>현재 상태</h2>
-            <div class="info">
-                <strong>Base URL:</strong> http://localhost:8080<br>
-                <strong>쿠키:</strong> <span id="cookieStatus">확인 중...</span>
+            <h1>🔑 OAuth Login Helper</h1>
+
+            <div id="statusBox" class="status waiting">
+                Google 로그인을 시작하세요
             </div>
-            <button class="btn btn-secondary" onclick="checkCookies()">쿠키 확인</button>
-            <button class="btn btn-secondary" onclick="clearAllCookies()">모든 쿠키 삭제</button>
-        </div>
 
-        <div class="card">
-            <h2>1. 게스트 로그인</h2>
-            <button class="btn btn-primary" onclick="guestLogin()">게스트로 시작</button>
-            <div id="guestResult" class="result"></div>
-        </div>
+            <div id="loginSection">
+                <button class="btn btn-google" onclick="startLogin()">
+                    Google 계정으로 로그인
+                </button>
+            </div>
 
-        <div class="card">
-            <h2>2. Google OAuth2 로그인</h2>
-            <p style="margin-bottom: 10px; color: #666; font-size: 13px;">
-                게스트 로그인 후 진행하면 게스트 계정이 Google 계정으로 병합됩니다.
-            </p>
-            <button class="btn btn-primary" onclick="startGoogleOAuth()">Google 로그인</button>
-            <div id="oauthResult" class="result"></div>
-        </div>
+            <div id="resultSection" class="hidden">
+                <div class="user-info">
+                    <p><strong>이름:</strong> <span id="userName">-</span></p>
+                    <p><strong>역할:</strong> <span id="userRole">-</span></p>
+                    <p><strong>학과:</strong> <span id="userDept">-</span></p>
+                </div>
 
-        <div class="card">
-            <h2>3. 토큰 재발급</h2>
-            <button class="btn btn-success" onclick="refreshToken()">토큰 재발급</button>
-            <div id="refreshResult" class="result"></div>
-        </div>
-
-        <div class="card">
-            <h2>4. 내 정보 조회</h2>
-            <button class="btn btn-success" onclick="getMyInfo()">내 정보</button>
-            <div id="myInfoResult" class="result"></div>
-        </div>
-
-        <div class="card">
-            <h2>5. 로그아웃</h2>
-            <button class="btn btn-danger" onclick="logout()">로그아웃</button>
-            <div id="logoutResult" class="result"></div>
-        </div>
-
-        <div class="card">
-            <h2>6. Swagger UI</h2>
-            <p style="margin-bottom: 10px; color: #666; font-size: 13px;">
-                로그인 후 Swagger UI에서 API를 테스트할 수 있습니다.
-            </p>
-            <a href="/swagger-ui/index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Swagger UI 열기</a>
+                <div class="token-section">
+                    <label>Access Token</label>
+                    <textarea id="accessToken" class="token-box" readonly></textarea>
+                    <button class="btn btn-copy" onclick="copyToken()">
+                        📋 Access Token 복사
+                    </button>
+                    <a href="/swagger-ui/index.html" class="btn btn-swagger" target="_blank">
+                        🚀 Swagger UI 열기
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        const BASE_URL = 'http://localhost:8080';
+        const API_BASE = window.location.origin;
 
-        function showResult(elementId, data, isError = false) {
-            const element = document.getElementById(elementId);
-            element.className = 'result ' + (isError ? 'error' : 'success');
-            element.textContent = JSON.stringify(data, null, 2);
-        }
+        window.onload = async () => {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            const state = params.get('state');
+            const error = params.get('error');
 
-        async function apiCall(method, path, body = null) {
-            const options = {
-                method: method,
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            };
-            if (body) {
-                options.body = JSON.stringify(body);
+            if (error) {
+                showError('Google 로그인 실패: ' + error);
+                return;
             }
-            const response = await fetch(BASE_URL + path, options);
-            const data = await response.json().catch(() => null);
-            return { status: response.status, data: data };
-        }
 
-        function checkCookies() {
-            const cookies = document.cookie;
-            const statusElement = document.getElementById('cookieStatus');
-            if (cookies) {
-                const cookieNames = cookies.split(';').map(c => c.trim().split('=')[0]);
-                statusElement.innerHTML = '<span class="status ok">있음</span> ' + cookieNames.join(', ');
-            } else {
-                statusElement.innerHTML = '<span class="status fail">없음</span>';
+            if (code && state) {
+                setStatus('loading', '토큰 교환 중...');
+                await exchangeToken(code, state);
             }
-        }
+        };
 
-        function clearAllCookies() {
-            document.cookie.split(";").forEach(function(c) {
-                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-            });
-            checkCookies();
-        }
-
-        async function guestLogin() {
+        async function startLogin() {
             try {
-                const result = await apiCall('POST', '/api/v1/auth/guest', {
-                    fcmToken: 'test-fcm-token-' + Date.now(),
-                    device: {
-                        name: 'Chrome',
-                        version: '120.0',
-                        layout: 'Blink',
-                        os: 'Windows 10',
-                        description: 'Chrome 120.0 on Windows 10',
-                        ua: navigator.userAgent
-                    }
+                setStatus('loading', '인증 URL 생성 중...');
+
+                const response = await fetch(API_BASE + '/api/v1/auth/oauth/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
                 });
-                
-                if (result.data && result.data.data) {
-                    const memberId = result.data.data.memberId;
-                    document.cookie = `guest_member_id=${memberId}; path=/`;
-                    document.cookie = `guest_fcm_token=test-fcm-token-${Date.now()}; path=/`;
+
+                if (!response.ok) {
+                    throw new Error('oauth/start 요청 실패: ' + response.status);
                 }
-                
-                showResult('guestResult', { status: result.status, data: result.data });
-                checkCookies();
+
+                const data = await response.json();
+                const googleAuthUrl = data.data.googleAuthUrl;
+
+                window.location.href = googleAuthUrl;
             } catch (error) {
-                showResult('guestResult', { error: error.message }, true);
+                showError(error.message);
             }
         }
 
-        function startGoogleOAuth() {
-            window.location.href = BASE_URL + '/oauth2/authorization/google';
-        }
-
-        async function refreshToken() {
+        async function exchangeToken(code, state) {
             try {
-                const result = await apiCall('POST', '/api/v1/auth/refresh');
-                showResult('refreshResult', { status: result.status, data: result.data });
-                checkCookies();
-            } catch (error) {
-                showResult('refreshResult', { error: error.message }, true);
-            }
-        }
-
-        async function getMyInfo() {
-            try {
-                const result = await apiCall('GET', '/api/v1/members/me');
-                showResult('myInfoResult', { status: result.status, data: result.data });
-            } catch (error) {
-                showResult('myInfoResult', { error: error.message }, true);
-            }
-        }
-
-        async function logout() {
-            try {
-                const result = await apiCall('POST', '/api/v1/auth/logout', {
-                    fcmToken: 'test-fcm-token'
+                const response = await fetch(API_BASE + '/api/v1/auth/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, state })
                 });
-                showResult('logoutResult', { status: result.status, data: result.data, message: '로그아웃 완료' });
-                checkCookies();
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.error?.message || '토큰 교환 실패: ' + response.status);
+                }
+
+                const data = await response.json();
+                const userData = data.data;
+
+                showResult(userData);
             } catch (error) {
-                showResult('logoutResult', { error: error.message }, true);
+                showError(error.message);
             }
         }
 
-        checkCookies();
+        function showResult(data) {
+            setStatus('success', '✅ 로그인 성공!');
+
+            document.getElementById('userName').textContent = data.name || '-';
+            document.getElementById('userRole').textContent = data.role || '-';
+            document.getElementById('userDept').textContent =
+                (data.position && data.department) ? `${data.position} / ${data.department}` : '-';
+
+            document.getElementById('accessToken').value = data.accessToken || '';
+
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('resultSection').classList.remove('hidden');
+
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        }
+
+        function copyToken() {
+            const tokenBox = document.getElementById('accessToken');
+            tokenBox.select();
+            tokenBox.setSelectionRange(0, 99999);
+
+            navigator.clipboard.writeText(tokenBox.value)
+                .then(() => {
+                    const btn = document.querySelector('.btn-copy');
+                    const original = btn.textContent;
+                    btn.textContent = '✅ 복사됨!';
+                    setTimeout(() => { btn.textContent = original; }, 2000);
+                })
+                .catch(() => {
+                    document.execCommand('copy');
+                });
+        }
+
+        function setStatus(type, message) {
+            const statusBox = document.getElementById('statusBox');
+            statusBox.className = 'status ' + type;
+            statusBox.textContent = message;
+        }
+
+        function showError(message) {
+            setStatus('error', '❌ ' + message);
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('resultSection').classList.add('hidden');
+        }
     </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
-package com.mjusugangsincheonghelper.auth.infrastructure;
+package com.mjusugangsincheonghelper.auth.authentication.token;
 
-import com.mjusugangsincheonghelper.auth.infrastructure.TokenProvider.TokenClaims;
+import com.mjusugangsincheonghelper.auth.authentication.token.TokenProvider.TokenClaims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
