@@ -3,8 +3,10 @@ package com.mjusugangsincheonghelper.auth.authentication.guest;
 import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
+import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
+import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import java.util.UUID;
@@ -18,6 +20,7 @@ public class GuestAuthenticationProvider {
 
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
+	private final MemberAgreementRepository memberAgreementRepository;
 
 	@Transactional
 	public AuthenticatedIdentity authenticate() {
@@ -29,6 +32,9 @@ public class GuestAuthenticationProvider {
 				.name(guestName)
 				.build();
 		member = memberRepository.save(member);
+
+		MemberAgreement agreement = new MemberAgreement(member.getId());
+		memberAgreementRepository.save(agreement);
 
 		MemberAuth memberAuth = MemberAuth.builder()
 				.memberId(member.getId())

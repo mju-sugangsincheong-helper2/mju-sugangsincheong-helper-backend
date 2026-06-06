@@ -13,7 +13,7 @@ Auth 시스템은 시퀀스 기준으로 네 가지 책임으로 분리됩니다
 | 1 | **OAuth** (외부 인증 연동) | Google 등 외부 제공자와의 OAuth 흐름 관리 | "외부에서 어떻게 인증 정보를 가져올까?" |
 | 2 | **Authentication** (본인인증) | 사용자 신원 확인 및 identity 확립, JWT 생성/검증 | "이 사람이 누구인가?" |
 | 3 | **Session** (통행권) | ATK/RTK 발급, 갱신, 회수 및 디바이스 세션 관리 | "통행권을 주고/갱신하고/회수할까?" |
-| 4 | **Authorization** (권한) | 역할 기반 접근 제어 (향후 확장) | "이 통행권으로 무엇을 할 수 있는가?" |
+| 4 | **Authorization** (권한) | 역할 기반 접근 제어 + 개인정보 동의 체크 | "이 통행권으로 무엇을 할 수 있는가?" |
 
 ---
 
@@ -34,9 +34,10 @@ Auth 시스템은 시퀀스 기준으로 네 가지 책임으로 분리됩니다
     └→ DB에 저장 (device session)
     └→ 토큰 전달 (cookie/body)
 
-[4] 권한 확인 (authorization/) - 향후 확장
-    └→ SecurityContext의 role 확인
-    └→ 접근 권한 체크
+[4] 권한 확인 (authorization/)
+    ├→ PrivacyConsentFilter: 개인정보 동의 여부 체크 (MEMBER/ADMIN 대상)
+    └→ @PreAuthorize + RoleHierarchy: 역할 기반 접근 제어
+         └→ ADMIN > MEMBER > GUEST 계층 구조
 ```
 
 ---
@@ -79,8 +80,10 @@ auth/
 │   └── device/
 │       └── DeviceSessionService.java         #    디바이스 세션 CRUD
 │
-├── authorization/                            # 4. 권한 확인 (향후 확장)
-│   └── (Role 기반 권한 체크 등)
+├── authorization/                            # 4. 권한 확인
+│   └── consent/
+│       ├── PrivacyConsentFilter.java         #    개인정보 동의 필터 (JWT 이후 실행)
+│       └── MemberAgreementService.java       #    동의 여부 조회/처리
 │
 ├── controller/
 │   ├── AuthController.java                   #    guest, refresh, logout, merge
@@ -257,10 +260,63 @@ public interface TokenDeliveryStrategy {
 | `member` | oauth, authentication, session | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `SessionService` |
 | `member_auth` | oauth, authentication | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `MergeService` |
 | `member_device` | session | `DeviceSessionService`, `SessionService` |
+| `member_agreements` | authorization | `MemberAgreementService`, `PrivacyConsentFilter` |
 
 ---
 
-## 8. Google OAuth 설정
+## 8. 권한 모델 (Authorization)
+
+### 8.1 역할 계층 (RoleHierarchy)
+
+```
+ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
+```
+
+- `@PreAuthorize("hasRole('MEMBER')")` → MEMBER, ADMIN 모두 접근 가능
+- `@PreAuthorize("hasRole('ADMIN')")` → ADMIN만 접근 가능
+
+### 8.2 개인정보 동의 체크 (PrivacyConsentFilter)
+
+JWT 인증 이후 실행되는 필터. MEMBER/ADMIN 역할 사용자의 개인정보 동의를 전역 체크.
+
+| 조건 | 결과 |
+|------|------|
+| 미인증 | 통과 (SecurityConfig가 처리) |
+| GUEST | 통과 (동의 대상 아님) |
+| MEMBER/ADMIN + 동의 완료 | 통과 |
+| MEMBER/ADMIN + 미동의 | 403 `AUTH_PRIVACY_POLICY_REQUIRED` |
+
+### 8.3 member_agreements 테이블
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `member_id` (PK) | Long | member.id와 1:1 공유 PK |
+| `status` | boolean | 동의 여부 |
+| `agreed_at` | Instant | 동의 시각 (증빙) |
+
+### 8.4 사용 예시
+
+```java
+@RestController
+@RequestMapping("/api/{version}/members")
+public class MemberController {
+
+    @GetMapping("/me")
+    public MemberMeResponse getMe() { ... }  // 인증만 필요 (Guest+)
+
+    @PreAuthorize("hasRole('MEMBER')")
+    @GetMapping("/courses")
+    public List<CourseResponse> getCourses() { ... }  // MEMBER+ 필요
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/system/config")
+    public void updateConfig() { ... }  // ADMIN만
+}
+```
+
+---
+
+## 9. Google OAuth 설정
 
 ### Google Console 등록 (승인된 리디렉션 URI)
 
@@ -278,7 +334,7 @@ http://localhost:3000/auth/callback    # 개발용 프론트엔드
 
 ---
 
-## 9. Swagger에서 OAuth 테스트
+## 10. Swagger에서 OAuth 테스트
 
 현재 설계(프론트 경유형)에서는 Swagger의 Authorize 버튼으로 직접 OAuth를 처리할 수 없습니다.
 

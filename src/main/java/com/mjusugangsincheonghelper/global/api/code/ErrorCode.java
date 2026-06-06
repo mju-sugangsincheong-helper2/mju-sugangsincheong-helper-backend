@@ -18,7 +18,7 @@ public enum ErrorCode {
 
 	SYSTEM_CONFIG_NOT_FOUND(HttpStatus.NOT_FOUND, "SYSTEM_001", "System config not found."),
 
-	AUTH_PRIVACY_POLICY_REQUIRED(HttpStatus.BAD_REQUEST, "AUTH_001", "Privacy policy agreement is required."),
+	AUTH_PRIVACY_POLICY_REQUIRED(HttpStatus.FORBIDDEN, "AUTH_001", "Privacy policy agreement is required."),
 	AUTH_GOOGLE_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_002", "Google authentication failed."),
 	AUTH_INVALID_TOKEN_SIGNATURE(HttpStatus.UNAUTHORIZED, "AUTH_003", "Invalid token signature."),
 	AUTH_INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_004", "Invalid or expired refresh token."),

@@ -46,12 +46,6 @@ public class Member {
 	@Column(length = 50)
 	private String name;
 
-	@Column(name = "is_privacy_policy_agreed", nullable = false)
-	private boolean privacyPolicyAgreed;
-
-	@Column(name = "privacy_policy_agreed_at")
-	private Instant privacyPolicyAgreedAt;
-
 	@CreatedDate
 	@Column(nullable = false, updatable = false)
 	private Instant createdAt;
@@ -61,12 +55,11 @@ public class Member {
 	private Instant updatedAt;
 
 	@Builder
-	public Member(Role role, String position, String department, String name, boolean privacyPolicyAgreed) {
+	public Member(Role role, String position, String department, String name) {
 		this.role = role;
 		this.position = position;
 		this.department = department;
 		this.name = name;
-		this.privacyPolicyAgreed = privacyPolicyAgreed;
 	}
 
 	public void promoteToMember(String name, String position, String department) {
@@ -74,12 +67,5 @@ public class Member {
 		this.name = name;
 		this.position = position;
 		this.department = department;
-		this.privacyPolicyAgreed = true;
-		this.privacyPolicyAgreedAt = Instant.now();
-	}
-
-	public void agreeToPrivacyPolicy() {
-		this.privacyPolicyAgreed = true;
-		this.privacyPolicyAgreedAt = Instant.now();
 	}
 }

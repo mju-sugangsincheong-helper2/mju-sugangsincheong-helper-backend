@@ -1,10 +1,14 @@
 package com.mjusugangsincheonghelper.global.config;
 
 import com.mjusugangsincheonghelper.auth.authentication.token.JwtAuthenticationFilter;
+import com.mjusugangsincheonghelper.auth.authorization.consent.PrivacyConsentFilter;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -18,10 +22,12 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class GlobalSecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
+	private final PrivacyConsentFilter privacyConsentFilter;
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -41,6 +47,7 @@ public class GlobalSecurityConfig {
 						.requestMatchers("/api/*/auth/oauth/start").permitAll()
 						.requestMatchers("/api/*/auth/token").permitAll()
 						.requestMatchers("/api/*/auth/config/google").permitAll()
+						.requestMatchers("/api/*/auth/privacy/**").permitAll()
 						.requestMatchers("/api/*/example/**").permitAll()
 						.requestMatchers("/api/*/system/**").permitAll()
 						.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
@@ -48,9 +55,15 @@ public class GlobalSecurityConfig {
 						.requestMatchers("/*.html").permitAll()
 						.anyRequest().authenticated()
 				)
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterAfter(privacyConsentFilter, JwtAuthenticationFilter.class);
 
 		return http.build();
+	}
+
+	@Bean
+	public RoleHierarchy roleHierarchy() {
+		return RoleHierarchyImpl.fromHierarchy("ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST");
 	}
 
 	@Bean

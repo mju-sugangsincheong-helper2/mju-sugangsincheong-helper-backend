@@ -5,8 +5,10 @@ import tools.jackson.databind.json.JsonMapper;
 import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
+import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
+import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
@@ -43,6 +45,7 @@ public class GoogleAuthProvider {
 
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
+	private final MemberAgreementRepository memberAgreementRepository;
 	private final JsonMapper jsonMapper;
 
 	@Value("${app.oauth2.google.client-id}")
@@ -203,9 +206,11 @@ public class GoogleAuthProvider {
 				.name(parsedName.name())
 				.position(parsedName.position())
 				.department(parsedName.department())
-				.privacyPolicyAgreed(true)
 				.build();
 		newMember = memberRepository.save(newMember);
+
+		MemberAgreement agreement = new MemberAgreement(newMember.getId());
+		memberAgreementRepository.save(agreement);
 
 		MemberAuth memberAuth = MemberAuth.builder()
 				.memberId(newMember.getId())
