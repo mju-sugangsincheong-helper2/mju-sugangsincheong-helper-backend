@@ -2,7 +2,6 @@ package com.mjusugangsincheonghelper.system.definition;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import com.mjusugangsincheonghelper.database.entity.SystemConfig;
 import com.mjusugangsincheonghelper.database.entity.SystemConfig.ConfigType;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.util.function.Function;
