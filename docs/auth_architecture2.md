@@ -66,7 +66,6 @@ Auth 시스템은 시퀀스 기준으로 네 가지 책임으로 분리됩니다
 public class GlobalSecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final PrivacyConsentFilter privacyConsentFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -82,7 +81,6 @@ public class GlobalSecurityConfig {
                 .requestMatchers("/api/*/auth/oauth/start").permitAll()
                 .requestMatchers("/api/*/auth/token").permitAll()
                 .requestMatchers("/api/*/auth/config/google").permitAll()
-                .requestMatchers("/api/*/auth/privacy/**").permitAll()
                 .requestMatchers("/api/*/example/**").permitAll()
                 .requestMatchers("/api/*/system/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
@@ -90,8 +88,7 @@ public class GlobalSecurityConfig {
                 .requestMatchers("/*.html").permitAll()
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterAfter(privacyConsentFilter, JwtAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -114,7 +111,7 @@ public class GlobalSecurityConfig {
 |------|------|------|
 | `JwtAuthenticationFilter` | `UsernamePasswordAuthenticationFilter` 이전 | 토큰 검증 → SecurityContext 설정 |
 
-**참고**: 개인정보 동의는 필터에서 체크하지 않습니다. "계정 존재 = 동의 완료" 원칙에 따라, 계정이 있는 사용자는 이미 동의를 받은 것으로 간주합니다.
+**참고**: 개인정보 동의는 필터에서 체크하지 않습니다. 프론트가 동의 UI 완료 후 별도 endpoint를 호출해 감사 기록을 생성합니다.
 
 ### 2.3 URL 권한 규칙
 
@@ -126,7 +123,7 @@ public class GlobalSecurityConfig {
 | `/api/*/auth/oauth/start` | permitAll | OAuth 시작 |
 | `/api/*/auth/token` | permitAll | OAuth 토큰 교환 |
 | `/api/*/auth/config/google` | permitAll | Google OAuth 설정 조회 |
-| `/api/*/auth/privacy/**` | permitAll | 개인정보 동의 관련 |
+| `/api/*/auth/privacy/**` | authenticated | 개인정보 동의 감사 기록 |
 | `/api/*/example/**` | permitAll | 예제 API |
 | `/api/*/system/**` | permitAll | 시스템 설정 API |
 | `/swagger-ui/**`, `/v3/api-docs/**` | permitAll | Swagger UI |
@@ -145,11 +142,12 @@ auth/
 ├── oauth/                                    # 1. OAuth 인증 (외부 신원 확인)
 │   ├── GoogleAuthProvider.java               #    code → ID Token 검증 → 회원 조회/생성
 │   ├── OAuthStateService.java                #    state 생성/검증 (Redis 5분 TTL)
+│   ├── OAuthAuthenticationResult.java        #    인증 결과 + 신규 사용자 여부
 │   └── dto/
 │       ├── OAuthConfigResponse.java          #    GET /auth/config/google 응답
 │       ├── OAuthStartResponse.java           #    POST /auth/oauth/start 응답
 │       ├── OAuthTokenRequest.java            #    POST /auth/token 요청
-│       └── OAuthTokenResponse.java           #    POST /auth/token 응답 (status: SUCCESS)
+│       └── OAuthTokenResponse.java           #    POST /auth/token 응답 (status: SUCCESS, newUser)
 │
 ├── authentication/                           # 2. 본인인증 (신원 확인 + JWT)
 │   ├── identity/
@@ -175,6 +173,10 @@ auth/
 │   │   └── HeaderTokenDelivery.java          #    HttpOnly 쿠키 + 응답 헤더 (dev/test)
 │   └── device/
 │       └── DeviceSessionService.java         #    디바이스 세션 CRUD
+│
+├── authorization/
+│   └── consent/
+│       └── MemberAgreementService.java       #    개인정보 동의 감사 기록 생성/조회
 │
 ├── controller/
 │   ├── AuthController.java                   #    guest, refresh, logout, merge
@@ -204,8 +206,8 @@ auth/
 ```
 [1] OAuth 인증 (oauth/)
     └→ code → Google 토큰 교환 → ID Token JWKS 검증
-    └→ 기존 회원: 회원 정보 갱신 후 AuthenticatedIdentity(memberId) 반환
-    └→ 신규 회원: Member + MemberAuth 생성 후 AuthenticatedIdentity(memberId) 반환
+    └→ 기존 회원: 회원 정보 갱신 후 OAuthAuthenticationResult(identity, newUser=false) 반환
+    └→ 신규 회원: Member + MemberAuth 생성 후 OAuthAuthenticationResult(identity, newUser=true) 반환
 
 [2] JWT 발급/검증 (authentication/token/)
     └→ TokenProvider: JWT 생성 (ATK/RTK, MergeTicket)
@@ -231,12 +233,13 @@ POST /auth/token {code, state}
    └→ Google ID Token JWKS 서명 검증
    └→ 기존 회원이면 정보 갱신
    └→ 신규 회원이면 Member + MemberAuth 생성
-   └→ 응답: { status: "SUCCESS", memberId, role, accessToken, refreshToken }
+   └→ 응답: { status: "SUCCESS", newUser, memberId, role, accessToken, refreshToken }
 ```
 
 **핵심 원칙**: OAuth 토큰 교환과 개인정보 동의 응답은 통합하지 않습니다.
 - `/auth/token`은 Google 인증과 세션 발급만 담당합니다.
-- 개인정보 동의는 별도 흐름에서 처리합니다.
+- `newUser=true`이면 프론트가 개인정보 안내/동의 UI를 노출할 수 있습니다.
+- 개인정보 동의 감사 기록은 별도 endpoint에서 처리합니다.
 
 ---
 
@@ -307,13 +310,16 @@ public class MemberController {
 
 ## 6. 개인정보 동의
 
-### 6.1 핵심 원칙: "계정 존재 = 동의 완료"
+### 6.1 핵심 원칙: 프론트 주도 동의 감사 기록
 
-개인정보 동의는 **가입 시점에 한 번만** 받으며, 필터에서 매 요청마다 체크하지 않습니다.
+개인정보 동의는 OAuth 토큰 교환 응답에 통합하지 않습니다.
+프론트가 `/auth/token` 응답의 `newUser` 값을 보고 개인정보 동의 UI를 노출한 뒤,
+동의 완료 시 별도 endpoint를 호출해 감사 기록을 생성합니다.
 
 | 원칙 | 설명 |
 |------|------|
-| **계정 존재 = 동의 완료** | 계정이 있는 사용자는 이미 동의를 받은 것으로 간주 |
+| **OAuth와 분리** | `/auth/token`은 인증과 세션 발급만 담당 |
+| **프론트 주도** | 프론트가 동의 UI 완료 후 `/auth/privacy/agree` 호출 |
 | **JWT 무상태성 유지** | 매 요청마다 DB를 조회하지 않음 |
 | **감사 로그만 저장** | `member_agreements` 테이블은 동의 이력(언제 동의했는지)만 보관 |
 
@@ -332,10 +338,26 @@ public class MemberController {
     └→ [신규 회원] → Member + MemberAuth 생성
     │
     └→ SessionService.createSession()
-        └→ 응답: { status: "SUCCESS", memberId, role, accessToken, refreshToken }
+        └→ 응답: { status: "SUCCESS", newUser, memberId, role, accessToken, refreshToken }
 ```
 
-### 6.3 member_agreements 테이블 (감사 로그용)
+### 6.3 개인정보 동의 감사 기록 endpoint
+
+```
+POST /auth/privacy/agree
+    │
+    ├→ 인증된 사용자 memberId 추출
+    ├→ member_agreements upsert
+    │   └→ status=true, agreedAt=now
+    │
+    └→ 응답: { memberId, privacyPolicyAgreed, agreedAt }
+```
+
+- 인증 필요
+- 프론트가 개인정보 동의 완료 후 호출
+- 이미 기록이 있으면 `agreedAt`을 최신 동의 시각으로 갱신
+
+### 6.4 member_agreements 테이블 (감사 로그용)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -351,7 +373,7 @@ public class MemberController {
 |----------|------|
 | 게스트 생성 | member_agreements 레코드 없음 (게스트는 동의 불필요) |
 | Google OAuth 기존 회원 | 바로 JWT 발급 (이미 동의 완료) |
-| Google OAuth 신규 회원 | 계정 생성 + JWT 발급. 개인정보 동의는 별도 흐름에서 처리 |
+| Google OAuth 신규 회원 | 계정 생성 + JWT 발급 + `newUser=true` 응답. 개인정보 동의는 별도 endpoint에서 기록 |
 | 게스트 → 멤버 병합 | 기존 member_agreements 삭제 후 MEMBER로 승격 |
 
 ---
@@ -507,7 +529,7 @@ public class MemberController {
 | `member` | oauth, authentication, session | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `SessionService` |
 | `member_auth` | oauth, authentication | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `MergeService` |
 | `member_device` | session | `DeviceSessionService`, `SessionService` |
-| `member_agreements` | authorization | `MemberAgreementService`, `PrivacyConsentFilter` |
+| `member_agreements` | authorization | `MemberAgreementService` |
 
 ---
 

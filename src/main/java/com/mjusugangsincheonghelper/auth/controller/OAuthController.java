@@ -1,7 +1,7 @@
 package com.mjusugangsincheonghelper.auth.controller;
 
-import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.oauth.GoogleAuthProvider;
+import com.mjusugangsincheonghelper.auth.oauth.OAuthAuthenticationResult;
 import com.mjusugangsincheonghelper.auth.oauth.OAuthStateService;
 import com.mjusugangsincheonghelper.auth.oauth.dto.OAuthConfigResponse;
 import com.mjusugangsincheonghelper.auth.oauth.dto.OAuthStartResponse;
@@ -127,18 +127,19 @@ public class OAuthController {
 			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
 		}
 
-		AuthenticatedIdentity identity = googleAuthProvider.authenticate(request.getCode());
-		SessionResult session = sessionService.createSession(identity, null, null, httpResponse);
-		OAuthTokenResponse response = buildOAuthTokenResponse(session);
+		OAuthAuthenticationResult authResult = googleAuthProvider.authenticate(request.getCode());
+		SessionResult session = sessionService.createSession(authResult.getIdentity(), null, null, httpResponse);
+		OAuthTokenResponse response = buildOAuthTokenResponse(session, authResult.isNewUser());
 
 		return ResponseEntity
 				.status(HttpStatus.OK)
 				.body(SingleSuccessResponseEnvelope.of(response));
 	}
 
-	private OAuthTokenResponse buildOAuthTokenResponse(SessionResult session) {
+	private OAuthTokenResponse buildOAuthTokenResponse(SessionResult session, boolean newUser) {
 		OAuthTokenResponse.OAuthTokenResponseBuilder builder = OAuthTokenResponse.builder()
 				.status("SUCCESS")
+				.newUser(newUser)
 				.memberId(session.getMemberId())
 				.role(session.getRole())
 				.name(session.getName())

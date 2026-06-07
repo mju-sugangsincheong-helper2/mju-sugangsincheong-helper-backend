@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 @Getter @Builder @NoArgsConstructor @AllArgsConstructor
 public class OAuthTokenResponse {
     private String status;
+    private Boolean newUser;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Long memberId;
@@ -34,6 +35,7 @@ public class OAuthTokenResponse {
     public static OAuthTokenResponse existingMember(Long memberId, String role, String name, String position, String department) {
         return OAuthTokenResponse.builder()
                 .status("SUCCESS")
+                .newUser(false)
                 .memberId(memberId)
                 .role(role)
                 .name(name)

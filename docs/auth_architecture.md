@@ -22,7 +22,7 @@ Auth 시스템은 시퀀스 기준으로 네 가지 책임으로 분리됩니다
 ```
 [1] OAuth 인증 (oauth/)
     └→ code → Google 토큰 교환 → ID Token JWKS 검증 → 회원 조회/생성
-    └→ AuthenticatedIdentity(memberId)
+    └→ OAuthAuthenticationResult(identity, newUser)
 
 [2] JWT 발급/검증 (authentication/token/)
     └→ TokenProvider: JWT 생성 (ATK/RTK)
@@ -35,7 +35,7 @@ Auth 시스템은 시퀀스 기준으로 네 가지 책임으로 분리됩니다
     └→ 토큰 전달 (HttpOnly cookie + dev/test 보조 body/header)
 
 [4] 권한 확인 (authorization/)
-    ├→ PrivacyConsentFilter: 개인정보 동의 여부 체크 (MEMBER/ADMIN 대상)
+    ├→ MemberAgreementService: 프론트 주도 개인정보 동의 감사 기록
     └→ @PreAuthorize + RoleHierarchy: 역할 기반 접근 제어
          └→ ADMIN > MEMBER > GUEST 계층 구조
 ```
@@ -49,11 +49,12 @@ auth/
 ├── oauth/                                    # 1. OAuth 인증 (외부 신원 확인)
 │   ├── GoogleAuthProvider.java               #    code → ID Token 검증 → 회원 조회/생성
 │   ├── OAuthStateService.java                #    state 생성/검증 (Redis 5분 TTL)
+│   ├── OAuthAuthenticationResult.java        #    인증 결과 + 신규 사용자 여부
 │   └── dto/
 │       ├── OAuthConfigResponse.java          #    GET /auth/config/google 응답
 │       ├── OAuthStartResponse.java           #    POST /auth/oauth/start 응답
 │       ├── OAuthTokenRequest.java            #    POST /auth/token 요청
-│       └── OAuthTokenResponse.java           #    POST /auth/token 응답
+│       └── OAuthTokenResponse.java           #    POST /auth/token 응답 (newUser 포함)
 │
 ├── authentication/                           # 2. 본인인증 (신원 확인 + JWT)
 │   ├── identity/
@@ -82,8 +83,7 @@ auth/
 │
 ├── authorization/                            # 4. 권한 확인
 │   └── consent/
-│       ├── PrivacyConsentFilter.java         #    개인정보 동의 필터 (JWT 이후 실행)
-│       └── MemberAgreementService.java       #    동의 여부 조회/처리
+│       └── MemberAgreementService.java       #    개인정보 동의 감사 기록 생성/조회
 │
 ├── controller/
 │   ├── AuthController.java                   #    guest, refresh, logout, merge
@@ -136,12 +136,15 @@ OAuthController.tokenExchange()
   └→ GoogleAuthProvider.authenticate(code)
   │   ├→ RestClient로 POST /token (code ↔ id_token 교환)
   │   ├→ ID Token JWKS 서명 검증 (RSA256)
-  │   ├→ hd=mju.ac.kr 검증
-  │   ├→ name 파싱 (name/position/department)
-  │   └→ member 조회/생성 → AuthenticatedIdentity
+│   ├→ hd=mju.ac.kr 검증
+│   ├→ name 파싱 (name/position/department)
+  │   └→ member 조회/생성 → OAuthAuthenticationResult(identity, newUser)
   └→ SessionService.createSession()                 # ATK/RTK 발급
        └→ TokenDeliveryStrategy.deliver()
 ```
+
+`OAuthTokenResponse.newUser`는 Google OAuth 기준으로 이번 토큰 교환에서 새로 생성된 사용자인지 나타냅니다.
+프론트는 `newUser=true`일 때 개인정보 안내/동의 UI를 노출하고, 완료 후 별도 동의 기록 endpoint를 호출합니다.
 
 ### 4.3 게스트 → 멤버 병합
 
@@ -177,6 +180,22 @@ AuthController.logout()
        └→ TokenDeliveryStrategy.clear()             # ATK/RTK 쿠키 삭제, dev/test는 헤더도 초기화
 ```
 
+### 4.6 개인정보 동의 감사 기록
+
+```
+AuthController.agreePrivacyPolicy()
+  └→ SecurityContext에서 현재 memberId 추출
+  └→ MemberAgreementService.agree(memberId)
+       └→ member_agreements upsert (status=true, agreedAt=now)
+  └→ PrivacyAgreementResponse(memberId, privacyPolicyAgreed, agreedAt)
+```
+
+엔드포인트: `POST /api/{version}/auth/privacy/agree`
+
+- 인증 필요
+- 프론트가 개인정보 동의 UI 완료 후 주도적으로 호출
+- OAuth 토큰 교환과 통합하지 않고 감사 기록 생성/갱신만 담당
+
 ---
 
 ## 5. 토큰 전달 전략
@@ -203,6 +222,7 @@ AuthController.logout()
   "meta": { ... },
   "data": {
     "memberId": 123,
+    "newUser": true,
     "role": "GUEST",
     "name": "게스트_a8f3",
     "accessToken": "eyJ...",
@@ -273,7 +293,7 @@ public interface TokenDeliveryStrategy {
 | `member` | oauth, authentication, session | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `SessionService` |
 | `member_auth` | oauth, authentication | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `MergeService` |
 | `member_device` | session | `DeviceSessionService`, `SessionService` |
-| `member_agreements` | authorization | `MemberAgreementService`, `PrivacyConsentFilter` |
+| `member_agreements` | authorization | `MemberAgreementService` |
 
 ---
 
@@ -288,16 +308,16 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 - `@PreAuthorize("hasRole('MEMBER')")` → MEMBER, ADMIN 모두 접근 가능
 - `@PreAuthorize("hasRole('ADMIN')")` → ADMIN만 접근 가능
 
-### 8.2 개인정보 동의 체크 (PrivacyConsentFilter)
+### 8.2 개인정보 동의 감사 기록
 
-JWT 인증 이후 실행되는 필터. MEMBER/ADMIN 역할 사용자의 개인정보 동의를 전역 체크.
+개인정보 동의는 필터에서 전역 체크하지 않습니다.
+프론트가 개인정보 동의 UI 완료 후 `POST /api/{version}/auth/privacy/agree`를 호출하면 감사 기록을 생성/갱신합니다.
 
 | 조건 | 결과 |
 |------|------|
-| 미인증 | 통과 (SecurityConfig가 처리) |
-| GUEST | 통과 (동의 대상 아님) |
-| MEMBER/ADMIN + 동의 완료 | 통과 |
-| MEMBER/ADMIN + 미동의 | 403 `AUTH_PRIVACY_POLICY_REQUIRED` |
+| 미인증 | 401 (SecurityConfig가 처리) |
+| 인증 사용자 | `member_agreements` upsert |
+| 이미 동의 기록 있음 | `status=true`, `agreedAt=now`로 갱신 |
 
 ### 8.3 member_agreements 테이블
 

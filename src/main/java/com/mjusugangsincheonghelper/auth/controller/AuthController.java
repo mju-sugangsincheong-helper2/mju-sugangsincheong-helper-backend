@@ -3,11 +3,14 @@ package com.mjusugangsincheonghelper.auth.controller;
 import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.authentication.merge.MergeService;
 import com.mjusugangsincheonghelper.auth.authentication.guest.GuestAuthenticationProvider;
+import com.mjusugangsincheonghelper.auth.authorization.consent.MemberAgreementService;
+import com.mjusugangsincheonghelper.auth.authorization.consent.MemberAgreementService.ConsentStatus;
 import com.mjusugangsincheonghelper.auth.dto.GuestCreateRequest;
 import com.mjusugangsincheonghelper.auth.dto.GuestResponse;
 import com.mjusugangsincheonghelper.auth.dto.LogoutRequest;
 import com.mjusugangsincheonghelper.auth.dto.MergeRequest;
 import com.mjusugangsincheonghelper.auth.dto.MergeResponse;
+import com.mjusugangsincheonghelper.auth.dto.PrivacyAgreementResponse;
 import com.mjusugangsincheonghelper.auth.dto.RefreshResponse;
 import com.mjusugangsincheonghelper.auth.session.SessionResult;
 import com.mjusugangsincheonghelper.auth.session.SessionService;
@@ -41,6 +44,7 @@ public class AuthController {
 	private final GuestAuthenticationProvider guestAuthenticationProvider;
 	private final MergeService mergeService;
 	private final SessionService sessionService;
+	private final MemberAgreementService memberAgreementService;
 
 	@Value("${app.auth.token-in-response:false}")
 	private boolean tokenInResponse;
@@ -153,6 +157,34 @@ public class AuthController {
 
 		MergeResponse mergeResponse = buildMergeResponse(session);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(mergeResponse));
+	}
+
+	@PostMapping(value = "/privacy/agree", version = "1+")
+	@Operation(
+			summary = "Privacy agreement",
+			description = "현재 인증된 사용자의 개인정보 동의 감사 기록을 생성하거나 갱신합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "동의 기록 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_SECURITY_UNAUTHORIZED_ACCESS,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<PrivacyAgreementResponse>> agreePrivacyPolicy() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Long memberId = (Long) authentication.getPrincipal();
+		ConsentStatus status = memberAgreementService.agree(memberId);
+
+		PrivacyAgreementResponse response = PrivacyAgreementResponse.builder()
+				.memberId(memberId)
+				.privacyPolicyAgreed(status.status())
+				.agreedAt(status.agreedAt())
+				.build();
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 
 	private GuestResponse buildGuestResponse(SessionResult session) {

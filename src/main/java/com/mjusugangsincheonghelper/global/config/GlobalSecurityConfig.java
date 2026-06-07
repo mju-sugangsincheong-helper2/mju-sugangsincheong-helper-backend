@@ -45,7 +45,6 @@ public class GlobalSecurityConfig {
 						.requestMatchers("/api/*/auth/oauth/start").permitAll()
 						.requestMatchers("/api/*/auth/token").permitAll()
 						.requestMatchers("/api/*/auth/config/google").permitAll()
-						.requestMatchers("/api/*/auth/privacy/**").permitAll()
 						.requestMatchers("/api/*/example/**").permitAll()
 						.requestMatchers("/api/*/system/**").permitAll()
 						.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()

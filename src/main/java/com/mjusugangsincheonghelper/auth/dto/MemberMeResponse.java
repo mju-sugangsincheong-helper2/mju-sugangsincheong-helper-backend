@@ -19,14 +19,14 @@ public class MemberMeResponse {
 	private final boolean isPrivacyPolicyAgreed;
 	private final Instant createdAt;
 
-	public static MemberMeResponse from(Member member) {
+	public static MemberMeResponse from(Member member, boolean privacyPolicyAgreed) {
 		return MemberMeResponse.builder()
 				.memberId(member.getId())
 				.role(member.getRole().name())
 				.name(member.getName())
 				.position(member.getPosition())
 				.department(member.getDepartment())
-				.isPrivacyPolicyAgreed(true)
+				.isPrivacyPolicyAgreed(privacyPolicyAgreed)
 				.createdAt(member.getCreatedAt())
 				.build();
 	}

@@ -146,6 +146,7 @@
                 <div class="user-info">
                     <p><strong>이름:</strong> <span id="userName">-</span></p>
                     <p><strong>역할:</strong> <span id="userRole">-</span></p>
+                    <p><strong>신규 사용자:</strong> <span id="newUser">-</span></p>
                     <p><strong>학과:</strong> <span id="userDept">-</span></p>
                 </div>
 
@@ -183,13 +184,19 @@
             </div>
 
             <div class="card">
-                <h2>5. 시스템 설정 조회</h2>
+                <h2>5. 개인정보 동의 기록</h2>
+                <button class="btn btn-success" onclick="agreePrivacyPolicy()">동의 기록 생성</button>
+                <div id="privacyAgreementResult" class="result hidden"></div>
+            </div>
+
+            <div class="card">
+                <h2>6. 시스템 설정 조회</h2>
                 <button class="btn btn-secondary" onclick="getSystemConfigs()">설정 목록 조회</button>
                 <div id="systemConfigResult" class="result hidden"></div>
             </div>
 
             <div class="card">
-                <h2>6. 로그아웃</h2>
+                <h2>7. 로그아웃</h2>
                 <button class="btn btn-danger" onclick="logout()">로그아웃</button>
                 <div id="logoutResult" class="result hidden"></div>
             </div>
@@ -274,6 +281,8 @@
 
             document.getElementById('userName').textContent = data.name || '-';
             document.getElementById('userRole').textContent = data.role || '-';
+            document.getElementById('newUser').textContent =
+                typeof data.newUser === 'boolean' ? String(data.newUser) : '-';
             document.getElementById('userDept').textContent =
                 (data.position && data.department) ? `${data.position} / ${data.department}` : '-';
 
@@ -363,6 +372,16 @@
                 showApiResult('myInfoResult', result);
             } catch (error) {
                 showApiResult('myInfoResult', { error: error.message });
+            }
+        }
+
+        // 개인정보 동의 감사 기록 생성
+        async function agreePrivacyPolicy() {
+            try {
+                const result = await apiCall('POST', '/api/v1/auth/privacy/agree');
+                showApiResult('privacyAgreementResult', result);
+            } catch (error) {
+                showApiResult('privacyAgreementResult', { error: error.message });
             }
         }
 

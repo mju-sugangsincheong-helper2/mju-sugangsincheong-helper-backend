@@ -58,7 +58,7 @@ public class GoogleAuthProvider {
 	private volatile long keyCacheExpiresAt = 0;
 
 	@Transactional
-	public AuthenticatedIdentity authenticate(String code) {
+	public OAuthAuthenticationResult authenticate(String code) {
 		String idToken = exchangeCodeForIdToken(code);
 		Claims claims = verifyAndParseIdToken(idToken);
 
@@ -70,7 +70,7 @@ public class GoogleAuthProvider {
 		return authenticateOrCreateMember(googleSubId, parsedName);
 	}
 
-	private AuthenticatedIdentity authenticateOrCreateMember(String googleSubId, ParsedName parsedName) {
+	private OAuthAuthenticationResult authenticateOrCreateMember(String googleSubId, ParsedName parsedName) {
 		Optional<MemberAuth> existingAuth = memberAuthRepository.findByAuthKeyAndAuthType(googleSubId, AuthType.GOOGLE);
 		if (existingAuth.isPresent()) {
 			var member = memberRepository.findById(existingAuth.get().getMemberId())
@@ -80,7 +80,10 @@ public class GoogleAuthProvider {
 			member.promoteToMember(parsedName.name(), parsedName.position(), parsedName.department());
 			memberRepository.save(member);
 
-			return AuthenticatedIdentity.builder().memberId(member.getId()).build();
+			return OAuthAuthenticationResult.builder()
+					.identity(AuthenticatedIdentity.builder().memberId(member.getId()).build())
+					.newUser(false)
+					.build();
 		}
 
 		Member member = Member.builder()
@@ -99,7 +102,10 @@ public class GoogleAuthProvider {
 		memberAuth.updateLastLoginAt();
 		memberAuthRepository.save(memberAuth);
 
-		return AuthenticatedIdentity.builder().memberId(member.getId()).build();
+		return OAuthAuthenticationResult.builder()
+				.identity(AuthenticatedIdentity.builder().memberId(member.getId()).build())
+				.newUser(true)
+				.build();
 	}
 
 	private String exchangeCodeForIdToken(String code) {

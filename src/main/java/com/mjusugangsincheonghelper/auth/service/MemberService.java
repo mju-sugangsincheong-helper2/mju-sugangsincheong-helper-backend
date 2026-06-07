@@ -1,6 +1,7 @@
 package com.mjusugangsincheonghelper.auth.service;
 
 import com.mjusugangsincheonghelper.auth.dto.MemberMeResponse;
+import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
@@ -15,10 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
 	private final MemberRepository memberRepository;
+	private final MemberAgreementRepository memberAgreementRepository;
 
 	public MemberMeResponse getMe(Long memberId) {
 		Member member = memberRepository.findById(memberId)
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
-		return MemberMeResponse.from(member);
+		boolean privacyPolicyAgreed = memberAgreementRepository.findById(memberId)
+				.map(agreement -> agreement.isStatus())
+				.orElse(false);
+		return MemberMeResponse.from(member, privacyPolicyAgreed);
 	}
 }
