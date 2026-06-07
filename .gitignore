@@ -37,7 +37,6 @@ out/
 .vscode/
 
 ### 
-database_start.sh
 docker-compose-postgres-dev.yml
 docker-compose-dev-env.yml
 data/
