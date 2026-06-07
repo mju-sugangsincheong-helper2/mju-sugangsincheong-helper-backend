@@ -32,7 +32,7 @@ Auth 시스템은 시퀀스 기준으로 네 가지 책임으로 분리됩니다
     └→ AuthenticatedIdentity를 받아서
     └→ TokenProvider로 JWT 생성
     └→ DB에 저장 (device session)
-    └→ 토큰 전달 (cookie/body)
+    └→ 토큰 전달 (HttpOnly cookie + dev/test 보조 body/header)
 
 [4] 권한 확인 (authorization/)
     ├→ PrivacyConsentFilter: 개인정보 동의 여부 체크 (MEMBER/ADMIN 대상)
@@ -66,7 +66,7 @@ auth/
 │   └── token/
 │       ├── TokenProvider.java                #    JWT 생성/파싱 (ATK, RTK, MergeTicket)
 │       ├── TokenExtractor.java               #    요청에서 토큰 추출 인터페이스
-│       ├── BearerTokenExtractor.java         #    Authorization: Bearer (dev/test)
+│       ├── BearerTokenExtractor.java         #    Authorization: Bearer 우선, access_token 쿠키 fallback (dev/test)
 │       ├── CookieTokenExtractor.java         #    access_token 쿠키 (prod)
 │       └── JwtAuthenticationFilter.java      #    ATK 검증 → SecurityContext
 │
@@ -75,8 +75,8 @@ auth/
 │   ├── SessionResult.java                    #    세션 생성 결과 VO
 │   ├── delivery/
 │   │   ├── TokenDeliveryStrategy.java        #    토큰 전달 전략 인터페이스
-│   │   ├── CookieTokenDelivery.java          #    HttpOnly 쿠키 (prod)
-│   │   └── HeaderTokenDelivery.java          #    no-op (dev/test)
+│   │   ├── CookieTokenDelivery.java          #    HttpOnly Secure 쿠키 (prod)
+│   │   └── HeaderTokenDelivery.java          #    HttpOnly 쿠키 + 응답 헤더 (dev/test)
 │   └── device/
 │       └── DeviceSessionService.java         #    디바이스 세션 CRUD
 │
@@ -118,7 +118,7 @@ AuthController.createGuest()
        ├→ TokenProvider.createAccessToken()
        ├→ TokenProvider.createRefreshToken()
        ├→ DeviceSessionService.upsert()
-       └→ TokenDeliveryStrategy.deliver()           # prod: 쿠키, dev: no-op
+       └→ TokenDeliveryStrategy.deliver()           # 쿠키 발급, dev/test는 헤더도 추가
 ```
 
 ### 4.2 Google OAuth 로그인
@@ -174,26 +174,31 @@ AuthController.refreshToken()
 AuthController.logout()
   └→ SessionService.destroySession(rtk, fcmToken, memberId, ...)
        ├→ DeviceSessionService.deleteByFcmToken()
-       └→ TokenDeliveryStrategy.clear()             # prod: 쿠키 삭제, dev: no-op
+       └→ TokenDeliveryStrategy.clear()             # ATK/RTK 쿠키 삭제, dev/test는 헤더도 초기화
 ```
 
 ---
 
-## 5. 토큰 전달 전략 (dev vs prod)
+## 5. 토큰 전달 전략
 
-| 환경 | ATK 전달 | RTK 전달 | Swagger 스킴 |
-|------|---------|---------|---------------|
-| **dev** | 응답 body `accessToken` 필드 | 응답 body `refreshToken` 필드 | `bearerAuth` (Authorization 헤더) |
-| **prod** | HttpOnly Secure 쿠키 | HttpOnly Secure 쿠키 | `cookieAuth` (APIKEY 쿠키) |
+기본 인증 수단은 모든 환경에서 `access_token`, `refresh_token` HttpOnly 쿠키입니다.
+`dev/test`는 Swagger와 수동 테스트 편의를 위해 같은 토큰을 응답 body와 header에도 추가로 노출합니다.
+
+| 환경 | ATK 전달 | RTK 전달 | 추가 노출 | Swagger 스킴 |
+|------|---------|---------|-----------|---------------|
+| **dev/test** | HttpOnly `access_token` 쿠키 | HttpOnly `refresh_token` 쿠키 | body `accessToken`/`refreshToken`, `Authorization`, `X-Access-Token`, `X-Refresh-Token` 헤더 | `bearerAuth` + 쿠키 인증 가능 |
+| **prod** | HttpOnly Secure `access_token` 쿠키 | HttpOnly Secure `refresh_token` 쿠키 | 없음 | `cookieAuth` |
 
 ### 구현 메커니즘
 
 - `TokenDeliveryStrategy` 인터페이스의 `@Profile` 기반 구현체 전환
 - DTO의 토큰 필드에 `@JsonInclude(JsonInclude.Include.NON_NULL)` 적용
-- Controller가 profile을 확인하여 dev일 때만 DTO에 토큰 값 주입
+- Controller가 `app.auth.token-in-response=true`일 때만 DTO에 토큰 값 주입
+- dev/test의 `HeaderTokenDelivery`는 쿠키를 발급하면서 테스트용 헤더도 세팅
+- prod의 `CookieTokenDelivery`는 Secure HttpOnly 쿠키만 세팅
 
 ```java
-// dev 응답 body 예시
+// dev/test 응답 body 예시
 {
   "meta": { ... },
   "data": {
@@ -204,6 +209,14 @@ AuthController.logout()
     "refreshToken": "uuid-string"
   }
 }
+```
+
+```http
+Set-Cookie: access_token=...; Path=/; HttpOnly; SameSite=Lax
+Set-Cookie: refresh_token=...; Path=/; HttpOnly; SameSite=Lax
+Authorization: Bearer eyJ...
+X-Access-Token: eyJ...
+X-Refresh-Token: uuid-string
 ```
 
 ---

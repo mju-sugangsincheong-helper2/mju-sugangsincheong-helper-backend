@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.auth.dto;
 
-import com.mjusugangsincheonghelper.auth.authorization.consent.MemberAgreementService.ConsentStatus;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
@@ -18,18 +17,16 @@ public class MemberMeResponse {
 	private final String position;
 	private final String department;
 	private final boolean isPrivacyPolicyAgreed;
-	private final Instant privacyPolicyAgreedAt;
 	private final Instant createdAt;
 
-	public static MemberMeResponse from(Member member, ConsentStatus consentStatus) {
+	public static MemberMeResponse from(Member member) {
 		return MemberMeResponse.builder()
 				.memberId(member.getId())
 				.role(member.getRole().name())
 				.name(member.getName())
 				.position(member.getPosition())
 				.department(member.getDepartment())
-				.isPrivacyPolicyAgreed(consentStatus.status())
-				.privacyPolicyAgreedAt(consentStatus.agreedAt())
+				.isPrivacyPolicyAgreed(true)
 				.createdAt(member.getCreatedAt())
 				.build();
 	}

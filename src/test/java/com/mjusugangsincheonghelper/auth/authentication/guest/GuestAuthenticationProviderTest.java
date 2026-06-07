@@ -8,10 +8,8 @@ import static org.mockito.Mockito.verify;
 import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
-import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
-import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -35,9 +33,6 @@ class GuestAuthenticationProviderTest {
 
 	@Mock
 	MemberAuthRepository memberAuthRepository;
-
-	@Mock
-	MemberAgreementRepository memberAgreementRepository;
 
 	@Nested
 	@DisplayName("authenticate 메서드는")

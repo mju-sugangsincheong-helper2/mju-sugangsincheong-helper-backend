@@ -2,7 +2,6 @@ package com.mjusugangsincheonghelper.example.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.auth.authentication.token.JwtAuthenticationFilter;
-import com.mjusugangsincheonghelper.auth.authorization.consent.PrivacyConsentFilter;
 import com.mjusugangsincheonghelper.example.dto.ExampleCreateRequest;
 import com.mjusugangsincheonghelper.example.dto.ExampleDetailResponse;
 import com.mjusugangsincheonghelper.example.dto.ExampleEchoRequest;
@@ -73,9 +72,6 @@ class ExampleControllerTest {
 
 	@MockitoBean
 	private JwtAuthenticationFilter jwtAuthenticationFilter;
-
-	@MockitoBean
-	private PrivacyConsentFilter privacyConsentFilter;
 
 	@BeforeEach
 	void setUp() {

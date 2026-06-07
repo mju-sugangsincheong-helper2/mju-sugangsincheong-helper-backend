@@ -20,7 +20,7 @@ spring:
 
 app:
   auth:
-    token-in-response: false
+    token-in-response: true
   jwt:
     secret: test-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
     access-token-expiry-ms: 3600000

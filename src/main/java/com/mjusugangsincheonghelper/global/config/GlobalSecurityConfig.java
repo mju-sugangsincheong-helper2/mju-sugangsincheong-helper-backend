@@ -1,7 +1,6 @@
 package com.mjusugangsincheonghelper.global.config;
 
 import com.mjusugangsincheonghelper.auth.authentication.token.JwtAuthenticationFilter;
-import com.mjusugangsincheonghelper.auth.authorization.consent.PrivacyConsentFilter;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -27,7 +26,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class GlobalSecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
-	private final PrivacyConsentFilter privacyConsentFilter;
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -55,8 +53,7 @@ public class GlobalSecurityConfig {
 						.requestMatchers("/*.html").permitAll()
 						.anyRequest().authenticated()
 				)
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-				.addFilterAfter(privacyConsentFilter, JwtAuthenticationFilter.class);
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}
@@ -72,7 +69,14 @@ public class GlobalSecurityConfig {
 		configuration.setAllowedOrigins(Arrays.asList("*"));
 		configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 		configuration.setAllowedHeaders(Arrays.asList("*"));
-		configuration.setExposedHeaders(Arrays.asList("Authorization", "X-Request-Id", "X-Api-Version", "Set-Cookie"));
+		configuration.setExposedHeaders(Arrays.asList(
+				"Authorization",
+				"X-Access-Token",
+				"X-Refresh-Token",
+				"X-Request-Id",
+				"X-Api-Version",
+				"Set-Cookie"
+		));
 		configuration.setMaxAge(3600L);
 		configuration.setAllowCredentials(true);
 

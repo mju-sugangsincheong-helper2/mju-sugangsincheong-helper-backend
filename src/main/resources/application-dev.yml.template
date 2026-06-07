@@ -45,6 +45,8 @@ logging:
     org.hibernate.SQL: DEBUG
 
 app:
+  auth:
+    token-in-response: true
   jwt:
     secret: ${JWT_SECRET}
     access-token-expiry-ms: 3600000       # 1시간 

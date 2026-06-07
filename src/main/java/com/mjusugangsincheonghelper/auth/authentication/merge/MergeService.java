@@ -5,7 +5,6 @@ import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
-import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
@@ -20,7 +19,6 @@ public class MergeService {
 
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
-	private final MemberAgreementRepository memberAgreementRepository;
 	private final DeviceSessionService deviceSessionService;
 	private final MergeTicketService mergeTicketService;
 
@@ -42,8 +40,6 @@ public class MergeService {
 		if (guestAuth != null) {
 			memberAuthRepository.delete(guestAuth);
 		}
-
-		memberAgreementRepository.deleteById(claims.guestMemberId());
 
 		deviceSessionService.switchMember(claims.guestMemberId(), targetMember.getId());
 

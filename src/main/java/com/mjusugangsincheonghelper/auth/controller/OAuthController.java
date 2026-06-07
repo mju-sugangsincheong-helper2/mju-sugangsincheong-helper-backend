@@ -106,7 +106,7 @@ public class OAuthController {
 	@PostMapping(value = "/token", version = "1+")
 	@Operation(
 			summary = "토큰 교환",
-			description = "Google authorization code를 전달받아 서비스 JWT를 발급합니다.",
+			description = "Google authorization code를 전달받아 Google 인증을 처리하고 JWT를 발급합니다.",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
@@ -129,8 +129,16 @@ public class OAuthController {
 
 		AuthenticatedIdentity identity = googleAuthProvider.authenticate(request.getCode());
 		SessionResult session = sessionService.createSession(identity, null, null, httpResponse);
+		OAuthTokenResponse response = buildOAuthTokenResponse(session);
 
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	private OAuthTokenResponse buildOAuthTokenResponse(SessionResult session) {
 		OAuthTokenResponse.OAuthTokenResponseBuilder builder = OAuthTokenResponse.builder()
+				.status("SUCCESS")
 				.memberId(session.getMemberId())
 				.role(session.getRole())
 				.name(session.getName())
@@ -142,8 +150,6 @@ public class OAuthController {
 					.refreshToken(session.getRefreshToken());
 		}
 
-		return ResponseEntity
-				.status(HttpStatus.OK)
-				.body(SingleSuccessResponseEnvelope.of(builder.build()));
+		return builder.build();
 	}
 }

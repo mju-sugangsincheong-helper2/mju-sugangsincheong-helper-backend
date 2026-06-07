@@ -8,10 +8,21 @@ import lombok.NoArgsConstructor;
 
 @Getter @Builder @NoArgsConstructor @AllArgsConstructor
 public class OAuthTokenResponse {
+    private String status;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private Long memberId;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String role;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String name;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String position;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String department;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -19,4 +30,15 @@ public class OAuthTokenResponse {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String refreshToken;
+
+    public static OAuthTokenResponse existingMember(Long memberId, String role, String name, String position, String department) {
+        return OAuthTokenResponse.builder()
+                .status("SUCCESS")
+                .memberId(memberId)
+                .role(role)
+                .name(name)
+                .position(position)
+                .department(department)
+                .build();
+    }
 }

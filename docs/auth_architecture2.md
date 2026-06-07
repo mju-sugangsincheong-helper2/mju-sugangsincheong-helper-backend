@@ -106,14 +106,15 @@ public class GlobalSecurityConfig {
 ### 2.2 필터 체인 순서
 
 ```
-요청 → [JwtAuthenticationFilter] → [PrivacyConsentFilter] → DispatcherServlet → [@PreAuthorize] → Controller
-         (인증)                        (개인정보 동의 체크)                        (역할 체크)
+요청 → [JwtAuthenticationFilter] → DispatcherServlet → [@PreAuthorize] → Controller
+         (인증)                                        (역할 체크)
 ```
 
 | 필터 | 위치 | 책임 |
 |------|------|------|
 | `JwtAuthenticationFilter` | `UsernamePasswordAuthenticationFilter` 이전 | 토큰 검증 → SecurityContext 설정 |
-| `PrivacyConsentFilter` | `JwtAuthenticationFilter` 이후 | MEMBER/ADMIN의 개인정보 동의 여부 체크 |
+
+**참고**: 개인정보 동의는 필터에서 체크하지 않습니다. "계정 존재 = 동의 완료" 원칙에 따라, 계정이 있는 사용자는 이미 동의를 받은 것으로 간주합니다.
 
 ### 2.3 URL 권한 규칙
 
@@ -148,7 +149,7 @@ auth/
 │       ├── OAuthConfigResponse.java          #    GET /auth/config/google 응답
 │       ├── OAuthStartResponse.java           #    POST /auth/oauth/start 응답
 │       ├── OAuthTokenRequest.java            #    POST /auth/token 요청
-│       └── OAuthTokenResponse.java           #    POST /auth/token 응답
+│       └── OAuthTokenResponse.java           #    POST /auth/token 응답 (status: SUCCESS)
 │
 ├── authentication/                           # 2. 본인인증 (신원 확인 + JWT)
 │   ├── identity/
@@ -161,7 +162,7 @@ auth/
 │   └── token/
 │       ├── TokenProvider.java                #    JWT 생성/파싱 (ATK, RTK, MergeTicket)
 │       ├── TokenExtractor.java               #    요청에서 토큰 추출 인터페이스
-│       ├── BearerTokenExtractor.java         #    Authorization: Bearer (dev/test)
+│       ├── BearerTokenExtractor.java         #    Authorization: Bearer 우선, access_token 쿠키 fallback (dev/test)
 │       ├── CookieTokenExtractor.java         #    access_token 쿠키 (prod)
 │       └── JwtAuthenticationFilter.java      #    ATK 검증 → SecurityContext
 │
@@ -170,15 +171,10 @@ auth/
 │   ├── SessionResult.java                    #    세션 생성 결과 VO
 │   ├── delivery/
 │   │   ├── TokenDeliveryStrategy.java        #    토큰 전달 전략 인터페이스
-│   │   ├── CookieTokenDelivery.java          #    HttpOnly 쿠키 (prod)
-│   │   └── HeaderTokenDelivery.java          #    no-op (dev/test)
+│   │   ├── CookieTokenDelivery.java          #    HttpOnly Secure 쿠키 (prod)
+│   │   └── HeaderTokenDelivery.java          #    HttpOnly 쿠키 + 응답 헤더 (dev/test)
 │   └── device/
 │       └── DeviceSessionService.java         #    디바이스 세션 CRUD
-│
-├── authorization/                            # 4. 권한 확인
-│   └── consent/
-│       ├── PrivacyConsentFilter.java         #    개인정보 동의 필터 (JWT 이후 실행)
-│       └── MemberAgreementService.java       #    동의 여부 조회/처리
 │
 ├── controller/
 │   ├── AuthController.java                   #    guest, refresh, logout, merge
@@ -207,11 +203,12 @@ auth/
 
 ```
 [1] OAuth 인증 (oauth/)
-    └→ code → Google 토큰 교환 → ID Token JWKS 검증 → 회원 조회/생성
-    └→ AuthenticatedIdentity(memberId)
+    └→ code → Google 토큰 교환 → ID Token JWKS 검증
+    └→ 기존 회원: 회원 정보 갱신 후 AuthenticatedIdentity(memberId) 반환
+    └→ 신규 회원: Member + MemberAuth 생성 후 AuthenticatedIdentity(memberId) 반환
 
 [2] JWT 발급/검증 (authentication/token/)
-    └→ TokenProvider: JWT 생성 (ATK/RTK)
+    └→ TokenProvider: JWT 생성 (ATK/RTK, MergeTicket)
     └→ JwtAuthenticationFilter: 요청 시 ATK 검증 → SecurityContext
 
 [3] 통행권 관리 (session/)
@@ -221,10 +218,25 @@ auth/
     └→ 토큰 전달 (cookie/body)
 
 [4] 권한 확인 (authorization/)
-    ├→ PrivacyConsentFilter: 개인정보 동의 여부 체크 (MEMBER/ADMIN 대상)
     └→ @PreAuthorize + RoleHierarchy: 역할 기반 접근 제어
          └→ ADMIN > MEMBER > GUEST 계층 구조
 ```
+
+### 4.2 OAuth 토큰 교환 흐름
+
+```
+POST /auth/token {code, state}
+   └→ state 검증
+   └→ Google token endpoint에 code 전달
+   └→ Google ID Token JWKS 서명 검증
+   └→ 기존 회원이면 정보 갱신
+   └→ 신규 회원이면 Member + MemberAuth 생성
+   └→ 응답: { status: "SUCCESS", memberId, role, accessToken, refreshToken }
+```
+
+**핵심 원칙**: OAuth 토큰 교환과 개인정보 동의 응답은 통합하지 않습니다.
+- `/auth/token`은 Google 인증과 세션 발급만 담당합니다.
+- 개인정보 동의는 별도 흐름에서 처리합니다.
 
 ---
 
@@ -293,156 +305,54 @@ public class MemberController {
 
 ---
 
-## 6. 개인정보 동의 체크
+## 6. 개인정보 동의
 
-### 6.1 개요
+### 6.1 핵심 원칙: "계정 존재 = 동의 완료"
 
-개인정보 동의는 `PrivacyConsentFilter`를 통해 전역적으로 체크됩니다.
+개인정보 동의는 **가입 시점에 한 번만** 받으며, 필터에서 매 요청마다 체크하지 않습니다.
 
-**필터 위치**: `JwtAuthenticationFilter` 이후, DispatcherServlet 이전
-
-**대상**: MEMBER, ADMIN 역할 사용자 (GUEST는 제외)
-
-### 6.2 PrivacyConsentFilter
-
-**파일 위치**: `auth/authorization/consent/PrivacyConsentFilter.java`
-
-```java
-@Slf4j
-@Component
-@RequiredArgsConstructor
-public class PrivacyConsentFilter extends OncePerRequestFilter {
-
-    private final MemberAgreementService memberAgreementService;
-    private final JsonMapper jsonMapper;
-
-    private static final List<String> WHITELIST_PATTERNS = List.of(
-        "/api/",
-        "/swagger-ui/",
-        "/v3/api-docs",
-        "/actuator/"
-    );
-
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        for (String pattern : WHITELIST_PATTERNS) {
-            if (path.startsWith(pattern)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-        throws ServletException, IOException {
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        // 1. 미인증 사용자는 통과
-        if (authentication == null || !authentication.isAuthenticated() 
-            || authentication.getPrincipal().equals("anonymousUser")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        // 2. GUEST는 통과 (동의 대상 아님)
-        boolean isGuest = authentication.getAuthorities().stream()
-            .map(GrantedAuthority::getAuthority)
-            .anyMatch(auth -> auth.equals("ROLE_" + Role.GUEST.name()));
-
-        if (isGuest) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        // 3. MEMBER/ADMIN은 동의 여부 체크
-        Long memberId = (Long) authentication.getPrincipal();
-
-        if (!memberAgreementService.isAgreed(memberId)) {
-            log.debug("Privacy consent required for memberId={}", memberId);
-            writeErrorResponse(response, ErrorCode.AUTH_PRIVACY_POLICY_REQUIRED);
-            return;
-        }
-
-        filterChain.doFilter(request, response);
-    }
-}
-```
-
-### 6.3 동작 규칙
-
-| 조건 | 결과 |
+| 원칙 | 설명 |
 |------|------|
-| 미인증 (토큰 없음/유효하지 않음) | 통과 (SecurityConfig가 처리) |
-| GUEST 역할 | 통과 (동의 대상 아님) |
-| MEMBER/ADMIN + 동의 완료 | 통과 |
-| MEMBER/ADMIN + 미동의 | 403 `AUTH_PRIVACY_POLICY_REQUIRED` |
+| **계정 존재 = 동의 완료** | 계정이 있는 사용자는 이미 동의를 받은 것으로 간주 |
+| **JWT 무상태성 유지** | 매 요청마다 DB를 조회하지 않음 |
+| **감사 로그만 저장** | `member_agreements` 테이블은 동의 이력(언제 동의했는지)만 보관 |
 
-### 6.4 MemberAgreementService
+### 6.2 OAuth 토큰 교환 흐름
 
-**파일 위치**: `auth/authorization/consent/MemberAgreementService.java`
-
-```java
-@Service
-@RequiredArgsConstructor
-@Transactional(readOnly = true)
-public class MemberAgreementService {
-
-    private final MemberAgreementRepository memberAgreementRepository;
-
-    public boolean isAgreed(Long memberId) {
-        return memberAgreementRepository.findById(memberId)
-            .map(MemberAgreement::isStatus)
-            .orElse(false);
-    }
-
-    public ConsentStatus getStatus(Long memberId) {
-        return memberAgreementRepository.findById(memberId)
-            .map(agreement -> new ConsentStatus(agreement.isStatus(), agreement.getAgreedAt()))
-            .orElse(new ConsentStatus(false, null));
-    }
-
-    @Transactional
-    public void agree(Long memberId) {
-        MemberAgreement agreement = memberAgreementRepository.findById(memberId)
-            .orElseGet(() -> new MemberAgreement(memberId));
-        agreement.agree();
-        memberAgreementRepository.save(agreement);
-    }
-
-    public record ConsentStatus(boolean status, Instant agreedAt) {}
-}
+```
+[1] POST /auth/token {code, state}
+    │
+    ├→ state 검증
+    ├→ Google token endpoint에 code 전달
+    ├→ Google ID Token JWKS 검증
+    ├→ member_auth 테이블에서 기존 회원 확인
+    │
+    ├→ [기존 회원] → Member 정보 갱신
+    │
+    └→ [신규 회원] → Member + MemberAuth 생성
+    │
+    └→ SessionService.createSession()
+        └→ 응답: { status: "SUCCESS", memberId, role, accessToken, refreshToken }
 ```
 
-### 6.5 member_agreements 테이블
+### 6.3 member_agreements 테이블 (감사 로그용)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
 | `member_id` | BIGINT | PK | member.id와 1:1 공유 PK |
-| `status` | BOOLEAN | NOT NULL | 동의 여부 (true/false) |
-| `agreed_at` | TIMESTAMP | NULLABLE | 동의 시각 (증빙용) |
+| `status` | BOOLEAN | NOT NULL | 항상 true (동의 완료만 기록) |
+| `agreed_at` | TIMESTAMP | NOT NULL | 동의 시각 |
 
-**DDL 예시**:
-```sql
-CREATE TABLE member_agreements (
-    member_id BIGINT PRIMARY KEY,
-    status BOOLEAN NOT NULL DEFAULT FALSE,
-    agreed_at TIMESTAMP,
-    CONSTRAINT fk_member_agreements_member 
-        FOREIGN KEY (member_id) REFERENCES member(id)
-);
-```
+**참고**: 이 테이블은 필터에서 조회하지 않습니다. 동의 이력을 감사 목적으로만 보관합니다.
 
-### 6.6 동의 상태 생성 시점
+### 6.5 시나리오별 처리
 
-| 시나리오 | 동의 상태 |
-|----------|----------|
-| 게스트 생성 | `status=false, agreed_at=null` |
-| Google OAuth 최초 로그인 | `status=false, agreed_at=null` |
-| 개인정보 동의 API 호출 | `status=true, agreed_at=현재시각` |
-| 게스트→멤버 병합 | 게스트의 agreement 삭제 |
+| 시나리오 | 처리 |
+|----------|------|
+| 게스트 생성 | member_agreements 레코드 없음 (게스트는 동의 불필요) |
+| Google OAuth 기존 회원 | 바로 JWT 발급 (이미 동의 완료) |
+| Google OAuth 신규 회원 | 계정 생성 + JWT 발급. 개인정보 동의는 별도 흐름에서 처리 |
+| 게스트 → 멤버 병합 | 기존 member_agreements 삭제 후 MEMBER로 승격 |
 
 ---
 
@@ -469,7 +379,7 @@ CREATE TABLE member_agreements (
 **만료 시간**: `app.jwt.access-token-expiry-ms` (기본값: 1시간)
 
 **추출 방식**:
-- dev/test: `Authorization: Bearer <token>` 헤더
+- dev/test: `Authorization: Bearer <token>` 헤더 우선, 없으면 `access_token` 쿠키
 - prod: `access_token` 쿠키
 
 ### 7.2 Refresh Token (RTK)
@@ -504,8 +414,6 @@ CREATE TABLE member_agreements (
 ```
 
 **만료 시간**: `app.jwt.merge-ticket-expiry-ms` (기본값: 10분)
-
----
 
 ## 8. DB 테이블 구조
 
@@ -774,7 +682,7 @@ AuthController.logout()
             │       └→ FCM 토큰 기반 디바이스 세션 삭제
             │
             └→ TokenDeliveryStrategy.clear(response)
-                    └→ prod: 쿠키 삭제, dev: no-op
+                    └→ ATK/RTK 쿠키 삭제, dev/test는 헤더도 초기화
 ```
 
 ---
@@ -783,10 +691,13 @@ AuthController.logout()
 
 ### 10.1 환경별 차이
 
-| 환경 | ATK 전달 | RTK 전달 | Swagger 스킴 |
-|------|---------|---------|---------------|
-| **dev/test** | 응답 body `accessToken` 필드 | 응답 body `refreshToken` 필드 | `bearerAuth` (Authorization 헤더) |
-| **prod** | HttpOnly Secure 쿠키 | HttpOnly Secure 쿠키 | `cookieAuth` (APIKEY 쿠키) |
+기본 인증 수단은 모든 환경에서 `access_token`, `refresh_token` HttpOnly 쿠키입니다.
+`dev/test`는 Swagger와 수동 테스트 편의를 위해 같은 토큰을 응답 body와 header에도 추가로 노출합니다.
+
+| 환경 | ATK 전달 | RTK 전달 | 추가 노출 | Swagger 스킴 |
+|------|---------|---------|-----------|---------------|
+| **dev/test** | HttpOnly `access_token` 쿠키 | HttpOnly `refresh_token` 쿠키 | body `accessToken`/`refreshToken`, `Authorization`, `X-Access-Token`, `X-Refresh-Token` 헤더 | `bearerAuth` + 쿠키 인증 가능 |
+| **prod** | HttpOnly Secure `access_token` 쿠키 | HttpOnly Secure `refresh_token` 쿠키 | 없음 | `cookieAuth` |
 
 ### 10.2 구현 메커니즘
 
@@ -803,17 +714,24 @@ public interface TokenDeliveryStrategy {
 | 구현체 | 프로파일 | 동작 |
 |--------|---------|------|
 | `CookieTokenDelivery` | `prod` | HttpOnly Secure 쿠키 설정 |
-| `HeaderTokenDelivery` | `dev`, `test` | no-op (컨트롤러가 body에 주입) |
+| `HeaderTokenDelivery` | `dev`, `test` | HttpOnly 쿠키 설정 + 테스트용 응답 헤더 설정 |
 
-**쿠키 설정 (prod)**:
+**쿠키 설정**:
 ```java
 ResponseCookie.from("access_token", accessToken)
     .httpOnly(true)
-    .secure(true)
+    .secure(true)  // prod: true, dev/test: false
     .sameSite("Lax")
     .path("/")
     .maxAge(Duration.ofMillis(3600000))  // 1시간
     .build();
+```
+
+**dev/test 추가 헤더**:
+```http
+Authorization: Bearer <accessToken>
+X-Access-Token: <accessToken>
+X-Refresh-Token: <refreshToken>
 ```
 
 ### 10.3 토큰 추출
@@ -829,7 +747,7 @@ public interface TokenExtractor {
 
 | 구현체 | 프로파일 | 추출 위치 |
 |--------|---------|----------|
-| `BearerTokenExtractor` | `dev`, `test` | `Authorization: Bearer <token>` 헤더 |
+| `BearerTokenExtractor` | `dev`, `test` | `Authorization: Bearer <token>` 헤더 우선, 없으면 `access_token` 쿠키 |
 | `CookieTokenExtractor` | `prod` | `access_token` 쿠키 |
 
 ---

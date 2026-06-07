@@ -5,10 +5,8 @@ import tools.jackson.databind.json.JsonMapper;
 import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
-import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
-import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
@@ -45,7 +43,6 @@ public class GoogleAuthProvider {
 
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
-	private final MemberAgreementRepository memberAgreementRepository;
 	private final JsonMapper jsonMapper;
 
 	@Value("${app.oauth2.google.client-id}")
@@ -70,7 +67,39 @@ public class GoogleAuthProvider {
 		String googleSubId = claims.getSubject();
 		ParsedName parsedName = parseName(claims.get("name", String.class));
 
-		return findOrCreateMember(googleSubId, parsedName);
+		return authenticateOrCreateMember(googleSubId, parsedName);
+	}
+
+	private AuthenticatedIdentity authenticateOrCreateMember(String googleSubId, ParsedName parsedName) {
+		Optional<MemberAuth> existingAuth = memberAuthRepository.findByAuthKeyAndAuthType(googleSubId, AuthType.GOOGLE);
+		if (existingAuth.isPresent()) {
+			var member = memberRepository.findById(existingAuth.get().getMemberId())
+					.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
+			existingAuth.get().updateLastLoginAt();
+
+			member.promoteToMember(parsedName.name(), parsedName.position(), parsedName.department());
+			memberRepository.save(member);
+
+			return AuthenticatedIdentity.builder().memberId(member.getId()).build();
+		}
+
+		Member member = Member.builder()
+				.role(Role.MEMBER)
+				.name(parsedName.name())
+				.position(parsedName.position())
+				.department(parsedName.department())
+				.build();
+		member = memberRepository.save(member);
+
+		MemberAuth memberAuth = MemberAuth.builder()
+				.memberId(member.getId())
+				.authType(AuthType.GOOGLE)
+				.authKey(googleSubId)
+				.build();
+		memberAuth.updateLastLoginAt();
+		memberAuthRepository.save(memberAuth);
+
+		return AuthenticatedIdentity.builder().memberId(member.getId()).build();
 	}
 
 	private String exchangeCodeForIdToken(String code) {
@@ -190,36 +219,6 @@ public class GoogleAuthProvider {
 			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
 		}
 		return new ParsedName(name, position, department);
-	}
-
-	private AuthenticatedIdentity findOrCreateMember(String googleSubId, ParsedName parsedName) {
-		Optional<MemberAuth> existingAuth = memberAuthRepository.findByAuthKeyAndAuthType(googleSubId, AuthType.GOOGLE);
-		if (existingAuth.isPresent()) {
-			Member member = memberRepository.findById(existingAuth.get().getMemberId())
-					.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
-			existingAuth.get().updateLastLoginAt();
-			return AuthenticatedIdentity.builder().memberId(member.getId()).build();
-		}
-
-		Member newMember = Member.builder()
-				.role(Role.MEMBER)
-				.name(parsedName.name())
-				.position(parsedName.position())
-				.department(parsedName.department())
-				.build();
-		newMember = memberRepository.save(newMember);
-
-		MemberAgreement agreement = new MemberAgreement(newMember.getId());
-		memberAgreementRepository.save(agreement);
-
-		MemberAuth memberAuth = MemberAuth.builder()
-				.memberId(newMember.getId())
-				.authType(AuthType.GOOGLE)
-				.authKey(googleSubId)
-				.build();
-		memberAuthRepository.save(memberAuth);
-
-		return AuthenticatedIdentity.builder().memberId(newMember.getId()).build();
 	}
 
 	private record ParsedName(String name, String position, String department) {}

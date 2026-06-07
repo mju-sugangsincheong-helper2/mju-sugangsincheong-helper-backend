@@ -32,6 +32,13 @@ public class MemberAgreement {
 		this.agreedAt = null;
 	}
 
+	public static MemberAgreement agree(Long memberId) {
+		MemberAgreement agreement = new MemberAgreement(memberId);
+		agreement.status = true;
+		agreement.agreedAt = Instant.now();
+		return agreement;
+	}
+
 	public void agree() {
 		this.status = true;
 		this.agreedAt = Instant.now();
