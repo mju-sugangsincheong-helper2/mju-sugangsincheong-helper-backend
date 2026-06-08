@@ -7,11 +7,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
-import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
-import com.mjusugangsincheonghelper.auth.dto.DeviceInfo;
+import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
+import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
 import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
-import com.mjusugangsincheonghelper.auth.authentication.token.TokenProvider;
+import com.mjusugangsincheonghelper.auth.session.token.TokenProvider;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;

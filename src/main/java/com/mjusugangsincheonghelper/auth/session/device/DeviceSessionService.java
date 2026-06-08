@@ -1,6 +1,6 @@
 package com.mjusugangsincheonghelper.auth.session.device;
 
-import com.mjusugangsincheonghelper.auth.dto.DeviceInfo;
+import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
 import java.time.Instant;

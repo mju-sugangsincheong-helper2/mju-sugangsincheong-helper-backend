@@ -6,31 +6,31 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-@Getter @Builder @NoArgsConstructor @AllArgsConstructor
+@Getter @Builder @AllArgsConstructor
 public class OAuthTokenResponse {
-    private String status;
-    private Boolean newUser;
+    private final String status;
+    private final Boolean newUser;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private Long memberId;
+    private final Long memberId;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private String role;
+    private final String role;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private String name;
+    private final String name;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private String position;
+    private final String position;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private String department;
+    private final String department;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private String accessToken;
+    private final String accessToken;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private String refreshToken;
+    private final String refreshToken;
 
     public static OAuthTokenResponse existingMember(Long memberId, String role, String name, String position, String department) {
         return OAuthTokenResponse.builder()

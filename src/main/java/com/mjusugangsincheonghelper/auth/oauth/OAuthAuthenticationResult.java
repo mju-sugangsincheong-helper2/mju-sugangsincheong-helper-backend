@@ -1,6 +1,6 @@
 package com.mjusugangsincheonghelper.auth.oauth;
 
-import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
+import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import lombok.Builder;
 import lombok.Getter;
 

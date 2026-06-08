@@ -1,10 +1,10 @@
 package com.mjusugangsincheonghelper.auth.session;
 
-import com.mjusugangsincheonghelper.auth.authentication.identity.AuthenticatedIdentity;
-import com.mjusugangsincheonghelper.auth.dto.DeviceInfo;
+import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
+import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
 import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
-import com.mjusugangsincheonghelper.auth.authentication.token.TokenProvider;
+import com.mjusugangsincheonghelper.auth.session.token.TokenProvider;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class SessionService {
 
 	private final TokenProvider tokenProvider;

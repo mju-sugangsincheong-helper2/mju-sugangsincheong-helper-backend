@@ -1,381 +1,156 @@
-# Auth Architecture
+# Auth & Member Architecture
 
-본 문서는 auth 도메인의 아키텍처 설계 의도와 책임 분리를 설명합니다.
-
----
-
-## 1. 핵심 설계 원칙
-
-Auth 시스템은 시퀀스 기준으로 네 가지 책임으로 분리됩니다.
-
-| 단계 | 레이어 | 책임 | 질문 |
-|------|--------|------|------|
-| 1 | **OAuth** (외부 인증 연동) | Google 등 외부 제공자와의 OAuth 흐름 관리 | "외부에서 어떻게 인증 정보를 가져올까?" |
-| 2 | **Authentication** (본인인증) | 사용자 신원 확인 및 identity 확립, JWT 생성/검증 | "이 사람이 누구인가?" |
-| 3 | **Session** (통행권) | ATK/RTK 발급, 갱신, 회수 및 디바이스 세션 관리 | "통행권을 주고/갱신하고/회수할까?" |
-| 4 | **Authorization** (권한) | 역할 기반 접근 제어 + 개인정보 동의 체크 | "이 통행권으로 무엇을 할 수 있는가?" |
+본 문서는 서비스의 인증(Auth), 인가(Authorization), 세션(Session) 및 회원(Member) 도메인의 아키텍처 설계 의도와 개념적 구조를 정의합니다.
 
 ---
 
-## 2. 시퀀스 흐름
+## 1. 핵심 설계 원칙 및 책임 분리
 
+인증 및 회원 시스템은 책임을 기준으로 크게 **Security**, **Auth**, **Member** 3대 영역으로 분리하여 설계합니다.
+
+| 도메인 영역 | 패키지 위치 | 주 책임 | 핵심 역할 |
+|:---|:---|:---|:---|
+| **Security** (보안 필터) | `global.security` | 외부 요청의 일차적 관문 통제 및 신원 확립 | 쿠키/헤더에서 JWT를 추출하고 서명을 무상태(Stateless)로 검증하여 SecurityContext에 인증 정보 등록 |
+| **Auth** (인증 메커니즘) | `auth/` | 인증 수단별 신원 검증 및 세션/토큰 관리 | 게스트 생성, Google OAuth 연동, 게스트 데이터 병합, ATK/RTK 발급/회수 및 디바이스 세션 관리 |
+| **Member** (회원 리소스) | `member/` | 회원 프로필 데이터 및 부가 상태 관리 | 본인 프로필 조회, 개인정보 동의 감사 기록(Consent Log) 생성/갱신, 회원 탈퇴(Withdrawal) 시 데이터 일괄 정리 |
+
+---
+
+## 2. 도메인별 세부 구조 및 책임
+
+### 2.1 Security (보안 및 필터)
+- **JwtAuthenticationFilter**: 모든 인증이 필요한 요청에 대해 JWT 서명과 유효성을 검증합니다. DB 조회를 일절 배제하여 무상태성을 보장합니다.
+- **TokenExtractor**: 환경별(개발/운영) 토큰 추출 전략을 캡슐화합니다.
+- **GlobalSecurityConfig**: CORS, CSRF, URL 접근 권한 규칙 및 역할 계층(Role Hierarchy)을 설정합니다.
+
+### 2.2 Auth (인증 기능 분리 - Feature-driven)
+- **guest**: 서버측에서 고유 임의 키를 발급하여 임시 게스트 회원 세션을 형성합니다.
+- **oauth**: Google 제공자로부터 ID Token을 발급받아 명지대 도메인(`mju.ac.kr`)을 검증하고 멤버 신원을 확립합니다.
+- **merge**: 게스트 이용 데이터(디바이스 세션 등)를 구글 계정 신원으로 안전하게 이관하고 기존 게스트 데이터를 제거합니다.
+- **session**: JWT 토큰 발급 및 파싱(`TokenProvider`), Redis/RDB 기반 디바이스 세션 관리 및 로그인 상태 회수를 총괄합니다.
+
+### 2.3 Member (회원 데이터 및 생명주기)
+- **profile**: 회원 본인의 정보(`me`) 조회 및 회원 탈퇴(`withdraw`)를 처리합니다.
+- **consent**: 규제 준수 조항에 따른 개인정보 제공 동의서 감사 로그를 기록하고 보관합니다.
+
+---
+
+## 3. 시퀀스 흐름
+
+### 3.1 Google OAuth 로그인 및 가입
 ```
-[1] OAuth 인증 (oauth/)
-    └→ code → Google 토큰 교환 → ID Token JWKS 검증 → 회원 조회/생성
-    └→ OAuthAuthenticationResult(identity, newUser)
+[1] GET /auth/config/google  -> Google Client ID 및 Scope 조회
+[2] POST /auth/oauth/start   -> CSRF 방지용 state 생성 및 Google 로그인 URL 반환
+[3] POST /auth/token         -> Authorization Code로 ID Token 교환 및 검증
+                                신규 회원인 경우(newUser: true) Member 및 MemberAuth 신설
+                                ATK/RTK 쿠키 발급 및 디바이스 세션 등록
+```
 
-[2] JWT 발급/검증 (authentication/token/)
-    └→ TokenProvider: JWT 생성 (ATK/RTK)
-    └→ JwtAuthenticationFilter: 요청 시 ATK 검증 → SecurityContext
+### 3.2 개인정보 동의서 작성
+```
+[1] 신규 가입(newUser: true) 시 프론트엔드가 개인정보 동의 안내 UI 노출
+[2] 사용자가 동의 완료 시 POST /auth/privacy/agree 호출
+[3] MemberAgreementService를 통해 member_agreements 테이블에 감사 기록(status=true, agreedAt=now) 저장
+```
 
-[3] 통행권 관리 (session/)
-    └→ AuthenticatedIdentity를 받아서
-    └→ TokenProvider로 JWT 생성
-    └→ DB에 저장 (device session)
-    └→ 토큰 전달 (HttpOnly cookie + dev/test 보조 body/header)
+### 3.3 게스트 → 구글 계정 데이터 병합
+```
+[1] 게스트 로그인 상태에서 Google 로그인 시도
+[2] 병합 일회성 티켓(Merge Ticket) 발급
+[3] POST /auth/login/google/merge {mergeTicket, device, fcmToken} 호출
+[4] 게스트 MemberAuth 제거, 디바이스 세션의 소유권을 구글 Member로 이전 후 게스트 Member 레코드 제거
+```
 
-[4] 권한 확인 (authorization/)
-    ├→ MemberAgreementService: 프론트 주도 개인정보 동의 감사 기록
-    └→ @PreAuthorize + RoleHierarchy: 역할 기반 접근 제어
-         └→ ADMIN > MEMBER > GUEST 계층 구조
+### 3.4 회원 탈퇴 (Account Withdrawal)
+```
+[1] DELETE /members/me 호출
+[2] MemberService.withdraw() 실행
+    - member_agreements 삭제
+    - member_device 삭제 (모든 로그인 기기 세션 만료)
+    - member_auth 삭제 (소셜 연동 해제)
+    - member 레코드 영구 삭제
+[3] TokenDeliveryStrategy.clear() 호출을 통한 브라우저 쿠키(access_token, refresh_token) 일괄 삭제
 ```
 
 ---
 
-## 3. 패키지 구조
+## 4. 패키지 아키텍처
 
 ```
-auth/
-├── oauth/                                    # 1. OAuth 인증 (외부 신원 확인)
-│   ├── GoogleAuthProvider.java               #    code → ID Token 검증 → 회원 조회/생성
-│   ├── OAuthStateService.java                #    state 생성/검증 (Redis 5분 TTL)
-│   ├── OAuthAuthenticationResult.java        #    인증 결과 + 신규 사용자 여부
+src/main/java/com/mjusugangsincheonghelper/
+│
+├── global/
+│   └── security/                             # 보안 인프라 영역 (Security)
+│       ├── GlobalSecurityConfig.java         # 보안 필터 체인 및 CORS 설정
+│       ├── filter/
+│       │   └── JwtAuthenticationFilter.java  # 무상태 JWT 인증 필터
+│       └── token/
+│           ├── TokenExtractor.java           # 토큰 추출 인터페이스
+│           ├── BearerTokenExtractor.java     # 개발/테스트용 헤더+쿠키 추출
+│           └── CookieTokenExtractor.java     # 운영용 쿠키 추출
+│
+├── member/                                   # 회원 영역 (Member)
+│   ├── controller/
+│   │   ├── MemberController.java             # GET /members/me, DELETE /members/me
+│   │   └── MemberAgreementController.java    # POST /auth/privacy/agree (하위 호환성 유지)
+│   ├── service/
+│   │   ├── MemberService.java                # 프로필 조회 및 회원 탈퇴 오케스트레이션
+│   │   └── MemberAgreementService.java       # 개인정보 동의 감사 기록 관리
 │   └── dto/
-│       ├── OAuthConfigResponse.java          #    GET /auth/config/google 응답
-│       ├── OAuthStartResponse.java           #    POST /auth/oauth/start 응답
-│       ├── OAuthTokenRequest.java            #    POST /auth/token 요청
-│       └── OAuthTokenResponse.java           #    POST /auth/token 응답 (newUser 포함)
+│       ├── MemberMeResponse.java
+│       └── PrivacyAgreementResponse.java
 │
-├── authentication/                           # 2. 본인인증 (신원 확인 + JWT)
-│   ├── identity/
-│   │   └── AuthenticatedIdentity.java        #    인증 결과 VO (항상 memberId 보유)
-│   ├── guest/
-│   │   └── GuestAuthenticationProvider.java  #    게스트 신원 생성
-│   ├── merge/
-│   │   ├── MergeTicketService.java           #    병합 JWT 발급/소비
-│   │   └── MergeService.java                 #    게스트 → 멤버 데이터 이관
-│   └── token/
-│       ├── TokenProvider.java                #    JWT 생성/파싱 (ATK, RTK, MergeTicket)
-│       ├── TokenExtractor.java               #    요청에서 토큰 추출 인터페이스
-│       ├── BearerTokenExtractor.java         #    Authorization: Bearer 우선, access_token 쿠키 fallback (dev/test)
-│       ├── CookieTokenExtractor.java         #    access_token 쿠키 (prod)
-│       └── JwtAuthenticationFilter.java      #    ATK 검증 → SecurityContext
-│
-├── session/                                  # 3. 통행권 관리 (JWT 저장/갱신/회수)
-│   ├── SessionService.java                   #    세션 오케스트레이션
-│   ├── SessionResult.java                    #    세션 생성 결과 VO
-│   ├── delivery/
-│   │   ├── TokenDeliveryStrategy.java        #    토큰 전달 전략 인터페이스
-│   │   ├── CookieTokenDelivery.java          #    HttpOnly Secure 쿠키 (prod)
-│   │   └── HeaderTokenDelivery.java          #    HttpOnly 쿠키 + 응답 헤더 (dev/test)
-│   └── device/
-│       └── DeviceSessionService.java         #    디바이스 세션 CRUD
-│
-├── authorization/                            # 4. 권한 확인
-│   └── consent/
-│       └── MemberAgreementService.java       #    개인정보 동의 감사 기록 생성/조회
-│
-├── controller/
-│   ├── AuthController.java                   #    guest, refresh, logout, merge
-│   ├── OAuthController.java                  #    config/google, oauth/start, token
-│   └── MemberController.java                 #    /members/me
-│
-├── dto/                                      # 공통 DTO
-│   ├── DeviceInfo.java
-│   ├── GuestCreateRequest.java
-│   ├── GuestResponse.java
-│   ├── LogoutRequest.java
-│   ├── MemberMeResponse.java
-│   ├── MergeRequest.java
-│   ├── MergeResponse.java
-│   └── RefreshResponse.java
-│
-└── service/
-    └── MemberService.java                    #    회원 정보 조회
+└── auth/                                     # 인증 및 세션 메커니즘 영역 (Auth)
+    ├── common/
+    │   ├── AuthenticatedIdentity.java        # 신원 정보 VO
+    │   └── dto/
+    │       └── DeviceInfo.java               # 디바이스 정보 공통 DTO
+    │
+    ├── guest/                                # 게스트 로그인 피처
+    │   ├── GuestController.java              # POST /auth/guest
+    │   ├── GuestService.java                 # 게스트 임시 계정 및 인증 키 발급
+    │   └── dto/
+    │       ├── GuestCreateRequest.java
+    │       └── GuestResponse.java
+    │
+    ├── oauth/                                # 구글 로그인 피처
+    │   ├── GoogleOAuthController.java        # config/google, oauth/start, token
+    │   ├── GoogleOAuthService.java           # Google ID Token 검증 및 회원 조회/가입
+    │   ├── OAuthStateService.java            # state 검증 (Redis)
+    │   ├── OAuthAuthenticationResult.java
+    │   └── dto/                              # Google OAuth 전용 DTO
+    │
+    ├── merge/                                # 계정 데이터 병합 피처
+    │   ├── MergeController.java              # POST /login/google/merge
+    │   ├── MergeService.java                 # 게스트 -> 멤버 데이터 이관
+    │   ├── MergeTicketService.java           # 일회성 병합 티켓(JWT) 발행/소비
+    │   └── dto/
+    │       ├── MergeRequest.java
+    │       └── MergeResponse.java
+    │
+    └── session/                              # 토큰 및 기기 세션 관리 피처
+        ├── SessionController.java            # POST /auth/refresh, POST /auth/logout
+        ├── SessionService.java               # 세션 생성, 갱신, 파괴
+        ├── device/
+        │   └── DeviceSessionService.java     # member_device 데이터 핸들링
+        ├── token/
+        │   └── TokenProvider.java            # JWT 토큰 생성, 검증 및 파싱
+        ├── delivery/
+        │   ├── TokenDeliveryStrategy.java    # 토큰 전달 전략 인터페이스
+        │   ├── CookieTokenDelivery.java      # 운영용 쿠키 발급
+        │   └── HeaderTokenDelivery.java      # 개발용 쿠키 + 헤더 노출
+        └── dto/
+            ├── LogoutRequest.java
+            └── RefreshResponse.java
 ```
 
 ---
 
-## 4. 인증 흐름별 호출 경로
+## 5. 토큰 전달 전략 (Token Delivery Strategy)
 
-### 4.1 게스트 생성
+기본 토큰 인증 수단은 모든 환경에서 HttpOnly 쿠키(`access_token`, `refresh_token`)를 활용하여 XSS 공격을 방어합니다.
 
-```
-AuthController.createGuest()
-  └→ GuestAuthenticationProvider.authenticate()     # member(GUEST) + member_auth 생성
-       └→ AuthenticatedIdentity(memberId)
-  └→ SessionService.createSession(identity, ...)    # ATK/RTK 발급 + 디바이스 저장
-       ├→ TokenProvider.createAccessToken()
-       ├→ TokenProvider.createRefreshToken()
-       ├→ DeviceSessionService.upsert()
-       └→ TokenDeliveryStrategy.deliver()           # 쿠키 발급, dev/test는 헤더도 추가
-```
-
-### 4.2 Google OAuth 로그인
-
-```
-OAuthController.oauthStart()
-  └→ OAuthStateService.createState()                # state 생성, Redis 5분 TTL 저장
-  └→ Google Auth URL 생성                           # clientId, redirectUri, state, scope, hd
-
-[프론트엔드가 Google로 리다이렉트]
-[Google이 프론트로 code + state와 함께 리다이렉트]
-
-OAuthController.tokenExchange()
-  └→ OAuthStateService.consumeState(state)          # state 검증 + 소비
-  └→ GoogleAuthProvider.authenticate(code)
-  │   ├→ RestClient로 POST /token (code ↔ id_token 교환)
-  │   ├→ ID Token JWKS 서명 검증 (RSA256)
-│   ├→ hd=mju.ac.kr 검증
-│   ├→ name 파싱 (name/position/department)
-  │   └→ member 조회/생성 → OAuthAuthenticationResult(identity, newUser)
-  └→ SessionService.createSession()                 # ATK/RTK 발급
-       └→ TokenDeliveryStrategy.deliver()
-```
-
-`OAuthTokenResponse.newUser`는 Google OAuth 기준으로 이번 토큰 교환에서 새로 생성된 사용자인지 나타냅니다.
-프론트는 `newUser=true`일 때 개인정보 안내/동의 UI를 노출하고, 완료 후 별도 동의 기록 endpoint를 호출합니다.
-
-### 4.3 게스트 → 멤버 병합
-
-```
-AuthController.merge()
-  └→ MergeService.merge(mergeTicket)                # 병합 티켓 소비 + 데이터 이관
-       ├→ MergeTicketService.consume()              # JWT 파싱 → guestMemberId, googleSubId
-       ├→ guest member_auth 삭제
-       ├→ DeviceSessionService.switchMember()       # 디바이스 소유권 이전
-       ├→ guest member 삭제
-       └→ AuthenticatedIdentity(targetMemberId)
-  └→ SessionService.createSession(identity, ...)    # 새 세션 발급
-```
-
-### 4.4 토큰 재발급
-
-```
-AuthController.refreshToken()
-  └→ SessionService.refreshSession(rtk, ...)
-       ├→ MemberDevice 조회 (RTK 기준)
-       ├→ 만료 검증
-       ├→ TokenProvider.createAccessToken()         # 새 ATK
-       ├→ TokenProvider.createRefreshToken()         # 새 RTK (rotation)
-       └→ TokenDeliveryStrategy.deliver()
-```
-
-### 4.5 로그아웃
-
-```
-AuthController.logout()
-  └→ SessionService.destroySession(rtk, fcmToken, memberId, ...)
-       ├→ DeviceSessionService.deleteByFcmToken()
-       └→ TokenDeliveryStrategy.clear()             # ATK/RTK 쿠키 삭제, dev/test는 헤더도 초기화
-```
-
-### 4.6 개인정보 동의 감사 기록
-
-```
-AuthController.agreePrivacyPolicy()
-  └→ SecurityContext에서 현재 memberId 추출
-  └→ MemberAgreementService.agree(memberId)
-       └→ member_agreements upsert (status=true, agreedAt=now)
-  └→ PrivacyAgreementResponse(memberId, privacyPolicyAgreed, agreedAt)
-```
-
-엔드포인트: `POST /api/{version}/auth/privacy/agree`
-
-- 인증 필요
-- 프론트가 개인정보 동의 UI 완료 후 주도적으로 호출
-- OAuth 토큰 교환과 통합하지 않고 감사 기록 생성/갱신만 담당
-
----
-
-## 5. 토큰 전달 전략
-
-기본 인증 수단은 모든 환경에서 `access_token`, `refresh_token` HttpOnly 쿠키입니다.
-`dev/test`는 Swagger와 수동 테스트 편의를 위해 같은 토큰을 응답 body와 header에도 추가로 노출합니다.
-
-| 환경 | ATK 전달 | RTK 전달 | 추가 노출 | Swagger 스킴 |
-|------|---------|---------|-----------|---------------|
-| **dev/test** | HttpOnly `access_token` 쿠키 | HttpOnly `refresh_token` 쿠키 | body `accessToken`/`refreshToken`, `Authorization`, `X-Access-Token`, `X-Refresh-Token` 헤더 | `bearerAuth` + 쿠키 인증 가능 |
-| **prod** | HttpOnly Secure `access_token` 쿠키 | HttpOnly Secure `refresh_token` 쿠키 | 없음 | `cookieAuth` |
-
-### 구현 메커니즘
-
-- `TokenDeliveryStrategy` 인터페이스의 `@Profile` 기반 구현체 전환
-- DTO의 토큰 필드에 `@JsonInclude(JsonInclude.Include.NON_NULL)` 적용
-- Controller가 `app.auth.token-in-response=true`일 때만 DTO에 토큰 값 주입
-- dev/test의 `HeaderTokenDelivery`는 쿠키를 발급하면서 테스트용 헤더도 세팅
-- prod의 `CookieTokenDelivery`는 Secure HttpOnly 쿠키만 세팅
-
-```java
-// dev/test 응답 body 예시
-{
-  "meta": { ... },
-  "data": {
-    "memberId": 123,
-    "newUser": true,
-    "role": "GUEST",
-    "name": "게스트_a8f3",
-    "accessToken": "eyJ...",
-    "refreshToken": "uuid-string"
-  }
-}
-```
-
-```http
-Set-Cookie: access_token=...; Path=/; HttpOnly; SameSite=Lax
-Set-Cookie: refresh_token=...; Path=/; HttpOnly; SameSite=Lax
-Authorization: Bearer eyJ...
-X-Access-Token: eyJ...
-X-Refresh-Token: uuid-string
-```
-
----
-
-## 6. 핵심 타입
-
-### AuthenticatedIdentity
-
-Authentication 레이어의 출력. Session 레이어의 입력.
-
-```java
-public class AuthenticatedIdentity {
-    private final Long memberId;  // 항상 non-null
-}
-```
-
-- 게스트 생성: 새 member 저장 후 ID 반환
-- Google 로그인: 기존 member 조회 후 ID 반환
-- 병합: target member ID 반환
-
-### SessionResult
-
-Session 레이어의 출력. Controller가 DTO로 변환.
-
-```java
-public class SessionResult {
-    private final String accessToken;
-    private final String refreshToken;
-    private final Long memberId;
-    private final String role;
-    private final String name;
-    private final String position;
-    private final String department;
-}
-```
-
-### TokenDeliveryStrategy
-
-프로파일 기반 토큰 전달 전략.
-
-```java
-public interface TokenDeliveryStrategy {
-    void deliver(String accessToken, String refreshToken, HttpServletResponse response);
-    void clear(HttpServletResponse response);
-}
-```
-
----
-
-## 7. DB 테이블과 레이어 매핑
-
-| 테이블 | 관련 레이어 | 담당 클래스 |
-|--------|-----------|------------|
-| `member` | oauth, authentication, session | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `SessionService` |
-| `member_auth` | oauth, authentication | `GoogleAuthProvider`, `GuestAuthenticationProvider`, `MergeService` |
-| `member_device` | session | `DeviceSessionService`, `SessionService` |
-| `member_agreements` | authorization | `MemberAgreementService` |
-
----
-
-## 8. 권한 모델 (Authorization)
-
-### 8.1 역할 계층 (RoleHierarchy)
-
-```
-ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
-```
-
-- `@PreAuthorize("hasRole('MEMBER')")` → MEMBER, ADMIN 모두 접근 가능
-- `@PreAuthorize("hasRole('ADMIN')")` → ADMIN만 접근 가능
-
-### 8.2 개인정보 동의 감사 기록
-
-개인정보 동의는 필터에서 전역 체크하지 않습니다.
-프론트가 개인정보 동의 UI 완료 후 `POST /api/{version}/auth/privacy/agree`를 호출하면 감사 기록을 생성/갱신합니다.
-
-| 조건 | 결과 |
-|------|------|
-| 미인증 | 401 (SecurityConfig가 처리) |
-| 인증 사용자 | `member_agreements` upsert |
-| 이미 동의 기록 있음 | `status=true`, `agreedAt=now`로 갱신 |
-
-### 8.3 member_agreements 테이블
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `member_id` (PK) | Long | member.id와 1:1 공유 PK |
-| `status` | boolean | 동의 여부 |
-| `agreed_at` | Instant | 동의 시각 (증빙) |
-
-### 8.4 사용 예시
-
-```java
-@RestController
-@RequestMapping("/api/{version}/members")
-public class MemberController {
-
-    @GetMapping("/me")
-    public MemberMeResponse getMe() { ... }  // 인증만 필요 (Guest+)
-
-    @PreAuthorize("hasRole('MEMBER')")
-    @GetMapping("/courses")
-    public List<CourseResponse> getCourses() { ... }  // MEMBER+ 필요
-
-    @PreAuthorize("hasRole('ADMIN')")
-    @PutMapping("/system/config")
-    public void updateConfig() { ... }  // ADMIN만
-}
-```
-
----
-
-## 9. Google OAuth 설정
-
-### Google Console 등록 (승인된 리디렉션 URI)
-
-```
-https://myapp.com/auth/callback        # 실제 프론트엔드
-http://localhost:3000/auth/callback    # 개발용 프론트엔드
-```
-
-### 환경별 redirect-uri 설정
-
-| 환경 | application-*.yml | 용도 |
-|------|-------------------|------|
-| **dev** | `http://localhost:3000/auth/callback` | 로컬 개발 (프론트 연동) |
-| **prod** | `https://myapp.com/auth/callback` | 운영 환경 |
-
----
-
-## 10. Swagger에서 OAuth 테스트
-
-현재 설계(프론트 경유형)에서는 Swagger의 Authorize 버튼으로 직접 OAuth를 처리할 수 없습니다.
-
-### 수동 테스트 순서
-
-1. `GET /api/v1/auth/config/google` → clientId 확인
-2. `POST /api/v1/auth/oauth/start` → googleAuthUrl 받기
-3. 브라우저에서 googleAuthUrl 열기 → Google 로그인
-4. 리다이렉트 URL에서 code, state 복사
-5. `POST /api/v1/auth/token` {code, state} → accessToken 받기
-6. Swagger Authorize → Bearer Auth에 accessToken 입력
+| 환경 | ATK 전달 방식 | RTK 전달 방식 | 추가 노출 필드 (dev/test 한정) |
+|:---|:---|:---|:---|
+| **dev / test** | HttpOnly `access_token` 쿠키 | HttpOnly `refresh_token` 쿠키 | Response Body (`accessToken`/`refreshToken`), `Authorization` 헤더, `X-Access-Token` 헤더 |
+| **prod** | HttpOnly Secure `access_token` 쿠키 | HttpOnly Secure `refresh_token` 쿠키 | 없음 |
