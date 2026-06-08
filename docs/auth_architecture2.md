@@ -288,8 +288,8 @@ POST /api/v1/auth/token
      │   ├→ exchangeCodeForIdToken(code) (Google 토큰 API 호출)
      │   ├→ verifyAndParseIdToken(idToken) (JWKS 검증 및 Claim 파싱)
      │   └→ authenticateOrCreateMember()
-     │       ├→ [기존] MemberAuth 조회 후 로그인 시각 갱신
-     │       └→ [신규] Member(MEMBER) 및 MemberAuth(GOOGLE) 생성 저장 (newUser=true)
+     │       ├→ MemberAuth 조회 후 로그인 시각 갱신
+     │       └→ Member(MEMBER) 및 MemberAuth(GOOGLE) 생성 저장 (newUser=true)
      └→ SessionService.createSession() (ATK/RTK 생성, 기기 등록 및 쿠키 세팅)
 ```
 
