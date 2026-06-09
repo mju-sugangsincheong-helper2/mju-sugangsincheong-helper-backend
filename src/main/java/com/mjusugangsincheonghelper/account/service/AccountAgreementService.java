@@ -1,4 +1,4 @@
-package com.mjusugangsincheonghelper.member.service;
+package com.mjusugangsincheonghelper.account.service;
 
 import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
@@ -9,7 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class MemberAgreementService {
+public class AccountAgreementService {
 
 	private final MemberAgreementRepository memberAgreementRepository;
 

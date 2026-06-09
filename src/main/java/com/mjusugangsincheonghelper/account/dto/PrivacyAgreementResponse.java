@@ -1,4 +1,4 @@
-package com.mjusugangsincheonghelper.member.dto;
+package com.mjusugangsincheonghelper.account.dto;
 
 import java.time.Instant;
 import lombok.AllArgsConstructor;

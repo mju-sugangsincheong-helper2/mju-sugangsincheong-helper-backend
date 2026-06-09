@@ -1,7 +1,7 @@
-package com.mjusugangsincheonghelper.member;
+package com.mjusugangsincheonghelper.account;
 
-import com.mjusugangsincheonghelper.member.dto.MemberMeResponse;
-import com.mjusugangsincheonghelper.member.service.MemberService;
+import com.mjusugangsincheonghelper.account.dto.AccountMeResponse;
+import com.mjusugangsincheonghelper.account.service.AccountService;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
 import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
@@ -31,11 +31,11 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("MemberService 단위 테스트")
-class MemberServiceTest {
+@DisplayName("AccountService 단위 테스트")
+class AccountServiceTest {
 
 	@InjectMocks
-	private MemberService memberService;
+	private AccountService accountService;
 
 	@Mock
 	private MemberRepository memberRepository;
@@ -68,7 +68,7 @@ class MemberServiceTest {
 			given(memberAgreementRepository.findById(memberId)).willReturn(Optional.of(agreement));
 
 			// when
-			MemberMeResponse response = memberService.getMe(memberId);
+			AccountMeResponse response = accountService.getMe(memberId);
 
 			// then
 			assertThat(response.getMemberId()).isEqualTo(member.getId());
@@ -85,7 +85,7 @@ class MemberServiceTest {
 			given(memberRepository.findById(memberId)).willReturn(Optional.empty());
 
 			// when & then
-			assertThatThrownBy(() -> memberService.getMe(memberId))
+			assertThatThrownBy(() -> accountService.getMe(memberId))
 					.isInstanceOf(BaseException.class)
 					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.AUTH_MEMBER_NOT_FOUND);
 		}
@@ -118,7 +118,7 @@ class MemberServiceTest {
 			given(memberAuthRepository.findByMemberId(memberId)).willReturn(Optional.of(memberAuth));
 
 			// when
-			memberService.withdraw(memberId);
+			accountService.withdraw(memberId);
 
 			// then
 			verify(memberAgreementRepository).deleteById(memberId);
@@ -135,7 +135,7 @@ class MemberServiceTest {
 			given(memberRepository.findById(memberId)).willReturn(Optional.empty());
 
 			// when & then
-			assertThatThrownBy(() -> memberService.withdraw(memberId))
+			assertThatThrownBy(() -> accountService.withdraw(memberId))
 					.isInstanceOf(BaseException.class)
 					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.AUTH_MEMBER_NOT_FOUND);
 		}

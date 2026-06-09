@@ -1,8 +1,8 @@
-package com.mjusugangsincheonghelper.member.controller;
+package com.mjusugangsincheonghelper.account.controller;
 
-import com.mjusugangsincheonghelper.member.dto.PrivacyAgreementResponse;
-import com.mjusugangsincheonghelper.member.service.MemberAgreementService;
-import com.mjusugangsincheonghelper.member.service.MemberAgreementService.ConsentStatus;
+import com.mjusugangsincheonghelper.account.dto.PrivacyAgreementResponse;
+import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
+import com.mjusugangsincheonghelper.account.service.AccountAgreementService.ConsentStatus;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
@@ -21,9 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/{version}/auth/privacy")
 @RequiredArgsConstructor
-public class MemberAgreementController {
+public class AccountAgreementController {
 
-	private final MemberAgreementService memberAgreementService;
+	private final AccountAgreementService accountAgreementService;
 
 	@PostMapping(value = "/agree", version = "1+")
 	@Operation(
@@ -43,7 +43,7 @@ public class MemberAgreementController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<PrivacyAgreementResponse>> agreePrivacyPolicy() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		Long memberId = (Long) authentication.getPrincipal();
-		ConsentStatus status = memberAgreementService.agree(memberId);
+		ConsentStatus status = accountAgreementService.agree(memberId);
 
 		PrivacyAgreementResponse response = PrivacyAgreementResponse.builder()
 				.memberId(memberId)

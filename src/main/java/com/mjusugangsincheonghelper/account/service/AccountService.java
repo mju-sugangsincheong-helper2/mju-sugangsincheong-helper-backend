@@ -1,6 +1,6 @@
-package com.mjusugangsincheonghelper.member.service;
+package com.mjusugangsincheonghelper.account.service;
 
-import com.mjusugangsincheonghelper.member.dto.MemberMeResponse;
+import com.mjusugangsincheonghelper.account.dto.AccountMeResponse;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
@@ -17,20 +17,20 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class MemberService {
+public class AccountService {
 
 	private final MemberRepository memberRepository;
 	private final MemberAgreementRepository memberAgreementRepository;
 	private final MemberAuthRepository memberAuthRepository;
 	private final MemberDeviceRepository memberDeviceRepository;
 
-	public MemberMeResponse getMe(Long memberId) {
+	public AccountMeResponse getMe(Long memberId) {
 		Member member = memberRepository.findById(memberId)
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 		boolean privacyPolicyAgreed = memberAgreementRepository.findById(memberId)
 				.map(agreement -> agreement.isStatus())
 				.orElse(false);
-		return MemberMeResponse.from(member, privacyPolicyAgreed);
+		return AccountMeResponse.from(member, privacyPolicyAgreed);
 	}
 
 	@Transactional

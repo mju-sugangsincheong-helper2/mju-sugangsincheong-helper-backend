@@ -1,7 +1,7 @@
-package com.mjusugangsincheonghelper.member.controller;
+package com.mjusugangsincheonghelper.account.controller;
 
-import com.mjusugangsincheonghelper.member.dto.MemberMeResponse;
-import com.mjusugangsincheonghelper.member.service.MemberService;
+import com.mjusugangsincheonghelper.account.dto.AccountMeResponse;
+import com.mjusugangsincheonghelper.account.service.AccountService;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
@@ -20,18 +20,18 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Member", description = "회원 API")
+@Tag(name = "Account", description = "회원 API")
 @RestController
-@RequestMapping("/api/{version}/members")
+@RequestMapping("/api/{version}/accounts")
 @RequiredArgsConstructor
-public class MemberController {
+public class AccountController {
 
-	private final MemberService memberService;
+	private final AccountService accountService;
 	private final TokenDeliveryStrategy tokenDeliveryStrategy;
 
 	@GetMapping(value = "/me", version = "1+")
 	@Operation(
-			summary = "Member me",
+			summary = "Account me",
 			description = "내 정보 조회 API",
 			responses = {
 					@ApiResponse(
@@ -45,10 +45,10 @@ public class MemberController {
 			ErrorCode.AUTH_MEMBER_NOT_FOUND,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
-	public ResponseEntity<SingleSuccessResponseEnvelope<MemberMeResponse>> getMe() {
+	public ResponseEntity<SingleSuccessResponseEnvelope<AccountMeResponse>> getMe() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		Long memberId = (Long) authentication.getPrincipal();
-		MemberMeResponse response = memberService.getMe(memberId);
+		AccountMeResponse response = accountService.getMe(memberId);
 		return ResponseEntity
 				.status(HttpStatus.OK)
 				.body(SingleSuccessResponseEnvelope.of(response));
@@ -56,7 +56,7 @@ public class MemberController {
 
 	@DeleteMapping(value = "/me", version = "1+")
 	@Operation(
-			summary = "Member withdraw",
+			summary = "Account withdraw",
 			description = "회원 탈퇴 API. 모든 회원 정보와 디바이스 세션, 개인정보 동의 기록이 삭제되며 쿠키가 초기화됩니다.",
 			responses = {
 					@ApiResponse(
@@ -73,7 +73,7 @@ public class MemberController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<Void>> withdraw(HttpServletResponse response) {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		Long memberId = (Long) authentication.getPrincipal();
-		memberService.withdraw(memberId);
+		accountService.withdraw(memberId);
 		tokenDeliveryStrategy.clear(response);
 		return ResponseEntity
 				.status(HttpStatus.OK)

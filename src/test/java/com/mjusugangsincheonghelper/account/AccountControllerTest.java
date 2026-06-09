@@ -1,10 +1,10 @@
-package com.mjusugangsincheonghelper.member;
+package com.mjusugangsincheonghelper.account;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
-import com.mjusugangsincheonghelper.member.controller.MemberController;
-import com.mjusugangsincheonghelper.member.dto.MemberMeResponse;
-import com.mjusugangsincheonghelper.member.service.MemberService;
+import com.mjusugangsincheonghelper.account.controller.AccountController;
+import com.mjusugangsincheonghelper.account.dto.AccountMeResponse;
+import com.mjusugangsincheonghelper.account.service.AccountService;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
@@ -39,17 +39,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(MemberController.class)
+@WebMvcTest(AccountController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({GlobalExceptionHandler.class, GlobalMetaFilter.class, ClientInfoExtractor.class})
-@DisplayName("MemberController 슬라이스 테스트")
-class MemberControllerTest {
+@DisplayName("AccountController 슬라이스 테스트")
+class AccountControllerTest {
 
 	@Autowired
 	private MockMvc mockMvc;
 
 	@MockitoBean
-	private MemberService memberService;
+	private AccountService accountService;
 
 	@MockitoBean
 	private TokenDeliveryStrategy tokenDeliveryStrategy;
@@ -83,23 +83,23 @@ class MemberControllerTest {
 	}
 
 	@Nested
-	@DisplayName("GET /api/v1/members/me 엔드포인트는")
+	@DisplayName("GET /api/v1/accounts/me 엔드포인트는")
 	class Describe_getMe {
 
 		@Test
 		@DisplayName("인증된 사용자의 정보를 조회하여 200 응답을 반환한다")
 		void it_returns_200_with_member_info() throws Exception {
 			// given
-			MemberMeResponse response = MemberMeResponse.builder()
+			AccountMeResponse response = AccountMeResponse.builder()
 					.memberId(1L)
 					.name("홍길동")
 					.role("USER")
 					.isPrivacyPolicyAgreed(true)
 					.build();
-			given(memberService.getMe(1L)).willReturn(response);
+			given(accountService.getMe(1L)).willReturn(response);
 
 			// when & then
-			mockMvc.perform(get("/api/v1/members/me"))
+			mockMvc.perform(get("/api/v1/accounts/me"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.memberId").value(1))
 					.andExpect(jsonPath("$.data.name").value("홍길동"))
@@ -111,30 +111,30 @@ class MemberControllerTest {
 		@DisplayName("사용자 정보를 찾지 못하면 404 응답을 반환한다")
 		void it_returns_404_when_member_not_found() throws Exception {
 			// given
-			given(memberService.getMe(1L))
+			given(accountService.getMe(1L))
 					.willThrow(new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 
 			// when & then
-			mockMvc.perform(get("/api/v1/members/me"))
+			mockMvc.perform(get("/api/v1/accounts/me"))
 					.andExpect(status().isNotFound())
 					.andExpect(jsonPath("$.error.code").value("AUTH_007"));
 		}
 	}
 
 	@Nested
-	@DisplayName("DELETE /api/v1/members/me 엔드포인트는")
+	@DisplayName("DELETE /api/v1/accounts/me 엔드포인트는")
 	class Describe_withdraw {
 
 		@Test
 		@DisplayName("인증된 사용자의 계정을 삭제(탈퇴)하고 200 응답을 반환한다")
 		void it_withdraws_member_and_returns_200() throws Exception {
 			// when & then
-			mockMvc.perform(delete("/api/v1/members/me")
+			mockMvc.perform(delete("/api/v1/accounts/me")
 							.with(csrf()))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data").doesNotExist());
 
-			verify(memberService).withdraw(1L);
+			verify(accountService).withdraw(1L);
 			verify(tokenDeliveryStrategy).clear(any());
 		}
 	}
