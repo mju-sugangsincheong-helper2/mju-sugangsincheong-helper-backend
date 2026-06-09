@@ -1,0 +1,134 @@
+package com.mjusugangsincheonghelper.singlegame.controller;
+
+import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
+import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
+import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
+import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
+import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
+import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
+import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Tag(name = "SingleGame", description = "싱글 게임 API")
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/{version}/singlegame")
+public class SingleGameController {
+
+	private final SingleGameService singleGameService;
+
+	@PostMapping(version = "1+")
+	@Operation(
+			summary = "Save game result",
+			description = "싱글 게임 결과를 저장합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "201",
+							description = "저장 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_VALIDATION_ERROR,
+			ErrorCode.AUTH_MEMBER_NOT_FOUND,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<SingleGameSaveResponse>> saveGame(
+			@Parameter(description = "게임 결과 데이터", required = true)
+			@Valid @RequestBody SingleGameSaveRequest request) {
+		SingleGameSaveResponse response = singleGameService.saveGame(request);
+		return ResponseEntity.status(201).body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@GetMapping(value = "/rank", version = "1+")
+	@Operation(
+			summary = "Get rankings",
+			description = "과목 수별 전체/학과 랭킹을 조회합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_VALIDATION_ERROR,
+			ErrorCode.AUTH_MEMBER_NOT_FOUND,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<RankingResponse>> getRankings(
+			@Parameter(description = "과목 수 (1, 3, 6, 7, 8)", example = "6", required = true)
+			@RequestParam int totalCourses,
+			@Parameter(description = "조회 범위 (GLOBAL or DEPARTMENT)", example = "GLOBAL", required = true)
+			@RequestParam String scope,
+			@Parameter(description = "내 등수를 확인할 회원 ID", example = "42")
+			@RequestParam(required = false) Long memberId) {
+		RankingResponse response = singleGameService.getRankings(totalCourses, scope, memberId);
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@GetMapping(value = "/my", version = "1+")
+	@Operation(
+			summary = "Get my records",
+			description = "내 게임 기록 목록을 페이징하여 조회합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.AUTH_MEMBER_NOT_FOUND,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<Page<MyRecordResponse>>> getMyRecords(
+			@Parameter(description = "회원 ID", example = "42", required = true)
+			@RequestParam Long memberId,
+			@Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
+			@RequestParam(defaultValue = "0") int page,
+			@Parameter(description = "페이지 크기", example = "10")
+			@RequestParam(defaultValue = "10") int size) {
+		Page<MyRecordResponse> response = singleGameService.getMyRecords(memberId, page, size);
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@GetMapping(value = "/{gameId}/analysis", version = "1+")
+	@Operation(
+			summary = "Get game analysis",
+			description = "특정 게임 판의 상세 분석 결과를 조회합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.SINGLEGAME_GAME_NOT_FOUND,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<AnalysisResponse>> getAnalysis(
+			@Parameter(description = "게임 ID", example = "1234", required = true)
+			@PathVariable Long gameId) {
+		AnalysisResponse response = singleGameService.getAnalysis(gameId);
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
+}

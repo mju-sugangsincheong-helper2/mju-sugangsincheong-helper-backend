@@ -60,7 +60,7 @@ public class SystemConfigService {
 		return SystemConfigResponse.from(config);
 	}
 
-	@CacheEvict(value = "system_config", key = "'current_term'", condition = "configKey.equals('current_term')")
+	@CacheEvict(value = "system_config", key = "'current_term'", condition = "#configKey.equals('current_term')")
 	@Transactional
 	public SystemConfigResponse update(String configKey, SystemConfigUpdateRequest request) {
 		SystemConfig config = repository.findById(configKey)

@@ -8,7 +8,13 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-prod.sql
+
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: validate
     properties:

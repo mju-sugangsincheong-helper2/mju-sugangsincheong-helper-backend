@@ -126,15 +126,16 @@ class CourseControllerTest {
 	class Describe_findSections {
 
 		@Test
-		@DisplayName("term 없이 호출하면 전체 강좌 목록을 반환한다")
-		void it_returns_all_sections_without_term() throws Exception {
+		@DisplayName("term 없이 호출하면 current_term을 조회하여 강좌 목록을 반환한다")
+		void it_returns_sections_with_current_term() throws Exception {
 			CourseSectionResponse item = CourseSectionResponse.builder()
 					.coursecls("0001").term("202615")
 					.curinum("KMA00101").curinm("성서와인간이해")
 					.profnm("김진옥").cdtnum("2").cdttime("2")
 					.takelim("40").listennow("40")
 					.build();
-			given(courseService.findSections(null)).willReturn(List.of(item));
+			given(systemConfigService.getCurrentTerm()).willReturn("202615");
+			given(courseService.findSections("202615")).willReturn(List.of(item));
 
 			mockMvc.perform(get("/api/v1/course/sections"))
 					.andExpect(status().isOk())

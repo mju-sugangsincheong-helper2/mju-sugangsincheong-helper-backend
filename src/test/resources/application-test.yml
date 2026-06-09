@@ -5,7 +5,13 @@ spring:
     username: mjusugangsincheonghelperuser
     password: mjusugangsincheonghelperpassword
 
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-view.sql
+
   jpa:
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: create-drop
     properties:

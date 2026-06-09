@@ -14,10 +14,17 @@ src/main/java/com/mjusugangsincheonghelper/
 │   │   └── JpaAuditingConfig.java             # @EnableJpaAuditing
 │   ├── entity/
 │   │   ├── ConfigType.java                    # SystemConfig 관련 enum
+│   │   ├── CourseEntity.java                  # course 테이블 (composite PK)
 │   │   ├── ExampleEntity.java                 # 예제 Entity
+│   │   ├── SingleGameEntity.java              # single_game 테이블
+│   │   ├── SingleGameDetailEntity.java        # single_game_detail 테이블 (composite PK)
 │   │   └── SystemConfig.java                  # 시스템 설정 Entity
 │   └── repository/
+│       ├── CourseRepository.java
 │       ├── ExampleRepository.java
+│       ├── MemberRepository.java
+│       ├── SingleGameRepository.java
+│       ├── SingleGameDetailRepository.java
 │       └── SystemConfigRepository.java
 ├── global/
 │   ├── annotation/
@@ -65,6 +72,18 @@ src/main/java/com/mjusugangsincheonghelper/
 │   │   └── ExampleUpdateRequest.java
 │   └── service/
 │       └── ExampleService.java
+├── singlegame/
+│   ├── controller/
+│   │   └── SingleGameController.java
+│   ├── dto/
+│   │   ├── AnalysisResponse.java
+│   │   ├── MyRecordResponse.java
+│   │   ├── RankingResponse.java
+│   │   ├── SingleGameDetailRequest.java
+│   │   ├── SingleGameSaveRequest.java
+│   │   └── SingleGameSaveResponse.java
+│   └── service/
+│       └── SingleGameService.java
 └── system/
     ├── controller/
     │   └── SystemConfigController.java

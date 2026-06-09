@@ -30,7 +30,10 @@ public enum ErrorCode {
 	AUTH_NOT_MJU_DOMAIN(HttpStatus.FORBIDDEN, "AUTH_010", "Only MJU (mju.ac.kr) accounts are allowed."),
 
 	EXAMPLE_NOT_FOUND(HttpStatus.NOT_FOUND, "EXAMPLE_001", "Example not found."),
-	EXAMPLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "EXAMPLE_002", "Example already exists.");
+	EXAMPLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "EXAMPLE_002", "Example already exists."),
+
+	SINGLEGAME_GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "SINGLEGAME_001", "Game not found."),
+	SINGLEGAME_INVALID_TOTAL_COURSES(HttpStatus.BAD_REQUEST, "SINGLEGAME_002", "Invalid total courses. Allowed: 1, 3, 6, 7, 8.");
 
 	private final HttpStatus status;
 	private final String code;

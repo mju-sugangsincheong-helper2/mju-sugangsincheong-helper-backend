@@ -8,6 +8,7 @@ import com.mjusugangsincheonghelper.course.service.CourseService;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CourseController {
 
 	private final CourseService courseService;
+	private final SystemConfigService systemConfigService;
 
 	@PostMapping(version = "1+")
 	@Operation(
@@ -78,7 +80,7 @@ public class CourseController {
 	@GetMapping(version = "1+")
 	@Operation(
 			summary = "List course sections",
-			description = "강좌 목록을 조회합니다. term 파라미터로 특정 학기 필터링 가능합니다.",
+			description = "강좌 목록을 조회합니다. term 파라미터가 없으면 현재 학기(current_term)를 조회합니다.",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
@@ -90,9 +92,10 @@ public class CourseController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<List<CourseSectionResponse>>> findSections(
-			@Parameter(description = "조회할 학기 (예: 202515)", example = "202515")
+			@Parameter(description = "조회할 학기 (예: 202515), 없으면 current_term 사용", example = "202515")
 			@RequestParam(required = false) String term) {
-		List<CourseSectionResponse> response = courseService.findSections(term);
+		String effectiveTerm = (term != null && !term.isBlank()) ? term : systemConfigService.getCurrentTerm();
+		List<CourseSectionResponse> response = courseService.findSections(effectiveTerm);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 }
