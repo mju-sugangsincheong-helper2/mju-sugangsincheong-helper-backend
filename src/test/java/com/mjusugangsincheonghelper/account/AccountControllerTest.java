@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.account;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
 import com.mjusugangsincheonghelper.account.controller.AccountController;
 import com.mjusugangsincheonghelper.account.dto.AccountMeResponse;

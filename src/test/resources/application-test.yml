@@ -33,6 +33,10 @@ app:
       redirect-uri: http://localhost:3000/auth/callback
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
+  expose-error-details: true
+  performance:
+    slow-ms: 500
+    very-slow-ms: 2000
 
 logging:
   level:

@@ -12,33 +12,28 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum SettingDefinition {
 
-	EXPOSE_ERROR_DETAILS(
-			"expose_error_details",
-			ConfigType.BOOLEAN,
-			"에러 응답에 원본 예외 상세 정보 포함 여부",
-			"true",
-			raw -> Boolean.parseBoolean(raw),
-			raw -> "true".equalsIgnoreCase(raw) || "false".equalsIgnoreCase(raw)
+	CURRENT_TERM(
+			"current_term",
+			ConfigType.STRING,
+			"현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기)",
+			"202510",
+			raw -> new TermCode(raw),
+			raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$")
 	),
 
-	PERFORMANCE_THRESHOLDS(
-			"performance_thresholds",
+	NOTICES(
+			"notices",
 			ConfigType.JSON,
-			"성능 임계값 설정 (slow_ms, very_slow_ms)",
-			"{\"slow_ms\":1000,\"very_slow_ms\":5000}",
+			"공지사항 목록",
+			"[]",
 			raw -> {
 				ObjectMapper mapper = new ObjectMapper();
-				JsonNode node = mapper.readTree(raw);
-				return new PerformanceThresholds(
-						node.path("slow_ms").asLong(1000),
-						node.path("very_slow_ms").asLong(5000)
-				);
+				return mapper.readTree(raw);
 			},
 			raw -> {
 				try {
-					ObjectMapper mapper = new ObjectMapper();
-					JsonNode node = mapper.readTree(raw);
-					return node.has("slow_ms") && node.has("very_slow_ms");
+					new ObjectMapper().readTree(raw);
+					return true;
 				} catch (Exception e) {
 					return false;
 				}
@@ -85,6 +80,20 @@ public enum SettingDefinition {
 		return null;
 	}
 
-	public record PerformanceThresholds(long slowMs, long verySlowMs) {
+	public record TermCode(int year, String semester) {
+		public TermCode(String raw) {
+			this(Integer.parseInt(raw.substring(0, 4)), raw.substring(4));
+		}
+
+		public String getDisplayName() {
+			return switch (semester) {
+				case "10" -> year + "년도 1학기";
+				case "15" -> year + "년도 여름학기";
+				case "20" -> year + "년도 2학기";
+				case "25" -> year + "년도 겨울학기";
+				default -> year + "년도 (알 수 없음)";
+			};
+		}
 	}
+
 }

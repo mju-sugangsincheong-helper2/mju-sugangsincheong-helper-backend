@@ -3,9 +3,6 @@ package com.mjusugangsincheonghelper.global.api.filter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.CustomResponseMetaContextHolder;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition.PerformanceThresholds;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,6 +14,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -27,7 +25,12 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 
 	private final ClientInfoExtractor clientInfoExtractor;
 	private final InstanceIdProvider instanceIdProvider;
-	private final SystemConfigService systemConfigService;
+
+	@Value("${app.performance.slow-ms:1000}")
+	private long slowMs;
+
+	@Value("${app.performance.very-slow-ms:5000}")
+	private long verySlowMs;
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -68,10 +71,9 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 	}
 
 	private void logSlowRequest(String method, String path, long durationMs) {
-		PerformanceThresholds thresholds = SettingDefinition.PERFORMANCE_THRESHOLDS.getFrom(systemConfigService);
-		if (durationMs > thresholds.verySlowMs()) {
+		if (durationMs > verySlowMs) {
 			log.error("Very slow request: {} {} took {}ms", method, path, durationMs);
-		} else if (durationMs > thresholds.slowMs()) {
+		} else if (durationMs > slowMs) {
 			log.warn("Slow request: {} {} took {}ms", method, path, durationMs);
 		}
 	}

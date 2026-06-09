@@ -3,15 +3,13 @@ package com.mjusugangsincheonghelper.global.api.exception;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.ErrorResponseEnvelope;
 import com.mjusugangsincheonghelper.global.api.exception.ErrorDetail.FieldViolation;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -24,10 +22,10 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
-@RequiredArgsConstructor
 public class GlobalExceptionHandler {
 
-	private final SystemConfigService systemConfigService;
+	@Value("${app.expose-error-details:false}")
+	private boolean exposeErrorDetails;
 
 	@ExceptionHandler(BaseException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleBaseException(BaseException exception) {
@@ -35,7 +33,7 @@ public class GlobalExceptionHandler {
 		log.warn("BaseException: code={}, message={}", errorCode.getCode(), errorCode.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(errorCode), isExposeErrorDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(errorCode), exposeErrorDetails));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
@@ -48,7 +46,7 @@ public class GlobalExceptionHandler {
 		log.warn("Validation failed: details={}", details.size());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, details, isExposeErrorDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, details, exposeErrorDetails));
 	}
 
 	@ExceptionHandler(ConstraintViolationException.class)
@@ -61,7 +59,7 @@ public class GlobalExceptionHandler {
 		log.warn("Constraint violation: details={}", details.size());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, details, isExposeErrorDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, details, exposeErrorDetails));
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
@@ -70,7 +68,7 @@ public class GlobalExceptionHandler {
 		log.warn("Message not readable: {}", exception.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), exposeErrorDetails));
 	}
 
 	@ExceptionHandler(MissingServletRequestParameterException.class)
@@ -79,7 +77,7 @@ public class GlobalExceptionHandler {
 		log.warn("Missing request parameter: {}", exception.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), exposeErrorDetails));
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -88,7 +86,7 @@ public class GlobalExceptionHandler {
 		log.warn("Type mismatch: {}", exception.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), exposeErrorDetails));
 	}
 
 	@ExceptionHandler(NoResourceFoundException.class)
@@ -97,7 +95,7 @@ public class GlobalExceptionHandler {
 		log.warn("Resource not found: {}", exception.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), exposeErrorDetails));
 	}
 
 	@ExceptionHandler(Exception.class)
@@ -106,11 +104,7 @@ public class GlobalExceptionHandler {
 		log.error("Unexpected error", exception);
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
-	}
-
-	private boolean isExposeErrorDetails() {
-		return SettingDefinition.EXPOSE_ERROR_DETAILS.getFrom(systemConfigService);
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), exposeErrorDetails));
 	}
 
 	private List<FieldViolation> errorDetailFrom(ErrorCode errorCode) {
