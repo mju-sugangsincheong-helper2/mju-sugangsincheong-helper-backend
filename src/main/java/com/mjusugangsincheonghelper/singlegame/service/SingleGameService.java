@@ -49,8 +49,8 @@ public class SingleGameService {
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
 
 	@Transactional
-	public SingleGameSaveResponse saveGame(SingleGameSaveRequest request) {
-		if (!memberRepository.existsById(request.getMemberId())) {
+	public SingleGameSaveResponse saveGame(Long memberId, SingleGameSaveRequest request) {
+		if (!memberRepository.existsById(memberId)) {
 			throw new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND);
 		}
 
@@ -64,7 +64,7 @@ public class SingleGameService {
 		}
 
 		SingleGameEntity game = SingleGameEntity.builder()
-				.memberId(request.getMemberId())
+				.memberId(memberId)
 				.tTotal(tTotal)
 				.tEnterMain(request.getTEnterMain())
 				.isCompleted(request.isCompleted())

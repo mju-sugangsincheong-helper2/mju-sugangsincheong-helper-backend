@@ -14,10 +14,11 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -53,7 +54,8 @@ public class SingleGameController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<SingleGameSaveResponse>> saveGame(
 			@Parameter(description = "게임 결과 데이터", required = true)
 			@Valid @RequestBody SingleGameSaveRequest request) {
-		SingleGameSaveResponse response = singleGameService.saveGame(request);
+		Long memberId = getCurrentMemberId();
+		SingleGameSaveResponse response = singleGameService.saveGame(memberId, request);
 		return ResponseEntity.status(201).body(SingleSuccessResponseEnvelope.of(response));
 	}
 
@@ -77,9 +79,8 @@ public class SingleGameController {
 			@Parameter(description = "과목 수 (1, 3, 6, 7, 8)", example = "6", required = true)
 			@RequestParam int totalCourses,
 			@Parameter(description = "조회 범위 (GLOBAL or DEPARTMENT)", example = "GLOBAL", required = true)
-			@RequestParam String scope,
-			@Parameter(description = "내 등수를 확인할 회원 ID", example = "42")
-			@RequestParam(required = false) Long memberId) {
+			@RequestParam String scope) {
+		Long memberId = getCurrentMemberId();
 		RankingResponse response = singleGameService.getRankings(totalCourses, scope, memberId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
@@ -100,12 +101,11 @@ public class SingleGameController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<Page<MyRecordResponse>>> getMyRecords(
-			@Parameter(description = "회원 ID", example = "42", required = true)
-			@RequestParam Long memberId,
 			@Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
 			@RequestParam(defaultValue = "0") int page,
 			@Parameter(description = "페이지 크기", example = "10")
 			@RequestParam(defaultValue = "10") int size) {
+		Long memberId = getCurrentMemberId();
 		Page<MyRecordResponse> response = singleGameService.getMyRecords(memberId, page, size);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
@@ -130,5 +130,10 @@ public class SingleGameController {
 			@PathVariable Long gameId) {
 		AnalysisResponse response = singleGameService.getAnalysis(gameId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	private Long getCurrentMemberId() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		return (Long) authentication.getPrincipal();
 	}
 }

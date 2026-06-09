@@ -22,6 +22,7 @@ import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -32,7 +33,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -41,6 +44,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -49,7 +53,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(SingleGameController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({GlobalExceptionHandler.class, GlobalMetaFilter.class, ClientInfoExtractor.class})
-@WithMockUser
 @DisplayName("SingleGameController 슬라이스 테스트")
 class SingleGameControllerTest {
 
@@ -73,6 +76,19 @@ class SingleGameControllerTest {
 	@BeforeEach
 	void setUp() {
 		given(systemConfigService.getRaw(anyString())).willReturn("true");
+
+		Authentication authentication = mock(Authentication.class);
+		given(authentication.getPrincipal()).willReturn(1L);
+
+		SecurityContext securityContext = mock(SecurityContext.class);
+		given(securityContext.getAuthentication()).willReturn(authentication);
+
+		SecurityContextHolder.setContext(securityContext);
+	}
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
 	}
 
 	@Nested
@@ -85,13 +101,12 @@ class SingleGameControllerTest {
 			SingleGameSaveResponse serviceResponse = SingleGameSaveResponse.builder()
 					.gameId(100L).message("게임 결과가 성공적으로 기록되었습니다.")
 					.build();
-			given(singleGameService.saveGame(any())).willReturn(serviceResponse);
+			given(singleGameService.saveGame(anyLong(), any())).willReturn(serviceResponse);
 
 			mockMvc.perform(post("/api/v1/singlegame")
 							.contentType(MediaType.APPLICATION_JSON)
 							.content("""
 									{
-										"memberId": 1,
 										"totalCourses": 6,
 										"isCompleted": true,
 										"tEnterMain": 2000,
@@ -116,7 +131,6 @@ class SingleGameControllerTest {
 		void it_returns_400_on_validation_error() throws Exception {
 			String invalidJson = """
 					{
-						"memberId": null,
 						"totalCourses": 0,
 						"isCompleted": true,
 						"tEnterMain": -1,
@@ -152,8 +166,7 @@ class SingleGameControllerTest {
 
 			mockMvc.perform(get("/api/v1/singlegame/rank")
 							.param("totalCourses", "6")
-							.param("scope", "GLOBAL")
-							.param("memberId", "1"))
+							.param("scope", "GLOBAL"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.totalCourses").value(6))
 					.andExpect(jsonPath("$.data.rankings[0].name").value("홍길동"))
@@ -180,7 +193,6 @@ class SingleGameControllerTest {
 					.willReturn(new PageImpl<>(List.of(record)));
 
 			mockMvc.perform(get("/api/v1/singlegame/my")
-							.param("memberId", "1")
 							.param("page", "0")
 							.param("size", "10"))
 					.andExpect(status().isOk())

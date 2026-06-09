@@ -6,6 +6,7 @@ import com.mjusugangsincheonghelper.database.entity.SingleGameEntity;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameDetailRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -14,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,6 +59,15 @@ class SingleGameIntegrationTest {
 				.name("테스트유저")
 				.department("컴퓨터공학과")
 				.build());
+
+		UsernamePasswordAuthenticationToken authentication =
+				new UsernamePasswordAuthenticationToken(testMember.getId(), null, null);
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+	}
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
 	}
 
 	@Nested
@@ -67,7 +79,6 @@ class SingleGameIntegrationTest {
 		void it_works_end_to_end() throws Exception {
 			String saveRequest = """
 					{
-						"memberId": %d,
 						"totalCourses": 6,
 						"isCompleted": true,
 						"tEnterMain": 245,
@@ -77,7 +88,7 @@ class SingleGameIntegrationTest {
 							{"sequence": 3, "tClickCourse": 280, "tClickYes": 140, "tClickOk": 170}
 						]
 					}
-					""".formatted(testMember.getId());
+					""";
 
 			String saveResponse = mockMvc.perform(post("/api/v1/singlegame")
 							.contentType(MediaType.APPLICATION_JSON)
@@ -112,7 +123,6 @@ class SingleGameIntegrationTest {
 		void it_appears_in_ranking() throws Exception {
 			String saveRequest = """
 					{
-						"memberId": %d,
 						"totalCourses": 6,
 						"isCompleted": true,
 						"tEnterMain": 200,
@@ -120,7 +130,7 @@ class SingleGameIntegrationTest {
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180}
 						]
 					}
-					""".formatted(testMember.getId());
+					""";
 
 			mockMvc.perform(post("/api/v1/singlegame")
 							.contentType(MediaType.APPLICATION_JSON)
@@ -147,7 +157,6 @@ class SingleGameIntegrationTest {
 		void it_appears_in_my_records() throws Exception {
 			String saveRequest = """
 					{
-						"memberId": %d,
 						"totalCourses": 6,
 						"isCompleted": true,
 						"tEnterMain": 200,
@@ -155,7 +164,7 @@ class SingleGameIntegrationTest {
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180}
 						]
 					}
-					""".formatted(testMember.getId());
+					""";
 
 			mockMvc.perform(post("/api/v1/singlegame")
 							.contentType(MediaType.APPLICATION_JSON)
@@ -163,7 +172,6 @@ class SingleGameIntegrationTest {
 					.andExpect(status().isCreated());
 
 			mockMvc.perform(get("/api/v1/singlegame/my")
-							.param("memberId", testMember.getId().toString())
 							.param("page", "0")
 							.param("size", "10"))
 					.andExpect(status().isOk())
@@ -203,7 +211,6 @@ class SingleGameIntegrationTest {
 		void it_returns_400_for_invalid_total_courses() throws Exception {
 			String invalidRequest = """
 					{
-						"memberId": %d,
 						"totalCourses": 4,
 						"isCompleted": true,
 						"tEnterMain": 200,
@@ -211,7 +218,7 @@ class SingleGameIntegrationTest {
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180}
 						]
 					}
-					""".formatted(testMember.getId());
+					""";
 
 			mockMvc.perform(post("/api/v1/singlegame")
 							.contentType(MediaType.APPLICATION_JSON)
@@ -225,13 +232,12 @@ class SingleGameIntegrationTest {
 		void it_returns_400_for_empty_details() throws Exception {
 			String invalidRequest = """
 					{
-						"memberId": %d,
 						"totalCourses": 6,
 						"isCompleted": true,
 						"tEnterMain": 200,
 						"details": []
 					}
-					""".formatted(testMember.getId());
+					""";
 
 			mockMvc.perform(post("/api/v1/singlegame")
 							.contentType(MediaType.APPLICATION_JSON)
@@ -270,8 +276,7 @@ class SingleGameIntegrationTest {
 
 			mockMvc.perform(get("/api/v1/singlegame/rank")
 							.param("totalCourses", "6")
-							.param("scope", "DEPARTMENT")
-							.param("memberId", testMember.getId().toString()))
+							.param("scope", "DEPARTMENT"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.scope").value("DEPARTMENT"))
 					.andExpect(jsonPath("$.data.rankings").isArray())

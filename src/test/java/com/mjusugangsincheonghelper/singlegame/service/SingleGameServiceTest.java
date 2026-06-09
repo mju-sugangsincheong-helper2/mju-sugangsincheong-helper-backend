@@ -73,7 +73,7 @@ class SingleGameServiceTest {
 					.sequence(1).tClickCourse(1000).tClickYes(500).tClickOk(300)
 					.build();
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.memberId(1L).totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
 					.details(List.of(detail))
 					.build();
 
@@ -86,7 +86,7 @@ class SingleGameServiceTest {
 				return entity;
 			});
 
-			SingleGameSaveResponse response = singleGameService.saveGame(request);
+			SingleGameSaveResponse response = singleGameService.saveGame(1L, request);
 
 			assertThat(response.getGameId()).isEqualTo(100L);
 			assertThat(response.getMessage()).isNotNull();
@@ -106,13 +106,13 @@ class SingleGameServiceTest {
 		@DisplayName("존재하지 않는 회원이면 예외를 던진다")
 		void it_throws_when_member_not_found() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.memberId(999L).totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
 					.details(List.of())
 					.build();
 
 			given(memberRepository.existsById(999L)).willReturn(false);
 
-			assertThatThrownBy(() -> singleGameService.saveGame(request))
+			assertThatThrownBy(() -> singleGameService.saveGame(999L, request))
 					.isInstanceOf(BaseException.class);
 		}
 
@@ -120,14 +120,14 @@ class SingleGameServiceTest {
 		@DisplayName("허용되지 않은 totalCourses이면 예외를 던진다")
 		void it_throws_when_total_courses_invalid() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.memberId(1L).totalCourses(4).isCompleted(true).tEnterMain(2000)
+					.totalCourses(4).isCompleted(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
 					.build();
 
 			given(memberRepository.existsById(1L)).willReturn(true);
 
-			assertThatThrownBy(() -> singleGameService.saveGame(request))
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
 					.isInstanceOf(BaseException.class);
 		}
 	}
