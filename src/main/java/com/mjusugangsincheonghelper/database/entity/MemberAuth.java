@@ -26,7 +26,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 public class MemberAuth {
 
 	public enum AuthType {
-		GUEST_KEY, GOOGLE
+		GUEST_KEY, GOOGLE, TEST
 	}
 
 	@Id
