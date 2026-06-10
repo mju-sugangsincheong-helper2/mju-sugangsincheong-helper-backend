@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.singlegame.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.global.api.exception.GlobalExceptionHandler;
 import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
@@ -15,8 +14,6 @@ import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RankInfo;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RecordRanking;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.RankingEntry;
-import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
-import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
 import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
@@ -58,8 +55,6 @@ class SingleGameControllerTest {
 
 	@Autowired
 	private MockMvc mockMvc;
-
-	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	@MockitoBean
 	private SingleGameService singleGameService;
