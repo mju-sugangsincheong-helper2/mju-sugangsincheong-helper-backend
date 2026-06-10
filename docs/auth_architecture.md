@@ -39,9 +39,9 @@
 
 ### 3.1 Google OAuth 로그인 및 가입
 ```
-[1] GET /auth/config/google  -> Google Client ID 및 Scope 조회
-[2] POST /auth/oauth/start   -> CSRF 방지용 state 생성 및 Google 로그인 URL 반환
-[3] POST /auth/token         -> Authorization Code로 ID Token 교환 및 검증
+[1] GET /api/{version}/auth/config/google  -> Google Client ID 및 Scope 조회
+[2] POST /api/{version}/auth/oauth/start   -> CSRF 방지용 state 생성 및 Google 로그인 URL 반환
+[3] POST /api/{version}/auth/token         -> Authorization Code로 ID Token 교환 및 검증
                                 신규 회원인 경우(newUser: true) Member 및 MemberAuth 신설
                                 ATK/RTK 쿠키 발급 및 디바이스 세션 등록
 ```
@@ -49,7 +49,7 @@
 ### 3.2 개인정보 동의서 작성
 ```
 [1] 신규 가입(newUser: true) 시 프론트엔드가 개인정보 동의 안내 UI 노출
-[2] 사용자가 동의 완료 시 POST /auth/privacy/agree 호출
+[2] 사용자가 동의 완료 시 POST /api/{version}/auth/privacy/agree 호출
 [3] MemberAgreementService를 통해 member_agreements 테이블에 감사 기록(status=true, agreedAt=now) 저장
 ```
 
@@ -57,13 +57,13 @@
 ```
 [1] 게스트 로그인 상태에서 Google 로그인 시도
 [2] 병합 일회성 티켓(Merge Ticket) 발급
-[3] POST /auth/login/google/merge {mergeTicket, device, fcmToken} 호출
+[3] POST /api/{version}/auth/login/google/merge {mergeTicket, device, fcmToken} 호출
 [4] 게스트 MemberAuth 제거, 디바이스 세션의 소유권을 구글 Member로 이전 후 게스트 Member 레코드 제거
 ```
 
 ### 3.4 회원 탈퇴 (Account Withdrawal)
 ```
-[1] DELETE /members/me 호출
+[1] DELETE /api/{version}/accounts/me 호출
 [2] MemberService.withdraw() 실행
     - member_agreements 삭제
     - member_device 삭제 (모든 로그인 기기 세션 만료)
@@ -91,8 +91,8 @@ src/main/java/com/mjusugangsincheonghelper/
 │
 ├── member/                                   # 회원 영역 (Member)
 │   ├── controller/
-│   │   ├── MemberController.java             # GET /members/me, DELETE /members/me
-│   │   └── MemberAgreementController.java    # POST /auth/privacy/agree (하위 호환성 유지)
+│   │   ├── MemberController.java             # GET /api/{version}/accounts/me, DELETE /api/{version}/accounts/me
+│   │   └── MemberAgreementController.java    # POST /api/{version}/auth/privacy/agree (하위 호환성 유지)
 │   ├── service/
 │   │   ├── MemberService.java                # 프로필 조회 및 회원 탈퇴 오케스트레이션
 │   │   └── MemberAgreementService.java       # 개인정보 동의 감사 기록 관리
@@ -107,7 +107,7 @@ src/main/java/com/mjusugangsincheonghelper/
     │       └── DeviceInfo.java               # 디바이스 정보 공통 DTO
     │
     ├── guest/                                # 게스트 로그인 피처
-    │   ├── GuestController.java              # POST /auth/guest
+    │   ├── GuestController.java              # POST /api/{version}/auth/guest
     │   ├── GuestService.java                 # 게스트 임시 계정 및 인증 키 발급
     │   └── dto/
     │       ├── GuestCreateRequest.java
@@ -121,7 +121,7 @@ src/main/java/com/mjusugangsincheonghelper/
     │   └── dto/                              # Google OAuth 전용 DTO
     │
     ├── merge/                                # 계정 데이터 병합 피처
-    │   ├── MergeController.java              # POST /login/google/merge
+    │   ├── MergeController.java              # POST /api/{version}/auth/login/google/merge
     │   ├── MergeService.java                 # 게스트 -> 멤버 데이터 이관
     │   ├── MergeTicketService.java           # 일회성 병합 티켓(JWT) 발행/소비
     │   └── dto/
@@ -129,7 +129,7 @@ src/main/java/com/mjusugangsincheonghelper/
     │       └── MergeResponse.java
     │
     └── session/                              # 토큰 및 기기 세션 관리 피처
-        ├── SessionController.java            # POST /auth/refresh, POST /auth/logout
+        ├── SessionController.java            # POST /api/{version}/auth/refresh, POST /api/{version}/auth/logout
         ├── SessionService.java               # 세션 생성, 갱신, 파괴
         ├── device/
         │   └── DeviceSessionService.java     # member_device 데이터 핸들링

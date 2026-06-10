@@ -74,33 +74,63 @@ ResponseEnvelope (abstract)
 ### 구조
 
 ```java
+@Getter
+@AllArgsConstructor
 public enum ErrorCode {
+    // GLOBAL_: 공통 에러
     GLOBAL_BAD_REQUEST(HttpStatus.BAD_REQUEST, "GLOBAL_001", "Bad request."),
     GLOBAL_VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "GLOBAL_002", "Validation failed."),
     GLOBAL_NOT_FOUND(HttpStatus.NOT_FOUND, "GLOBAL_003", "Resource not found."),
     GLOBAL_INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "GLOBAL_004", "Internal server error."),
 
+    // GLOBAL_SECURITY_: 인증/인가 공통
     GLOBAL_SECURITY_UNAUTHORIZED_ACCESS(HttpStatus.UNAUTHORIZED, "GLOBAL_SECURITY_001", "Unauthorized access."),
     GLOBAL_SECURITY_FORBIDDEN(HttpStatus.FORBIDDEN, "GLOBAL_SECURITY_002", "Access denied."),
 
+    // SYSTEM_: 시스템 설정 도메인
     SYSTEM_CONFIG_NOT_FOUND(HttpStatus.NOT_FOUND, "SYSTEM_001", "System config not found."),
+
+    // {DOMAIN}_*: 각 도메인별 에러 (도메인명 접두사 + 시퀀스 번호)
+    AUTH_PRIVACY_POLICY_REQUIRED(HttpStatus.FORBIDDEN, "AUTH_001", "Privacy policy agreement is required."),
+    AUTH_GOOGLE_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_002", "Google authentication failed."),
+    // ...
+
+    SINGLEGAME_GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "SINGLEGAME_001", "Game not found."),
+    // ...
 
     EXAMPLE_NOT_FOUND(HttpStatus.NOT_FOUND, "EXAMPLE_001", "Example not found."),
     EXAMPLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "EXAMPLE_002", "Example already exists.");
+
+    private final HttpStatus status;
+    private final String code;
+    private final String message;
 }
 ```
 
-### 도입 의도
+### 명명 규칙
 
-**도메인별 에러 코드 네임스페이스**를 분리하여 에러 추적과 국제화(i18n)를 용이하게 합니다.
+에러 코드는 **`{도메인명}_{시퀀스}`** 패턴을 따릅니다:
+
+```
+GLOBAL_001          → 공통 도메인 1번
+GLOBAL_SECURITY_001 → 보안 서브도메인 1번
+SYSTEM_001          → 시스템 설정 도메인 1번
+AUTH_001            → 인증 도메인 1번
+SINGLEGAME_001      → 싱글게임 도메인 1번
+```
 
 | 접두사 | 용도 |
 |--------|------|
 | `GLOBAL_` | 공통 에러 (400, 404, 500 등) |
-| `GLOBAL_SECURITY_` | 인증/인가 관련 |
+| `GLOBAL_SECURITY_` | 인증/인가 공통 |
 | `SYSTEM_` | 시스템 설정 도메인 |
-| `EXAMPLE_` | Example 도메인 비즈니스 로직 |
-| `{DOMAIN}_` | 향후 추가될 도메인별 에러 |
+| `AUTH_` | 인증 도메인 (OAuth, JWT, 게스트 병합 등) |
+| `SINGLEGAME_` | 싱글게임 도메인 |
+| `{DOMAIN}_` | 새 도메인 추가 시 도메인명 대문자 접두사 사용 |
+
+### 도입 의도
+
+**도메인별 에러 코드 네임스페이스**를 분리하여 에러 추적과 국제화(i18n)를 용이하게 합니다.
 
 ### 이점
 
@@ -150,6 +180,9 @@ public class ExampleException extends BaseException {
 | `MethodArgumentNotValidException` | GLOBAL_002 | 프레임워크 필드 에러 (`{field, message}`) |
 | `ConstraintViolationException` | GLOBAL_002 | 프레임워크 필드 에러 (`{field, message}`) |
 | `HttpMessageNotReadableException` | GLOBAL_001 | `[{field: null, message: ex.getMessage()}]` |
+| `MissingServletRequestParameterException` | GLOBAL_001 | `[{field: null, message: ex.getMessage()}]` |
+| `MethodArgumentTypeMismatchException` | GLOBAL_001 | `[{field: null, message: ex.getMessage()}]` |
+| `NoResourceFoundException` | GLOBAL_003 | `[{field: null, message: ex.getMessage()}]` |
 | `Exception` (기타) | GLOBAL_004 | `[{field: null, message: ex.class + ": " + ex.message}]` |
 
 ### 도입 의도
@@ -173,12 +206,18 @@ public class ErrorDetail {
 
 ### expose_error_details 제어
 
-`details` 필드는 `system_config` 테이블의 `expose_error_details` 설정으로 on/off 제어:
+`details` 필드는 `application.yml`의 `app.expose-error-details` 프로퍼티로 on/off 제어:
+
+```yaml
+app:
+  expose-error-details: true   # dev
+  expose-error-details: false  # prod
+```
 
 - `true`: `details`에 원본 오류 포함 (dev)
 - `false`: `details` = `null` (prod)
 
-설정은 DB + Redis 캐시 기반으로 동작하며, admin API로 실시간 토글 가능 (`PUT /api/v1/system/configs/expose_error_details`).
+`GlobalExceptionHandler`에서 `@Value("${app.expose-error-details:false}")`로 주입받아 동작합니다.
 
 ---
 
@@ -238,6 +277,29 @@ MDC.put("requestId", requestId);
 MDC.put("instanceId", instanceIdProvider.getInstanceId());
 // ... finally
 MDC.clear();
+```
+
+### Slow Request 로깅
+
+`GlobalMetaFilter`는 요청 처리 완료 후 소요 시간을 확인하여 임계값 초과 시 로그를 남깁니다:
+
+```java
+private void logSlowRequest(String method, String path, long durationMs) {
+    if (durationMs > verySlowMs) {
+        log.error("Very slow request: {} {} took {}ms", method, path, durationMs);
+    } else if (durationMs > slowMs) {
+        log.warn("Slow request: {} {} took {}ms", method, path, durationMs);
+    }
+}
+```
+
+임계값은 `application.yml`의 `app.performance` 프로퍼티로 설정합니다:
+
+```yaml
+app:
+  performance:
+    slow-ms: 1000      # 경고 로그 임계값 (기본 1000ms)
+    very-slow-ms: 5000 # 에러 로그 임계값 (기본 5000ms)
 ```
 
 `InstanceIdProvider`는 앱 시작 시 한 번만 인스턴스 식별자를 결정:
@@ -354,23 +416,58 @@ public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Excepti
         .cors(cors -> cors.configurationSource(corsConfigurationSource()))
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/api/v1/auth/**").permitAll()
-            .requestMatchers("/api/*/example/**").permitAll()
-            .requestMatchers("/api/*/system/**").permitAll()
+            .requestMatchers("/api/**").permitAll()
             .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
             .requestMatchers("/actuator/**").permitAll()
+            .requestMatchers("/*.html").permitAll()
             .anyRequest().authenticated()
-        );
+        )
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
     return http.build();
+}
+
+@Bean
+public PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+}
+
+@Bean
+public RoleHierarchy roleHierarchy() {
+    return RoleHierarchyImpl.fromHierarchy("ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST");
 }
 ```
 
 **설계 결정**:
-- **CORS**: 모든 Origin 허용, `Authorization`, `X-Request-Id`, `X-Api-Version` 헤더 노출
+- **CORS**: 모든 Origin 허용, `Authorization`, `X-Access-Token`, `X-Refresh-Token`, `X-Request-Id`, `X-Api-Version`, `Set-Cookie` 헤더 노출, `maxAge=3600`, `allowCredentials=true`
 - **CSRF**: REST API이므로 비활성화
-- **세션**: Stateless (JWT/OAuth 토큰 기반 인증 예정)
-- **경로**: Swagger UI(`/swagger-ui/**`), API docs(`/v3/api-docs/**`), Actuator(`/actuator/**`), 예제 API(`/api/*/example/**`), 시스템 API(`/api/*/system/**`)는 인증 없이 허용
-- **OAuth2 Client**: `spring-boot-starter-security-oauth2-client` 의존성 포함 (향후 소셜 로그인 지원)
+- **세션**: Stateless (JWT 토큰 기반 인증)
+- **경로**: `/api/**` 전체 permitAll, Swagger UI(`/swagger-ui/**`), API docs(`/v3/api-docs/**`), Actuator(`/actuator/**`), 정적 HTML(`/*.html`)은 인증 없이 허용
+- **JWT 인증**: `JwtAuthenticationFilter`를 `UsernamePasswordAuthenticationFilter` 이전에 등록
+- **PasswordEncoder**: `BCryptPasswordEncoder` 사용
+- **Method Security**: `@EnableMethodSecurity`로 메서드 수준 인가 활성화
+- **Role Hierarchy**: `ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST` 계층 정의
+
+### JwtAuthenticationFilter & TokenExtractor
+
+```
+TokenExtractor (interface)
+├── BearerTokenExtractor  (@Profile({"dev", "test"}))  → Authorization: Bearer 헤더 + access_token 쿠키
+└── CookieTokenExtractor   (@Profile("prod"))            → access_token 쿠키만
+
+JwtAuthenticationFilter (OncePerRequestFilter)
+    → TokenExtractor로 토큰 추출
+    → TokenProvider.parseAccessToken() 검증
+    → SecurityContextHolder에 인증 정보 설정
+```
+
+**JwtAuthenticationFilter**:
+- `UsernamePasswordAuthenticationFilter` 이전에 실행
+- 토큰 추출 → 파싱 → `UsernamePasswordAuthenticationToken` 생성 (principal=`memberId`, authority=`ROLE_{role}`)
+- 토큰 없거나 유효하지 않으면 그냥 통과 (인증 없이 요청 진행)
+
+**TokenExtractor 전략**:
+- **dev/test**: `BearerTokenExtractor` — `Authorization: Bearer {token}` 헤더 우선, 없으면 `access_token` 쿠키 확인
+- **prod**: `CookieTokenExtractor` — `access_token` 쿠키만 확인 (보안 강화)
 
 ### GlobalAsyncConfig
 
@@ -422,6 +519,11 @@ public class HibernateStatisticsConfig {
 
 ```java
 @Bean
+public OperationCustomizer errorResponsesOperationCustomizer() {
+    return new ErrorResponsesOperationCustomizer();
+}
+
+@Bean
 public OpenApiCustomizer errorEnvelopeSchemaCustomizer() {
     return openApi -> {
         ModelConverters.getInstance().read(ErrorResponseEnvelope.class)
@@ -432,6 +534,30 @@ public OpenApiCustomizer errorEnvelopeSchemaCustomizer() {
                 .forEach(components::addSchemas);
     };
 }
+
+@Bean @Profile("prod")
+public OpenAPI prodOpenAPI() {
+    return new OpenAPI()
+            .components(new Components()
+                    .addSecuritySchemes("cookieAuth", new SecurityScheme()
+                            .type(SecurityScheme.Type.APIKEY)
+                            .in(SecurityScheme.In.COOKIE)
+                            .name("access_token")))
+            .addSecurityItem(new SecurityRequirement().addList("cookieAuth"))
+            // ...
+}
+
+@Bean @Profile("dev")
+public OpenAPI devOpenAPI() {
+    return new OpenAPI()
+            .components(new Components()
+                    .addSecuritySchemes("bearerAuth", new SecurityScheme()
+                            .type(SecurityScheme.Type.HTTP)
+                            .scheme("bearer")
+                            .bearerFormat("JWT")))
+            .addSecurityItem(new SecurityRequirement().addList("bearerAuth"))
+            // ...
+}
 ```
 
 **도입 의도**:
@@ -441,6 +567,10 @@ public OpenApiCustomizer errorEnvelopeSchemaCustomizer() {
   - `ErrorDetail`: `error` 필드의 상세 구조 `{ code, message, details }`
   - `FieldViolation`: `details[]` 배열의 요소 `{ field, message }`
   - 세 클래스 모두 등록해야 Swagger UI에서 unresolved reference 오류가 발생하지 않음
+
+**Profile별 Swagger 인증 방식**:
+- `prod`: Cookie 기반 (`access_token` 쿠키)
+- `dev`: Bearer JWT 기반 (Swagger UI에서 토큰 직접 입력)
 
 ### RedisConfig
 
@@ -461,6 +591,7 @@ public class RedisConfig {
         return template;
     }
 
+    @Primary
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
         RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
@@ -483,13 +614,60 @@ public class RedisConfig {
 
 **설계 결정**:
 - `@EnableCaching`: Spring Cache 추상화 활성화 (`@Cacheable`, `@CacheEvict` 사용)
-- `RedisCacheManager`를 명시적 `@Bean`으로 등록하여 Spring Boot auto-configuration 대신 사용
+- `RedisCacheManager`를 명시적 `@Bean`으로 등록하여 Spring Boot auto-configuration 대신 사용 (`@Primary`로 우선 지정)
 - JSON 직렬화: `RedisSerializer.json()`으로 Java 객체를 JSON으로 변환하여 Redis에 저장
 - TTL 24시간: 극저빈도 쓰기 패턴이므로 긴 TTL 유지
 - `CacheErrorHandler`를 `@Bean`으로 등록: Redis 장애 시에도 예외를 무시하고 로깅만 수행하여 캐시 장애가 서비스 장애로 전파되지 않도록 함
 - `CachingConfigurer` 인터페이스를 구현하지 않음: `cacheManager()` 기본값 null 반환 충돌을 방지하고 `@Bean` 방식으로 모든 빈 등록
 
-**Redis 캐시 사용처**: `SystemConfigService.getBoolean()`에 `@Cacheable("system_config")`로 고빈도 읽기 최적화, `update()`에 `@CacheEvict`로 쓰기 시 캐시 무효화.
+**Redis 캐시 사용처**: `SystemConfigService.getCurrentTerm()`에 `@Cacheable("system_config", key = "'current_term'")`로 고빈도 읽기 최적화, `update()`에 `@CacheEvict`로 쓰기 시 캐시 무효화.
+
+### CaffeineConfig
+
+**도입 의도**: Redis조차 느린 경우를 대비한 **인메모리 로컬 캐시**입니다. `current_term`이나 에러 상세 노출 여부처럼 **매우 고빈도로 읽히고 거의 변하지 않는 값**을 Redis 네트워크 왕복 없이 즉시 반환하기 위해 도입했습니다.
+
+```
+요청 → CaffeineCache (인메모리, ~μs)
+     → miss 시에만 실제 로직 수행 → 결과 캐싱
+     → TTL 만료 후 다음 요청에서 재조회
+```
+
+```java
+@Configuration
+public class CaffeineConfig {
+
+    record TimestampedValue(Object value, int ttlSeconds) {}
+
+    @Bean
+    public Cache<String, TimestampedValue> caffeineCache() {
+        return Caffeine.newBuilder()
+                .maximumSize(2000)
+                .expireAfter(new Expiry<String, TimestampedValue>() {
+                    @Override
+                    public long expireAfterCreate(String key, TimestampedValue value, long currentTime) {
+                        return TimeUnit.SECONDS.toNanos(value.ttlSeconds());
+                    }
+                    // ... update/read 시 currentDuration 유지
+                })
+                .build();
+    }
+}
+```
+
+#### 커스텀 애너테이션
+
+```java
+@CaffeineCache(key = "someKey", ttl = 10)   // TTL 10초 (기본값 10초)
+public SomeResult expensiveComputation() { ... }
+
+@CaffeineCacheEvict(key = "someKey")
+public void invalidateCache() { ... }
+```
+
+**설계 결정**:
+- `maximumSize=2000`: LRU 기반 최대 2000개 엔트리 보관
+- per-key TTL: `TimestampedValue` 레코드로 엔트리마다 독립 TTL 관리
+- AOP(`@Aspect`) 기반: `@CaffeineCache` / `@CaffeineCacheEvict` 애너테이션으로 선언적 캐싱
 
 ### JpaAuditingConfig
 
@@ -514,8 +692,8 @@ public class JpaAuditingConfig {
 
 ```sql
 -- system_config 테이블
-config_key   VARCHAR(100) PRIMARY KEY,    -- 설정 키 (ex: "expose_error_details")
-config_value TEXT NOT NULL,               -- 설정 값 (ex: "true")
+    config_key   VARCHAR(100) PRIMARY KEY,    -- 설정 키 (ex: "current_term")
+    config_value TEXT NOT NULL,               -- 설정 값 (ex: "202510")
 config_type  VARCHAR(20) NOT NULL,        -- STRING, JSON, BOOLEAN
 description  TEXT,                        -- 설정 설명
 created_at   TIMESTAMP WITH TIME ZONE,
@@ -526,17 +704,39 @@ updated_at   TIMESTAMP WITH TIME ZONE
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/api/v1/system/configs/{key}` | 설정 조회 |
+| GET | `/api/v1/system/configs` | 시스템 설정 전체 목록 조회 |
+| GET | `/api/v1/system/configs/{key}` | 설정 단건 조회 |
 | PUT | `/api/v1/system/configs/{key}` | 설정 수정 (실시간 반영) |
 
 ### 초기화
 
-`@PostConstruct`에서 다음 키들이 없으면 기본값으로 INSERT. 앱 시작 시 자동 초기화.
+`@PostConstruct`에서 `SettingDefinition` enum에 정의된 키들이 없으면 기본값으로 INSERT. 앱 시작 시 자동 초기화.
 
 | 키 | 기본값 | 타입 | 설명 |
 |----|--------|------|------|
-| `expose_error_details` | `true` | BOOLEAN | 에러 응답에 원본 예외 상세 정보 포함 여부 |
-| `performance_thresholds` | `{"slow_ms":1000,"very_slow_ms":5000}` | JSON | 느린 HTTP 요청 임계값 (ms) |
+| `current_term` | `"202510"` | STRING | 현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기) |
+| `notices` | `"[]"` | JSON | 공지사항 목록 |
+| `announcement` | `""` | STRING | 상단 배너 공지 텍스트 |
+
+> `expose_error_details`와 `performance_thresholds`는 더 이상 DB 기반 시스템 설정이 아닌 `application.yml` 프로퍼티로 관리됩니다. 각각 `app.expose-error-details`, `app.performance.slow-ms` / `app.performance.very-slow-ms`를 참조하세요.
+
+### SettingDefinition (타입 안전 설정 정의)
+
+```java
+public enum SettingDefinition {
+    CURRENT_TERM("current_term", ConfigType.STRING, "현재 학기 설정", "202510",
+            raw -> new TermCode(raw),
+            raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$")),
+    NOTICES("notices", ConfigType.JSON, "공지사항 목록", "[]", ...),
+    ANNOUNCEMENT("announcement", ConfigType.STRING, "상단 배너 공지 텍스트", "", ...);
+}
+```
+
+**도입 의도**:
+- 시스템 설정의 키/타입/기본값/파서/검증기를 한 곳에서 관리
+- `parse()`: raw 문자열을 타입 안전 객체로 변환 (ex: `TermCode` 레코드)
+- `validate()`: 설정 값 유효성 검증
+- `getFrom(SystemConfigService)`: 서비스에서 직접 파싱된 값 획득
 
 ### 캐시 전략
 
@@ -549,8 +749,8 @@ Write: Admin PUT → DB UPDATE + @CacheEvict → Redis 무효화
 ```
 
 설계 의도:
-- 고빈도 읽기(모든 validation error마다 호출)를 Redis로 최적화
-- 극저빈도 쓰기(admin이 가끔 토글)는 DB 업데이트 + 캐시 무효화
+- 고빈도 읽기(`current_term` 조회)를 Redis로 최적화
+- 극저빈도 쓰기(admin이 가끔 수정)는 DB 업데이트 + 캐시 무효화
 - 모든 인스턴스가 Redis 하나를 바라보므로 다중 인스턴스에서도 즉시 동기화
 
 ---

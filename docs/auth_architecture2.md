@@ -130,18 +130,18 @@ com.mjusugangsincheonghelper/
     │   └── dto/
     │       └── DeviceInfo.java
     ├── guest/
-    │   ├── GuestController.java              #   - POST /auth/guest
+    │   ├── GuestController.java              #   - POST /api/{version}/auth/guest
     │   └── GuestService.java                 #   - 게스트 계정 생성
     ├── oauth/
     │   ├── GoogleOAuthController.java        #   - config/google, oauth/start, token
     │   ├── GoogleOAuthService.java           #   - Google ID Token 검증 및 회원 가입
     │   └── OAuthStateService.java            #   - CSRF 방지용 state 검증 (Redis)
     ├── merge/
-    │   ├── MergeController.java              #   - POST /login/google/merge
+    │   ├── MergeController.java              #   - POST /api/{version}/auth/login/google/merge
     │   ├── MergeService.java                 #   - 게스트 데이터 병합 서비스
     │   └── MergeTicketService.java           #   - 일회성 병합 티켓 JWT 생성/파싱
     └── session/
-        ├── SessionController.java            #   - POST /auth/refresh, POST /auth/logout
+        ├── SessionController.java            #   - POST /api/{version}/auth/refresh, POST /api/{version}/auth/logout
         ├── SessionService.java               #   - 세션 생성, 갱신, 파괴
         ├── device/
         │   └── DeviceSessionService.java     #   - member_device CRUD 관리
@@ -165,7 +165,7 @@ com.mjusugangsincheonghelper/
     └→ 구글 로그인 시: Google ID Token 서명 검증 후 Member(MEMBER) 생성 후 ATK/RTK 발급
     
 [2] 약관 동의 (member/agreement)
-    └→ 신규 가입 시 프론트 주도로 POST /auth/privacy/agree 호출하여 감사 로그(agreedAt) 생성
+    └→ 신규 가입 시 프론트 주도로 POST /api/{version}/auth/privacy/agree 호출하여 감사 로그(agreedAt) 생성
 
 [3] 세션 관리 (auth/session)
     └→ 갱신 요청 시 기존 RTK 검증 후 회전(Rotation)하여 신규 ATK/RTK 쿠키 발급
@@ -197,8 +197,8 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 
 개인정보 처리 방침 동의는 OAuth 로그인 프로세스와 **완전히 분리**되어 실행됩니다.
 
-1. `/auth/token` API 응답에서 `newUser: true`를 반환받으면 프론트엔드가 자체적으로 개인정보 동의 UI를 노출합니다.
-2. 사용자가 동의를 수락하면 `POST /auth/privacy/agree` 엔드포인트를 호출합니다.
+1. `/api/{version}/auth/token` API 응답에서 `newUser: true`를 반환받으면 프론트엔드가 자체적으로 개인정보 동의 UI를 노출합니다.
+2. 사용자가 동의를 수락하면 `POST /api/{version}/auth/privacy/agree` 엔드포인트를 호출합니다.
 3. `MemberAgreementService`는 `member_agreements` 테이블에 동의 감사 기록(Agreed Log)을 생성하거나 동의 시각(`agreed_at`)을 갱신합니다.
 
 ---
@@ -266,7 +266,7 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 
 ### 9.1 게스트 생성
 ```
-POST /api/v1/auth/guest
+POST /api/{version}/auth/guest
  └→ GuestController.createGuest()
      └→ GuestService.authenticate()
          ├→ Member.builder().role(GUEST).name("게스트_xxxx").build() 저장
@@ -281,7 +281,7 @@ POST /api/v1/auth/guest
 
 ### 9.2 Google OAuth 로그인
 ```
-POST /api/v1/auth/token
+POST /api/{version}/auth/token
  └→ GoogleOAuthController.tokenExchange()
      ├→ OAuthStateService.consumeState(state) (Redis 검증 및 소비)
      ├→ GoogleOAuthService.authenticate(code)
@@ -295,7 +295,7 @@ POST /api/v1/auth/token
 
 ### 9.3 회원 탈퇴 (Account Withdrawal)
 ```
-DELETE /api/v1/members/me
+DELETE /api/{version}/accounts/me
  └→ MemberController.withdraw()
      ├→ MemberService.withdraw(memberId)
      │   ├→ memberAgreementRepository.deleteById(memberId)

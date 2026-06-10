@@ -1,0 +1,16 @@
+package com.mjusugangsincheonghelper.database.repository;
+
+import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity.ExchangeIntentId;
+import java.util.List;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ExchangeIntentRepository extends JpaRepository<ExchangeIntentEntity, ExchangeIntentId> {
+
+	List<ExchangeIntentEntity> findByTermAndMemberIdOrderByIdDesc(String term, Long memberId);
+
+	List<ExchangeIntentEntity> findByTermAndIsDeletedFalse(String term);
+
+	List<ExchangeIntentEntity> findByTermAndIdGreaterThanOrderByIdAsc(String term, Long id, Pageable pageable);
+}

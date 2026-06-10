@@ -33,7 +33,16 @@ public enum ErrorCode {
 	EXAMPLE_ALREADY_EXISTS(HttpStatus.CONFLICT, "EXAMPLE_002", "Example already exists."),
 
 	SINGLEGAME_GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "SINGLEGAME_001", "Game not found."),
-	SINGLEGAME_INVALID_TOTAL_COURSES(HttpStatus.BAD_REQUEST, "SINGLEGAME_002", "Invalid total courses. Allowed: 1, 3, 6, 7, 8.");
+	SINGLEGAME_INVALID_TOTAL_COURSES(HttpStatus.BAD_REQUEST, "SINGLEGAME_002", "Invalid total courses. Allowed: 1, 3, 6, 7, 8."),
+
+	EXCHANGE_INTENT_NOT_FOUND(HttpStatus.NOT_FOUND, "EXCHANGE_001", "Exchange intent not found."),
+	EXCHANGE_INTENT_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "EXCHANGE_002", "Exchange intent already deleted."),
+	EXCHANGE_INTENT_NOT_OWNER(HttpStatus.FORBIDDEN, "EXCHANGE_003", "Not the owner of this intent."),
+	EXCHANGE_ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "EXCHANGE_004", "Exchange room not found."),
+	EXCHANGE_ROOM_NOT_MEMBER(HttpStatus.FORBIDDEN, "EXCHANGE_005", "Not a member of this room."),
+	EXCHANGE_SAME_COURSE(HttpStatus.BAD_REQUEST, "EXCHANGE_006", "Give and want course numbers cannot be the same."),
+	EXCHANGE_DUPLICATE_INTENT(HttpStatus.CONFLICT, "EXCHANGE_007", "Same exchange intent already exists."),
+	EXCHANGE_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "EXCHANGE_008", "Message content cannot be empty.");
 
 	private final HttpStatus status;
 	private final String code;

@@ -1,0 +1,203 @@
+package com.mjusugangsincheonghelper.exchange.controller;
+
+import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
+import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
+import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
+import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
+import com.mjusugangsincheonghelper.exchange.dto.MessageResponse;
+import com.mjusugangsincheonghelper.exchange.dto.MessageSendRequest;
+import com.mjusugangsincheonghelper.exchange.dto.MessageSendResponse;
+import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse;
+import com.mjusugangsincheonghelper.exchange.service.ExchangeService;
+import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
+import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
+import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Tag(name = "Exchange", description = "수강신청 과목 교환 API")
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/{version}/exchange")
+public class ExchangeController {
+
+	private final ExchangeService exchangeService;
+
+	@PostMapping(value = "/intents", version = "1+")
+	@Operation(
+			summary = "Exchange intent create",
+			description = "교환 의사를 등록합니다. 버릴 과목과 원하는 과목을 지정합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "201",
+							description = "등록 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.EXCHANGE_SAME_COURSE,
+			ErrorCode.EXCHANGE_DUPLICATE_INTENT,
+			ErrorCode.GLOBAL_VALIDATION_ERROR,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<IntentCreateResponse>> createIntent(
+			@Valid @RequestBody IntentCreateRequest request) {
+		Long memberId = getCurrentMemberId();
+		IntentCreateResponse response = exchangeService.createIntent(memberId, request);
+		return ResponseEntity
+				.status(HttpStatus.CREATED)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@DeleteMapping(value = "/intents/{intentId}", version = "1+")
+	@Operation(
+			summary = "Exchange intent delete",
+			description = "등록한 교환 의사를 철회합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "철회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.EXCHANGE_INTENT_NOT_FOUND,
+			ErrorCode.EXCHANGE_INTENT_NOT_OWNER,
+			ErrorCode.EXCHANGE_INTENT_ALREADY_DELETED,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<IntentDeleteResponse>> deleteIntent(
+			@Parameter(description = "교환 의도 ID", example = "10524")
+			@PathVariable Long intentId) {
+		Long memberId = getCurrentMemberId();
+		IntentDeleteResponse response = exchangeService.deleteIntent(memberId, intentId);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@GetMapping(value = "/main", version = "1+")
+	@Operation(
+			summary = "Exchange main status",
+			description = "메인 화면 상태를 조회합니다. 나의 의도 목록과 참여 중인 채팅방 목록을 반환합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<MainResponse>> getMain() {
+		Long memberId = getCurrentMemberId();
+		MainResponse response = exchangeService.getMain(memberId);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@GetMapping(value = "/intents/recent", version = "1+")
+	@Operation(
+			summary = "Recent exchange intents",
+			description = "최근 등록된 교환 의사를 조회합니다. lastIntentId 이후의 데이터만 반환합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<RecentIntentsResponse>> getRecentIntents(
+			@Parameter(description = "마지막으로 확인한 의도 ID", example = "0")
+			@RequestParam(defaultValue = "0") Long lastIntentId,
+			@Parameter(description = "조회할 개수", example = "10")
+			@RequestParam(defaultValue = "10") int limit) {
+		RecentIntentsResponse response = exchangeService.getRecentIntents(lastIntentId, limit);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@GetMapping(value = "/rooms/{roomId}/messages", version = "1+")
+	@Operation(
+			summary = "Room messages",
+			description = "채팅방 메시지 내역을 조회합니다. lastMessageId 이전의 메시지를 반환합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.EXCHANGE_ROOM_NOT_MEMBER,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<MessageResponse>> getMessages(
+			@Parameter(description = "채팅방 ID", example = "402")
+			@PathVariable Long roomId,
+			@Parameter(description = "마지막으로 확인한 메시지 ID", example = "999999999")
+			@RequestParam(defaultValue = "999999999") Long lastMessageId,
+			@Parameter(description = "조회할 개수", example = "20")
+			@RequestParam(defaultValue = "20") int size) {
+		Long memberId = getCurrentMemberId();
+		MessageResponse response = exchangeService.getMessages(memberId, roomId, lastMessageId, size);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@PostMapping(value = "/rooms/{roomId}/messages", version = "1+")
+	@Operation(
+			summary = "Send room message",
+			description = "채팅방에 메시지를 전송합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "201",
+							description = "전송 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.EXCHANGE_ROOM_NOT_MEMBER,
+			ErrorCode.EXCHANGE_MESSAGE_EMPTY,
+			ErrorCode.GLOBAL_VALIDATION_ERROR,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<MessageSendResponse>> sendMessage(
+			@Parameter(description = "채팅방 ID", example = "402")
+			@PathVariable Long roomId,
+			@Valid @RequestBody MessageSendRequest request) {
+		Long memberId = getCurrentMemberId();
+		MessageSendResponse response = exchangeService.sendMessage(memberId, roomId, request);
+		return ResponseEntity
+				.status(HttpStatus.CREATED)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	private Long getCurrentMemberId() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		return (Long) authentication.getPrincipal();
+	}
+}
