@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.global.api.support;
 
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -11,7 +12,7 @@ public final class CustomResponseMetaContextHolder {
 	}
 
 	public static void initialize(String requestId, String apiVersion, String path, String method,
-			String ipAddress, String userAgent, long startedAt) {
+			String ipAddress, String userAgent, Instant startedAt) {
 		CONTEXT.set(new MetaContext(requestId, apiVersion, path, method, ipAddress, userAgent, startedAt));
 	}
 
@@ -33,6 +34,6 @@ public final class CustomResponseMetaContextHolder {
 		private final String method;
 		private final String ipAddress;
 		private final String userAgent;
-		private final long startedAt;
+		private final Instant startedAt;
 	}
 }
