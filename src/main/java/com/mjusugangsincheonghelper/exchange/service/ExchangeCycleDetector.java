@@ -2,6 +2,7 @@ package com.mjusugangsincheonghelper.exchange.service;
 
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -13,29 +14,44 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ExchangeCycleDetector {
 
 	private final ExchangeIntentRepository intentRepository;
+	private final ExchangeRoomRepository roomRepository;
+	private final ExchangeRoomCreationService roomCreationService;
 
-	public List<List<ExchangeIntentEntity>> detectCycles(String term, ExchangeIntentEntity newIntent) {
-		List<ExchangeIntentEntity> allActive = intentRepository.findByTermAndIsDeletedFalse(term);
+	@Async
+	public void detectCyclesAndCreateRooms(String term, ExchangeIntentEntity newIntent) {
+		try {
+			List<ExchangeIntentEntity> allActive = intentRepository.findByTermAndIsDeletedFalse(term);
 
-		Map<String, List<ExchangeIntentEntity>> adjacency = new HashMap<>();
-		for (ExchangeIntentEntity intent : allActive) {
-			adjacency.computeIfAbsent(intent.getGiveCourseNo(), k -> new ArrayList<>()).add(intent);
+			Map<String, List<ExchangeIntentEntity>> adjacency = new HashMap<>();
+			for (ExchangeIntentEntity intent : allActive) {
+				adjacency.computeIfAbsent(intent.getGiveCourseNo(), k -> new ArrayList<>()).add(intent);
+			}
+
+			List<List<ExchangeIntentEntity>> cycles = new ArrayList<>();
+			Set<String> visited = new HashSet<>();
+			List<ExchangeIntentEntity> path = new ArrayList<>();
+
+			dfs(newIntent.getWantCourseNo(), newIntent.getGiveCourseNo(), adjacency, visited, path, cycles);
+
+			for (List<ExchangeIntentEntity> cycle : cycles) {
+				String cycleHash = computeCycleHash(cycle);
+				if (roomRepository.findByTermAndCycleHash(term, cycleHash).isEmpty()) {
+					roomCreationService.createRoom(term, cycle, cycleHash);
+				}
+			}
+		} catch (Exception e) {
+			log.error("Cycle detection failed for term={}, intentId={}", term, newIntent.getId(), e);
 		}
-
-		List<List<ExchangeIntentEntity>> cycles = new ArrayList<>();
-		Set<String> visited = new HashSet<>();
-		List<ExchangeIntentEntity> path = new ArrayList<>();
-
-		dfs(newIntent.getWantCourseNo(), newIntent.getGiveCourseNo(), adjacency, visited, path, cycles);
-
-		return cycles;
 	}
 
 	private void dfs(

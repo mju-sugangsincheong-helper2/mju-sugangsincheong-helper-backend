@@ -32,6 +32,19 @@ app:
   performance:
     slow-ms: 1000
     very-slow-ms: 5000
+  cache:
+    default-ttl: 24h
+    ttls:
+      room-static-meta: 0s
+      user-intents: 24h
+      user-room-ids: 24h
+      user-unread-counts: 24h
+      room-dynamic-meta: 24h
+      room-active-intents: 24h
+      recent-intents-page: 24h
+      singlegame-rank: 5m
+      singlegame-records: 5m
+      singlegame-analysis: 5m
 
 logging:
   level:

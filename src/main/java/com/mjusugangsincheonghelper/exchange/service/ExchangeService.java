@@ -2,14 +2,12 @@ package com.mjusugangsincheonghelper.exchange.service;
 
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeMessageEntity;
-import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMemberEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMemberRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
 import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
@@ -23,17 +21,26 @@ import com.mjusugangsincheonghelper.exchange.dto.MessageSendRequest;
 import com.mjusugangsincheonghelper.exchange.dto.MessageSendResponse;
 import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse;
 import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse.IntentFeedItem;
+import com.mjusugangsincheonghelper.exchange.dto.cache.IntentDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.RecentIntentDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.RoomActiveIntentsDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.RoomDynamicMetaDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.RoomStaticMetaDto;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -41,12 +48,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExchangeService {
 
 	private final ExchangeIntentRepository intentRepository;
-	private final ExchangeRoomRepository roomRepository;
 	private final ExchangeRoomMemberRepository roomMemberRepository;
 	private final ExchangeMessageRepository messageRepository;
 	private final ExchangeRoomReadRepository roomReadRepository;
 	private final ExchangeCycleDetector cycleDetector;
-	private final ExchangeRedisService redisService;
+	private final ExchangeUserCacheService userCacheService;
+	private final ExchangeRoomCacheService roomCacheService;
+	private final ExchangePageCacheService pageCacheService;
+	private final CacheManager cacheManager;
 	private final SystemConfigService systemConfigService;
 
 	@Transactional
@@ -57,7 +66,7 @@ public class ExchangeService {
 			throw new BaseException(ErrorCode.EXCHANGE_SAME_COURSE);
 		}
 
-		List<ExchangeIntentEntity> myIntents = intentRepository.findByTermAndMemberIdOrderByIdDesc(term, memberId);
+		List<IntentDto> myIntents = userCacheService.getUserIntents(term, memberId);
 		boolean duplicate = myIntents.stream()
 				.filter(i -> !i.isDeleted())
 				.anyMatch(i -> i.getGiveCourseNo().equals(request.getGiveCourseNo())
@@ -73,65 +82,24 @@ public class ExchangeService {
 				.wantCourseNo(request.getWantCourseNo())
 				.build());
 
-		List<List<ExchangeIntentEntity>> cycles = cycleDetector.detectCycles(term, saved);
-		for (List<ExchangeIntentEntity> cycle : cycles) {
-			String cycleHash = cycleDetector.computeCycleHash(cycle);
-			if (roomRepository.findByTermAndCycleHash(term, cycleHash).isEmpty()) {
-				createRoom(term, cycle, cycleHash);
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				evictCache("user-intents", term + ":member:" + memberId + ":intents:dto");
+				evictAllCache("recent-intents-page");
+				cycleDetector.detectCyclesAndCreateRooms(term, saved);
 			}
-		}
-
-		redisService.addIntentToFeed(term, saved.getId(), saved.getGiveCourseNo(), saved.getWantCourseNo(), saved.getCreatedAt().toString());
-		redisService.addGraphEdge(term, memberId, saved.getGiveCourseNo(), saved.getWantCourseNo());
+		});
 
 		return IntentCreateResponse.from(saved);
-	}
-
-	@Transactional
-	public void createRoom(String term, List<ExchangeIntentEntity> cycle, String cycleHash) {
-		ExchangeRoomEntity room = roomRepository.save(ExchangeRoomEntity.builder()
-				.term(term)
-				.cycleHash(cycleHash)
-				.build());
-
-		List<CycleDetail> cycleDetails = new ArrayList<>();
-		for (ExchangeIntentEntity intent : cycle) {
-			roomMemberRepository.save(ExchangeRoomMemberEntity.builder()
-					.term(term)
-					.roomId(room.getId())
-					.memberId(intent.getMemberId())
-					.intentId(intent.getId())
-					.build());
-			cycleDetails.add(CycleDetail.builder()
-					.memberId(intent.getMemberId())
-					.giveCourseNo(intent.getGiveCourseNo())
-					.wantCourseNo(intent.getWantCourseNo())
-					.build());
-		}
-
-		RoomSummary summary = RoomSummary.builder()
-				.roomId(room.getId())
-				.totalParticipants(cycle.size())
-				.activeIntentCount(cycle.size())
-				.unreadMessageCount(0)
-				.lastMessage(null)
-				.lastMessageAt(null)
-				.cycleDetails(cycleDetails)
-				.build();
-		redisService.setRoomSummary(term, summary, cycleDetails);
-
-		for (ExchangeIntentEntity intent : cycle) {
-			redisService.addRoomToMember(term, intent.getMemberId(), room.getId());
-		}
-
-		redisService.markCycleHash(term, cycleHash);
 	}
 
 	@Transactional
 	public IntentDeleteResponse deleteIntent(Long memberId, Long intentId) {
 		String term = systemConfigService.getCurrentTerm();
 
-		ExchangeIntentEntity intent = intentRepository.findById(new com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity.ExchangeIntentId(term, intentId))
+		ExchangeIntentEntity intent = intentRepository.findById(
+				new ExchangeIntentEntity.ExchangeIntentId(term, intentId))
 				.orElseThrow(() -> new BaseException(ErrorCode.EXCHANGE_INTENT_NOT_FOUND));
 
 		if (!intent.getMemberId().equals(memberId)) {
@@ -144,8 +112,21 @@ public class ExchangeService {
 
 		intent.delete();
 
-		redisService.removeIntentFromFeed(term, intentId);
-		redisService.removeGraphEdge(term, memberId, intent.getGiveCourseNo(), intent.getWantCourseNo());
+		List<Long> memberRoomIds = roomMemberRepository.findByTermAndMemberId(term, memberId).stream()
+				.map(ExchangeRoomMemberEntity::getRoomId)
+				.distinct()
+				.toList();
+
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				evictCache("user-intents", term + ":member:" + memberId + ":intents:dto");
+				evictAllCache("recent-intents-page");
+				for (Long roomId : memberRoomIds) {
+					evictCache("room-active-intents", term + ":room:" + roomId + ":active_intents:cache");
+				}
+			}
+		});
 
 		return IntentDeleteResponse.builder()
 				.message("교환 의사가 철회되었습니다.")
@@ -158,63 +139,73 @@ public class ExchangeService {
 	public MainResponse getMain(Long memberId) {
 		String term = systemConfigService.getCurrentTerm();
 
-		List<IntentItem> myIntents = intentRepository.findByTermAndMemberIdOrderByIdDesc(term, memberId).stream()
-				.map(IntentItem::from)
+		List<IntentDto> myIntents = userCacheService.getUserIntents(term, memberId);
+		List<Long> roomIds = userCacheService.getUserRoomIds(term, memberId);
+		Map<Long, Integer> unreadCounts = userCacheService.getUserUnreadCounts(term, memberId);
+
+		List<IntentItem> intentItems = myIntents.stream()
+				.map(i -> IntentItem.builder()
+						.intentId(i.getIntentId())
+						.giveCourseNo(i.getGiveCourseNo())
+						.wantCourseNo(i.getWantCourseNo())
+						.isDeleted(i.isDeleted())
+						.createdAt(i.getCreatedAt())
+						.build())
 				.collect(Collectors.toList());
 
-		List<RoomSummary> myRooms = new ArrayList<>();
-		for (String roomIdStr : redisService.getMemberRooms(term, memberId)) {
-			Long roomId = Long.parseLong(roomIdStr);
-			RoomSummary cachedSummary = redisService.getRoomSummary(term, roomId);
-			if (cachedSummary == null) {
-				continue;
-			}
+		List<RoomSummary> myRooms = roomIds.stream().map(roomId -> {
+			RoomStaticMetaDto staticMeta = roomCacheService.getRoomStaticMeta(term, roomId);
+			RoomDynamicMetaDto dynamicMeta = roomCacheService.getRoomDynamicMeta(term, roomId);
+			RoomActiveIntentsDto activeIntents = roomCacheService.getRoomActiveIntents(term, roomId);
 
-			int unread = redisService.getUnreadCount(term, memberId, roomId);
-			List<CycleDetail> cycleDetails = redisService.getCycleDetails(term, roomId);
+			int activeCount = activeIntents.calculateActiveCount();
+			int unread = unreadCounts.getOrDefault(roomId, 0);
 
-			String lastMessage = cachedSummary.getLastMessage();
-			Instant lastMessageAt = cachedSummary.getLastMessageAt();
+			List<CycleDetail> cycleDetails = staticMeta.getCycleDetails().stream()
+					.map(d -> CycleDetail.builder()
+							.memberId(d.getMemberId())
+							.giveCourseNo(d.getGiveCourseNo())
+							.wantCourseNo(d.getWantCourseNo())
+							.build())
+					.toList();
 
-			var latestMsg = messageRepository.findTopByTermAndRoomIdOrderByIdDesc(term, roomId);
-			if (latestMsg.isPresent() && lastMessage == null) {
-				var msg = latestMsg.get();
-				lastMessage = msg.getContent();
-				lastMessageAt = msg.getCreatedAt();
-			}
-
-			myRooms.add(RoomSummary.builder()
-					.roomId(cachedSummary.getRoomId())
-					.totalParticipants(cachedSummary.getTotalParticipants())
-					.activeIntentCount(cachedSummary.getActiveIntentCount())
+			return RoomSummary.builder()
+					.roomId(roomId)
+					.totalParticipants(staticMeta.getTotalParticipants())
+					.activeIntentCount(activeCount)
 					.unreadMessageCount(unread)
-					.lastMessage(lastMessage)
-					.lastMessageAt(lastMessageAt)
+					.lastMessage(dynamicMeta.getLastMessage())
+					.lastMessageAt(dynamicMeta.getLastMessageAt())
 					.cycleDetails(cycleDetails)
-					.build());
-		}
+					.build();
+		}).collect(Collectors.toList());
 
 		return MainResponse.builder()
 				.message("메인 상태 조회 성공")
 				.timestamp(Instant.now())
-				.myIntents(myIntents)
+				.myIntents(intentItems)
 				.myRooms(myRooms)
 				.build();
 	}
 
 	public RecentIntentsResponse getRecentIntents(Long lastIntentId, int limit) {
 		String term = systemConfigService.getCurrentTerm();
-		PageRequest pageable = PageRequest.of(0, limit + 1);
-		List<ExchangeIntentEntity> intents = intentRepository.findByTermAndIdGreaterThanOrderByIdAsc(term, lastIntentId, pageable);
 
-		boolean hasNext = intents.size() > limit;
-		List<ExchangeIntentEntity> result = hasNext ? intents.subList(0, limit) : intents;
+		List<RecentIntentDto> cached = pageCacheService.getRecentIntentsPage(term, lastIntentId, limit + 1);
+
+		boolean hasNext = cached.size() > limit;
+		List<RecentIntentDto> result = hasNext ? cached.subList(0, limit) : cached;
 
 		List<IntentFeedItem> items = result.stream()
-				.map(IntentFeedItem::from)
+				.map(dto -> IntentFeedItem.builder()
+						.intentId(dto.getIntentId())
+						.giveCourseNo(dto.getGiveCourseNo())
+						.wantCourseNo(dto.getWantCourseNo())
+						.createdAt(dto.getCreatedAt())
+						.build())
 				.collect(Collectors.toList());
 
-		Long nextLastIntentId = result.isEmpty() ? lastIntentId : result.get(result.size() - 1).getId();
+		Long nextLastIntentId = result.isEmpty() ? lastIntentId : result.get(result.size() - 1).getIntentId();
 
 		return RecentIntentsResponse.builder()
 				.message("최근 등록된 교환 의사 조회 성공")
@@ -229,7 +220,7 @@ public class ExchangeService {
 	public MessageResponse getMessages(Long memberId, Long roomId, Long lastMessageId, int size) {
 		String term = systemConfigService.getCurrentTerm();
 
-		roomMemberRepository.findById(new com.mjusugangsincheonghelper.database.entity.ExchangeRoomMemberEntity.ExchangeRoomMemberId(term, roomId, memberId))
+		roomMemberRepository.findById(new ExchangeRoomMemberEntity.ExchangeRoomMemberId(term, roomId, memberId))
 				.orElseThrow(() -> new BaseException(ErrorCode.EXCHANGE_ROOM_NOT_MEMBER));
 
 		PageRequest pageable = PageRequest.of(0, size + 1);
@@ -244,12 +235,23 @@ public class ExchangeService {
 
 		if (!result.isEmpty()) {
 			Long minId = result.stream().mapToLong(ExchangeMessageEntity::getId).min().orElse(0L);
-			ExchangeRoomReadEntity read = roomReadRepository.findById(new com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadEntity.ExchangeRoomReadId(term, roomId, memberId))
+			ExchangeRoomReadEntity read = roomReadRepository.findById(
+					new ExchangeRoomReadEntity.ExchangeRoomReadId(term, roomId, memberId))
 					.orElse(ExchangeRoomReadEntity.builder().term(term).roomId(roomId).memberId(memberId).build());
 			read.updateLastReadMessageId(minId);
 			roomReadRepository.save(read);
-			redisService.clearUnread(term, memberId, roomId);
 		}
+
+		List<Long> memberIds = roomMemberRepository.findMemberIdsByRoomId(term, roomId);
+
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				for (Long mid : memberIds) {
+					evictCache("user-unread-counts", term + ":member:" + mid + ":unread_counts:dto");
+				}
+			}
+		});
 
 		Long nextLastMessageId = result.isEmpty() ? lastMessageId : result.get(result.size() - 1).getId();
 
@@ -267,7 +269,7 @@ public class ExchangeService {
 	public MessageSendResponse sendMessage(Long memberId, Long roomId, MessageSendRequest request) {
 		String term = systemConfigService.getCurrentTerm();
 
-		roomMemberRepository.findById(new com.mjusugangsincheonghelper.database.entity.ExchangeRoomMemberEntity.ExchangeRoomMemberId(term, roomId, memberId))
+		roomMemberRepository.findById(new ExchangeRoomMemberEntity.ExchangeRoomMemberId(term, roomId, memberId))
 				.orElseThrow(() -> new BaseException(ErrorCode.EXCHANGE_ROOM_NOT_MEMBER));
 
 		ExchangeMessageEntity saved = messageRepository.save(ExchangeMessageEntity.builder()
@@ -277,12 +279,32 @@ public class ExchangeService {
 				.content(request.getContent())
 				.build());
 
-		for (ExchangeRoomMemberEntity member : roomMemberRepository.findByTermAndRoomId(term, roomId)) {
-			if (!member.getMemberId().equals(memberId)) {
-				redisService.incrementUnread(term, member.getMemberId(), roomId);
+		List<Long> memberIds = roomMemberRepository.findMemberIdsByRoomId(term, roomId);
+
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				evictCache("room-dynamic-meta", term + ":room:" + roomId + ":dynamic_meta:dto");
+				for (Long mid : memberIds) {
+					evictCache("user-unread-counts", term + ":member:" + mid + ":unread_counts:dto");
+				}
 			}
-		}
+		});
 
 		return MessageSendResponse.from(saved);
+	}
+
+	private void evictCache(String cacheName, String key) {
+		Cache cache = cacheManager.getCache(cacheName);
+		if (cache != null) {
+			cache.evict(key);
+		}
+	}
+
+	private void evictAllCache(String cacheName) {
+		Cache cache = cacheManager.getCache(cacheName);
+		if (cache != null) {
+			cache.clear();
+		}
 	}
 }

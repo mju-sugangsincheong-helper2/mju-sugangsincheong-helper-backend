@@ -1,4 +1,4 @@
-package com.mjusugangsincheonghelper.singlegame.dto;
+package com.mjusugangsincheonghelper.singlegame.dto.cache;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MyRecordResponse implements Serializable {
+public class RecordCacheDto implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 

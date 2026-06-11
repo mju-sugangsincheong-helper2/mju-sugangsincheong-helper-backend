@@ -14,12 +14,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.cache.CacheManager;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27,7 +29,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional
 @DisplayName("SingleGame 통합 테스트")
 class SingleGameIntegrationTest {
 
@@ -45,6 +46,12 @@ class SingleGameIntegrationTest {
 	@Autowired
 	private MemberRepository memberRepository;
 
+	@Autowired
+	private StringRedisTemplate stringRedisTemplate;
+
+	@Autowired
+	private CacheManager cacheManager;
+
 	private Member testMember;
 
 	@BeforeEach
@@ -52,6 +59,11 @@ class SingleGameIntegrationTest {
 		singleGameDetailRepository.deleteAll();
 		singleGameRepository.deleteAll();
 		memberRepository.deleteAll();
+
+		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
+			connection.flushDb();
+			return null;
+		});
 
 		testMember = memberRepository.save(Member.builder()
 				.role(Member.Role.MEMBER)
@@ -67,6 +79,13 @@ class SingleGameIntegrationTest {
 	@AfterEach
 	void tearDown() {
 		SecurityContextHolder.clearContext();
+		singleGameDetailRepository.deleteAll();
+		singleGameRepository.deleteAll();
+		memberRepository.deleteAll();
+		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
+			connection.flushDb();
+			return null;
+		});
 	}
 
 	@Nested
@@ -281,6 +300,58 @@ class SingleGameIntegrationTest {
 					.andExpect(jsonPath("$.data.rankings").isArray())
 					.andExpect(jsonPath("$.data.rankings.length()").value(1))
 					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
+		}
+	}
+
+	@Nested
+	@DisplayName("Redis 캐시 동작은")
+	class Describe_redisCache {
+
+		@Test
+		@DisplayName("랭킹 조회 시 Redis 캐시가 생성된다")
+		void it_creates_redis_cache_on_ranking_query() throws Exception {
+			singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
+					.isCompleted(true).totalCourses(6).build());
+
+			Integer keysBefore = stringRedisTemplate.keys("*").size();
+
+			mockMvc.perform(get("/api/v1/singlegame/rank")
+							.param("totalCourses", "6")
+							.param("scope", "GLOBAL"))
+					.andExpect(status().isOk());
+
+			Integer keysAfter = stringRedisTemplate.keys("*").size();
+
+			assertThat(keysAfter).isGreaterThan(keysBefore);
+		}
+
+		@Test
+		@DisplayName("캐시 히트 시에도 동일한 데이터를 응답한다")
+		void it_responds_same_data_on_cache_hit() throws Exception {
+			singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
+					.isCompleted(true).totalCourses(6).build());
+
+			mockMvc.perform(get("/api/v1/singlegame/rank")
+							.param("totalCourses", "6")
+							.param("scope", "GLOBAL"))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
+
+			mockMvc.perform(get("/api/v1/singlegame/rank")
+							.param("totalCourses", "6")
+							.param("scope", "GLOBAL"))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"))
+					.andExpect(jsonPath("$.data.rankings[0].tTotal").value(5000));
+		}
+
+		@Test
+		@DisplayName("CacheManager가 Redis 캐시를 사용한다")
+		void it_uses_redis_cache_manager() {
+			assertThat(cacheManager).isNotNull();
+			assertThat(cacheManager.getCacheNames()).contains("singlegame-rank");
 		}
 	}
 }

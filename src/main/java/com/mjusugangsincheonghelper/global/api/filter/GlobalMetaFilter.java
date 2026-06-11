@@ -8,8 +8,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +35,7 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 			throws ServletException, IOException {
 		String requestId = UUID.randomUUID().toString();
 		String apiVersion = resolveApiVersion(request.getRequestURI());
-		Instant startedAt = Instant.now();
+		long startedAt = System.currentTimeMillis();
 		String ipAddress = clientInfoExtractor.resolveIpAddress(request);
 		String userAgent = clientInfoExtractor.resolveUserAgent(request);
 
@@ -62,7 +60,7 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 		try {
 			filterChain.doFilter(request, response);
 		} finally {
-			long durationMs = Duration.between(startedAt, Instant.now()).toMillis();
+			long durationMs = System.currentTimeMillis() - startedAt;
 			logSlowRequest(request.getMethod(), request.getRequestURI(), durationMs);
 
 			MDC.clear();

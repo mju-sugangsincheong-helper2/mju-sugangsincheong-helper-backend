@@ -20,7 +20,6 @@ import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import jakarta.servlet.http.HttpServletResponse;
-import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -104,7 +103,7 @@ class SessionServiceTest {
 			MemberDevice device = MemberDevice.builder()
 					.memberId(1L)
 					.refreshToken(refreshToken)
-					.expiresAt(Instant.now().plusSeconds(3600))
+					.expiresAt(java.time.Instant.now().plusMillis(3600_000L))
 					.build();
 
 			Member member = Member.builder()

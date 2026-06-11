@@ -12,4 +12,6 @@ public interface ExchangeMessageRepository extends JpaRepository<ExchangeMessage
 	List<ExchangeMessageEntity> findByTermAndRoomIdAndIdLessThanOrderByIdDesc(String term, Long roomId, Long id, Pageable pageable);
 
 	Optional<ExchangeMessageEntity> findTopByTermAndRoomIdOrderByIdDesc(String term, Long roomId);
+
+	int countByTermAndRoomIdAndIdGreaterThan(String term, Long roomId, Long id);
 }

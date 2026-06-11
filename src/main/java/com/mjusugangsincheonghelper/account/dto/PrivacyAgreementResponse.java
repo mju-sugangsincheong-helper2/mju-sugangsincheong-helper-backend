@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.account.dto;
 
-import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -12,5 +11,5 @@ public class PrivacyAgreementResponse {
 
 	private final Long memberId;
 	private final boolean privacyPolicyAgreed;
-	private final Instant agreedAt;
+	private final Long agreedAt;
 }

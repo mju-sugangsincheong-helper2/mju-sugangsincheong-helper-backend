@@ -137,8 +137,8 @@ src/main/resources/
 |------|------|------|
 | 테이블명 | snake_case, 단수형 | `examples`, `system_config` |
 | 컬럼명 | snake_case | `config_key`, `created_at` |
-| Redis 키 | snake_case, `::` 구분자 | `system_config::expose_error_details` |
-| Cache name | snake_case | `system_config` |
+| Redis 키 | kebab-case, `::` 구분자 | `system-config::expose-error-details` |
+| Cache name | kebab-case | `system-config`, `user-intents` |
 
 ### API
 

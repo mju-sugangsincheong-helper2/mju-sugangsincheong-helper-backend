@@ -2,7 +2,6 @@ package com.mjusugangsincheonghelper.account.service;
 
 import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
-import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +28,6 @@ public class AccountAgreementService {
 		return new ConsentStatus(agreement.isStatus(), agreement.getAgreedAt());
 	}
 
-	public record ConsentStatus(boolean status, Instant agreedAt) {
+	public record ConsentStatus(boolean status, Long agreedAt) {
 	}
 }

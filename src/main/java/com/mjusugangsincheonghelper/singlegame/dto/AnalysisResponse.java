@@ -1,25 +1,34 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
+import java.io.Serializable;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @Builder
+@NoArgsConstructor
 @AllArgsConstructor
-public class AnalysisResponse {
+public class AnalysisResponse implements Serializable {
+
+	private static final long serialVersionUID = 1L;
 
 	private long gameId;
 	private int totalCourses;
-	private boolean isCompleted;
+	private boolean completed;
 	private AnalysisSummary summary;
 	private List<AnalysisDetail> details;
 
 	@Getter
 	@Builder
+	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class AnalysisSummary {
+	public static class AnalysisSummary implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
 		private int totalTime;
 		private int globalRank;
 		private double globalPercentile;
@@ -33,8 +42,12 @@ public class AnalysisResponse {
 
 	@Getter
 	@Builder
+	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class AnalysisDetail {
+	public static class AnalysisDetail implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
 		private int sequence;
 		private DataBucket mine;
 		private DataBucket p10;
@@ -46,8 +59,12 @@ public class AnalysisResponse {
 
 	@Getter
 	@Builder
+	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class DataBucket {
+	public static class DataBucket implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
 		private int clickCourse;
 		private int clickYes;
 		private int clickOk;

@@ -23,6 +23,7 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.SubRankings;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.RecordCacheDto;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -30,12 +31,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +51,7 @@ public class SingleGameService {
 	private final SingleGameRepository singleGameRepository;
 	private final SingleGameDetailRepository singleGameDetailRepository;
 	private final MemberRepository memberRepository;
+	private final CacheManager cacheManager;
 
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
 
@@ -84,12 +91,23 @@ public class SingleGameService {
 				.toList();
 		singleGameDetailRepository.saveAll(details);
 
+		int totalCourses = request.getTotalCourses();
+
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				evictRankingCaches(totalCourses);
+				evictMemberRecordCaches(memberId);
+			}
+		});
+
 		return SingleGameSaveResponse.builder()
 				.gameId(gameId)
 				.message("게임 결과가 성공적으로 기록되었습니다.")
 				.build();
 	}
 
+	@Cacheable(value = "singlegame-rank", key = "#totalCourses + ':' + #scope + ':dto'", sync = true)
 	public RankingResponse getRankings(int totalCourses, String scope, Long memberId) {
 		List<Object[]> raw;
 		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
@@ -200,6 +218,16 @@ public class SingleGameService {
 	}
 
 	public Page<MyRecordResponse> getMyRecords(Long memberId, int page, int size) {
+		if (page == 0 && size == 10) {
+			List<RecordCacheDto> cached = getMyRecordsFirstPage(memberId);
+			if (cached != null) {
+				List<MyRecordResponse> records = cached.stream()
+						.map(this::toMyRecordResponse)
+						.toList();
+				return new PageImpl<>(records, PageRequest.of(0, 10), records.size());
+			}
+		}
+
 		Pageable pageable = PageRequest.of(page, size);
 		Page<SingleGameEntity> gamesPage = singleGameRepository
 				.findByMemberIdOrderByCreatedAtDesc(memberId, pageable);
@@ -208,54 +236,28 @@ public class SingleGameService {
 		Member member = memberRepository.findById(memberId).orElse(null);
 		String myDept = member != null ? member.getDepartment() : null;
 
-		List<MyRecordResponse> records = games.stream().map(g -> {
-			int globalRank = computeRank(g.getTotalCourses(), g.getTTotal());
-			long totalPlayers = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(g.getTotalCourses());
-
-			double globalPercentile = totalPlayers > 0 ? (double) (globalRank - 1) / totalPlayers * 100 : 0;
-
-			int deptRank = 0;
-			int deptPlayers = 0;
-			double deptPercentile = 0;
-			if (myDept != null) {
-				List<Long> deptRanked = singleGameRepository
-						.findDeptRankedGameIds(g.getTotalCourses(), myDept);
-				deptPlayers = deptRanked.size();
-				for (int i = 0; i < deptRanked.size(); i++) {
-					if (deptRanked.get(i).equals(g.getId())) {
-						deptRank = i + 1;
-						break;
-					}
-				}
-				deptPercentile = deptPlayers > 0 ? (double) (deptRank - 1) / deptPlayers * 100 : 0;
-			}
-
-			return MyRecordResponse.builder()
-					.gameId(g.getId())
-					.totalCourses(g.getTotalCourses())
-					.isCompleted(g.isCompleted())
-					.tTotal(g.getTTotal())
-					.tEnterMain(g.getTEnterMain())
-					.createdAt(g.getCreatedAt())
-					.ranking(RecordRanking.builder()
-							.global(RankInfo.builder()
-									.rank(globalRank)
-									.totalParticipants((int) totalPlayers)
-									.percentile(Math.round(globalPercentile * 10.0) / 10.0)
-									.build())
-							.department(RankInfo.builder()
-									.rank(deptRank)
-									.totalParticipants(deptPlayers)
-									.percentile(Math.round(deptPercentile * 10.0) / 10.0)
-									.build())
-							.build())
-					.build();
-		}).toList();
+		List<MyRecordResponse> records = games.stream().map(g -> buildMyRecordResponse(g, myDept)).toList();
 
 		return new PageImpl<>(records, pageable, gamesPage.getTotalElements());
 	}
 
-	public AnalysisResponse getAnalysis(Long gameId) {
+	@Cacheable(value = "singlegame-records", key = "#memberId + ':page:0:size:10:dto'", sync = true)
+	public List<RecordCacheDto> getMyRecordsFirstPage(Long memberId) {
+		Pageable pageable = PageRequest.of(0, 10);
+		Page<SingleGameEntity> gamesPage = singleGameRepository
+				.findByMemberIdOrderByCreatedAtDesc(memberId, pageable);
+		List<SingleGameEntity> games = gamesPage.getContent();
+
+		Member member = memberRepository.findById(memberId).orElse(null);
+		String myDept = member != null ? member.getDepartment() : null;
+
+		return games.stream()
+				.map(g -> toRecordCacheDto(g, myDept))
+				.toList();
+	}
+
+	@Cacheable(value = "singlegame-analysis", key = "#gameId + ':view'", sync = true)
+	public AnalysisResponse getAnalysis(long gameId) {
 		SingleGameEntity game = singleGameRepository.findById(gameId)
 				.orElseThrow(() -> new BaseException(ErrorCode.SINGLEGAME_GAME_NOT_FOUND));
 
@@ -394,10 +396,116 @@ public class SingleGameService {
 		return AnalysisResponse.builder()
 				.gameId(gameId)
 				.totalCourses(totalCourses)
-				.isCompleted(game.isCompleted())
+				.completed(game.isCompleted())
 				.summary(summary)
 				.details(analysisDetails)
 				.build();
+	}
+
+	private MyRecordResponse buildMyRecordResponse(SingleGameEntity g, String myDept) {
+		int globalRank = computeRank(g.getTotalCourses(), g.getTTotal());
+		long totalPlayers = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(g.getTotalCourses());
+
+		double globalPercentile = totalPlayers > 0 ? (double) (globalRank - 1) / totalPlayers * 100 : 0;
+
+		int deptRank = 0;
+		int deptPlayers = 0;
+		double deptPercentile = 0;
+		if (myDept != null) {
+			List<Long> deptRanked = singleGameRepository
+					.findDeptRankedGameIds(g.getTotalCourses(), myDept);
+			deptPlayers = deptRanked.size();
+			for (int i = 0; i < deptRanked.size(); i++) {
+				if (deptRanked.get(i).equals(g.getId())) {
+					deptRank = i + 1;
+					break;
+				}
+			}
+			deptPercentile = deptPlayers > 0 ? (double) (deptRank - 1) / deptPlayers * 100 : 0;
+		}
+
+		return MyRecordResponse.builder()
+				.gameId(g.getId())
+				.totalCourses(g.getTotalCourses())
+				.completed(g.isCompleted())
+				.tTotal(g.getTTotal())
+				.tEnterMain(g.getTEnterMain())
+				.createdAt(g.getCreatedAt())
+				.ranking(RecordRanking.builder()
+						.global(RankInfo.builder()
+								.rank(globalRank)
+								.totalParticipants((int) totalPlayers)
+								.percentile(Math.round(globalPercentile * 10.0) / 10.0)
+								.build())
+						.department(RankInfo.builder()
+								.rank(deptRank)
+								.totalParticipants(deptPlayers)
+								.percentile(Math.round(deptPercentile * 10.0) / 10.0)
+								.build())
+						.build())
+				.build();
+	}
+
+	private RecordCacheDto toRecordCacheDto(SingleGameEntity g, String myDept) {
+		MyRecordResponse response = buildMyRecordResponse(g, myDept);
+		return RecordCacheDto.builder()
+				.gameId(response.getGameId())
+				.totalCourses(response.getTotalCourses())
+				.completed(response.isCompleted())
+				.tTotal(response.getTTotal())
+				.tEnterMain(response.getTEnterMain())
+				.createdAt(response.getCreatedAt())
+				.ranking(RecordCacheDto.RecordRanking.builder()
+						.global(RecordCacheDto.RankInfo.builder()
+								.rank(response.getRanking().getGlobal().getRank())
+								.totalParticipants(response.getRanking().getGlobal().getTotalParticipants())
+								.percentile(response.getRanking().getGlobal().getPercentile())
+								.build())
+						.department(RecordCacheDto.RankInfo.builder()
+								.rank(response.getRanking().getDepartment().getRank())
+								.totalParticipants(response.getRanking().getDepartment().getTotalParticipants())
+								.percentile(response.getRanking().getDepartment().getPercentile())
+								.build())
+						.build())
+				.build();
+	}
+
+	private MyRecordResponse toMyRecordResponse(RecordCacheDto dto) {
+		return MyRecordResponse.builder()
+				.gameId(dto.getGameId())
+				.totalCourses(dto.getTotalCourses())
+				.completed(dto.isCompleted())
+				.tTotal(dto.getTTotal())
+				.tEnterMain(dto.getTEnterMain())
+				.createdAt(dto.getCreatedAt())
+				.ranking(RecordRanking.builder()
+						.global(RankInfo.builder()
+								.rank(dto.getRanking().getGlobal().getRank())
+								.totalParticipants(dto.getRanking().getGlobal().getTotalParticipants())
+								.percentile(dto.getRanking().getGlobal().getPercentile())
+								.build())
+						.department(RankInfo.builder()
+								.rank(dto.getRanking().getDepartment().getRank())
+								.totalParticipants(dto.getRanking().getDepartment().getTotalParticipants())
+								.percentile(dto.getRanking().getDepartment().getPercentile())
+								.build())
+						.build())
+				.build();
+	}
+
+	private void evictRankingCaches(int totalCourses) {
+		Cache cache = cacheManager.getCache("singlegame-rank");
+		if (cache != null) {
+			cache.evict(totalCourses + ":GLOBAL:dto");
+			cache.evict(totalCourses + ":DEPARTMENT:dto");
+		}
+	}
+
+	private void evictMemberRecordCaches(Long memberId) {
+		Cache cache = cacheManager.getCache("singlegame-records");
+		if (cache != null) {
+			cache.evict(memberId + ":page:0:size:10:dto");
+		}
 	}
 
 	private static class FeedbackResult {
@@ -413,7 +521,6 @@ public class SingleGameService {
 	private FeedbackResult determineFeedback(double aimP, double burstP, double eP, double startP,
 	                                         double paceP, int N, List<Integer> totals,
 	                                         double avgTotal, double paceStddev) {
-		// Category 1: Physical Balance (Aiming vs Burst)
 		if (aimP <= 30 && burstP <= 30) {
 			return new FeedbackResult("GOD_TIER_PHYSICAL",
 					"압도적이고 완벽한 피지컬! 에이밍과 팝업 연타 모두 최상위권입니다. 수강신청 실패는 당신의 사전에 없습니다.");
@@ -435,7 +542,6 @@ public class SingleGameService {
 					"과목 조준은 안정적이지만, 팝업창을 처리하는 연타 반응이 상대적으로 아쉽습니다. 엔터키나 마우스 좌클릭을 더 빠르게 누르는 감각을 익혀보세요.");
 		}
 
-		// Category 2: Entry & Start
 		if (eP <= 30 && startP <= 30) {
 			return new FeedbackResult("PERFECT_ENTRY_START",
 					"완벽에 가까운 정각 진입과 압도적인 1순위 과목 선점! 수강신청 도입부의 지배자입니다.");
@@ -457,7 +563,6 @@ public class SingleGameService {
 					"진입 타이밍은 보통 수준으로 무난했으나 1순위 과목을 선점하는 속도가 폭발적이지 못합니다. 가장 치열한 첫 과목에 모든 집중을 쏟으세요!");
 		}
 
-		// Category 3: Pace & Focus (N >= 3)
 		if (N >= 3) {
 			if (paceP <= 30) {
 				return new FeedbackResult("MACHINE_LIKE_PACE",

@@ -1,8 +1,6 @@
 package com.mjusugangsincheonghelper.global.api.support;
 
 import com.mjusugangsincheonghelper.global.api.meta.ResponseMeta;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.UUID;
 
 public final class MetaGenerator {
@@ -11,7 +9,7 @@ public final class MetaGenerator {
 	}
 
 	public static ResponseMeta generate() {
-		Instant now = Instant.now();
+		long now = System.currentTimeMillis();
 		CustomResponseMetaContextHolder.MetaContext context = CustomResponseMetaContextHolder.get();
 
 		if (context == null) {
@@ -22,7 +20,7 @@ public final class MetaGenerator {
 					.build();
 		}
 
-		long durationMs = Duration.between(context.getStartedAt(), now).toMillis();
+		long durationMs = now - context.getStartedAt();
 
 		return ResponseMeta.builder()
 				.requestId(context.getRequestId())

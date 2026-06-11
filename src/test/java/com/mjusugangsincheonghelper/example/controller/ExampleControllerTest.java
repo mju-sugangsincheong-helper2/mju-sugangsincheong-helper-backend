@@ -32,7 +32,6 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -161,8 +160,8 @@ class ExampleControllerTest {
 					.title("Test Title")
 					.content("Test Content")
 					.active(true)
-					.createdAt(Instant.now())
-					.updatedAt(Instant.now())
+					.createdAt(java.time.Instant.now())
+					.updatedAt(java.time.Instant.now())
 					.build();
 			given(exampleService.create(any(ExampleCreateRequest.class))).willReturn(response);
 
@@ -204,8 +203,8 @@ class ExampleControllerTest {
 					.title("Test")
 					.content("Content")
 					.active(true)
-					.createdAt(Instant.now())
-					.updatedAt(Instant.now())
+					.createdAt(java.time.Instant.now())
+					.updatedAt(java.time.Instant.now())
 					.build();
 			given(exampleService.findById(1L)).willReturn(response);
 
@@ -273,8 +272,8 @@ class ExampleControllerTest {
 					.title("Updated Title")
 					.content("Updated Content")
 					.active(true)
-					.createdAt(Instant.now())
-					.updatedAt(Instant.now())
+					.createdAt(java.time.Instant.now())
+					.updatedAt(java.time.Instant.now())
 					.build();
 			given(exampleService.update(eq(1L), any(ExampleUpdateRequest.class))).willReturn(response);
 

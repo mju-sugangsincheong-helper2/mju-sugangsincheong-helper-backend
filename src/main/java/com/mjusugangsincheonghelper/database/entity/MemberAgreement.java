@@ -4,7 +4,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -23,7 +22,7 @@ public class MemberAgreement {
 	private boolean status;
 
 	@Column(name = "agreed_at")
-	private Instant agreedAt;
+	private Long agreedAt;
 
 	@Builder
 	public MemberAgreement(Long memberId) {
@@ -35,12 +34,12 @@ public class MemberAgreement {
 	public static MemberAgreement agree(Long memberId) {
 		MemberAgreement agreement = new MemberAgreement(memberId);
 		agreement.status = true;
-		agreement.agreedAt = Instant.now();
+		agreement.agreedAt = System.currentTimeMillis();
 		return agreement;
 	}
 
 	public void agree() {
 		this.status = true;
-		this.agreedAt = Instant.now();
+		this.agreedAt = System.currentTimeMillis();
 	}
 }

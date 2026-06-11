@@ -34,12 +34,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.Instant;
 import java.util.Collections;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -105,7 +103,7 @@ class ExchangeControllerTest {
 
 			IntentCreateResponse response = IntentCreateResponse.builder()
 					.message("교환 의사가 성공적으로 등록되었습니다.")
-					.timestamp(Instant.now())
+					.timestamp(java.time.Instant.now())
 					.intentId(1L)
 					.memberId(100L)
 					.giveCourseNo("10001")
@@ -209,7 +207,7 @@ class ExchangeControllerTest {
 
 			IntentDeleteResponse response = IntentDeleteResponse.builder()
 					.message("교환 의사가 철회되었습니다.")
-					.timestamp(Instant.now())
+					.timestamp(java.time.Instant.now())
 					.intentId(intentId)
 					.isDeleted(true)
 					.build();
@@ -276,7 +274,7 @@ class ExchangeControllerTest {
 		void it_returns_200() throws Exception {
 			MainResponse response = MainResponse.builder()
 					.message("메인 상태 조회 성공")
-					.timestamp(Instant.now())
+					.timestamp(java.time.Instant.now())
 					.myIntents(Collections.emptyList())
 					.myRooms(Collections.emptyList())
 					.build();
@@ -301,7 +299,7 @@ class ExchangeControllerTest {
 		void it_returns_200() throws Exception {
 			RecentIntentsResponse response = RecentIntentsResponse.builder()
 					.message("최근 등록된 교환 의사 조회 성공")
-					.timestamp(Instant.now())
+					.timestamp(java.time.Instant.now())
 					.intents(Collections.emptyList())
 					.nextLastIntentId(0L)
 					.hasNext(false)
@@ -330,7 +328,7 @@ class ExchangeControllerTest {
 
 			MessageResponse response = MessageResponse.builder()
 					.message("메시지 조회 성공")
-					.timestamp(Instant.now())
+					.timestamp(java.time.Instant.now())
 					.roomId(roomId)
 					.messages(Collections.emptyList())
 					.nextLastMessageId(0L)
@@ -379,12 +377,12 @@ class ExchangeControllerTest {
 
 			MessageSendResponse response = MessageSendResponse.builder()
 					.message("메시지가 전송되었습니다.")
-					.timestamp(Instant.now())
+					.timestamp(java.time.Instant.now())
 					.messageId(1L)
 					.roomId(roomId)
 					.senderId(100L)
 					.content("테스트 메시지")
-					.createdAt(Instant.now())
+					.createdAt(java.time.Instant.now())
 					.build();
 
 			given(exchangeService.sendMessage(any(), any(), any(MessageSendRequest.class)))

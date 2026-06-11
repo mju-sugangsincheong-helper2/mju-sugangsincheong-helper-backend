@@ -19,6 +19,9 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
     open-in-view: false
 
+  cache:
+    type: redis
+
   data:
     redis:
       host: localhost
@@ -32,6 +35,19 @@ app:
     access-token-expiry-ms: 3600000
     refresh-token-expiry-ms: 604800000
     merge-ticket-expiry-ms: 300000
+  cache:
+    default-ttl: 24h
+    ttls:
+      room-static-meta: 0s
+      user-intents: 24h
+      user-room-ids: 24h
+      user-unread-counts: 24h
+      room-dynamic-meta: 24h
+      room-active-intents: 24h
+      recent-intents-page: 24h
+      singlegame-rank: 5m
+      singlegame-records: 5m
+      singlegame-analysis: 5m
   oauth2:
     google:
       client-id: test-client-id

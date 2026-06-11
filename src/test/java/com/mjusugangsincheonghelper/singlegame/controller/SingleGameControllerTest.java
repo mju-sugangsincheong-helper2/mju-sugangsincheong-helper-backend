@@ -17,7 +17,6 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.RankingEntry;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
 import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
-import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -177,8 +176,8 @@ class SingleGameControllerTest {
 		@DisplayName("내 게임 기록 목록을 페이징하여 반환한다")
 		void it_returns_my_records_page() throws Exception {
 			MyRecordResponse record = MyRecordResponse.builder()
-					.gameId(1L).totalCourses(6).isCompleted(true)
-					.tTotal(5000).tEnterMain(2000).createdAt(Instant.now())
+					.gameId(1L).totalCourses(6).completed(true)
+					.tTotal(5000).tEnterMain(2000).createdAt(java.time.Instant.now())
 					.ranking(RecordRanking.builder()
 							.global(RankInfo.builder().rank(1).totalParticipants(50).percentile(0).build())
 							.department(RankInfo.builder().rank(1).totalParticipants(10).percentile(0).build())
@@ -205,7 +204,7 @@ class SingleGameControllerTest {
 		@DisplayName("게임 분석 결과를 반환한다")
 		void it_returns_analysis() throws Exception {
 			AnalysisResponse serviceResponse = AnalysisResponse.builder()
-					.gameId(1L).totalCourses(6).isCompleted(true)
+					.gameId(1L).totalCourses(6).completed(true)
 					.summary(AnalysisSummary.builder()
 							.totalTime(12000).globalRank(5).globalPercentile(4.0)
 							.purePhysicalAverage(3000).entryPrecision(2000)
