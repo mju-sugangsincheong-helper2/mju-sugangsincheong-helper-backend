@@ -23,7 +23,7 @@ public class ExchangeRoomCacheService {
 	private final ExchangeIntentRepository intentRepository;
 	private final ExchangeMessageRepository messageRepository;
 
-	@Cacheable(value = "room-static-meta", key = "#term + ':room:' + #roomId + ':static_meta:dto'", sync = true)
+	@Cacheable(value = "room-static-meta", key = "#term + ':room:' + #roomId + ':static_meta:cache'", sync = true)
 	public RoomStaticMetaDto getRoomStaticMeta(String term, Long roomId) {
 		List<ExchangeRoomMemberEntity> members = roomMemberRepository.findByTermAndRoomId(term, roomId);
 		List<RoomStaticMetaDto.CycleDetailDto> cycleDetails = members.stream()
@@ -46,7 +46,7 @@ public class ExchangeRoomCacheService {
 				.build();
 	}
 
-	@Cacheable(value = "room-dynamic-meta", key = "#term + ':room:' + #roomId + ':dynamic_meta:dto'", sync = true)
+	@Cacheable(value = "room-dynamic-meta", key = "#term + ':room:' + #roomId + ':dynamic_meta:cache'", sync = true)
 	public RoomDynamicMetaDto getRoomDynamicMeta(String term, Long roomId) {
 		return messageRepository.findTopByTermAndRoomIdOrderByIdDesc(term, roomId)
 				.map(msg -> RoomDynamicMetaDto.builder()

@@ -41,7 +41,7 @@ public class SystemConfigService {
 		}
 	}
 
-	@Cacheable(value = "system-config", key = "'current_term'")
+	@Cacheable(value = "system-config", key = "'current_term:' + 'cache'")
 	public String getCurrentTerm() {
 		return getRaw("current_term");
 	}
@@ -60,7 +60,7 @@ public class SystemConfigService {
 		return SystemConfigResponse.from(config);
 	}
 
-	@CacheEvict(value = "system-config", key = "'current_term'", condition = "#configKey.equals('current_term')")
+	@CacheEvict(value = "system-config", key = "'current_term:' + 'cache'", condition = "#configKey.equals('current_term')")
 	@Transactional
 	public SystemConfigResponse update(String configKey, SystemConfigUpdateRequest request) {
 		SystemConfig config = repository.findById(configKey)

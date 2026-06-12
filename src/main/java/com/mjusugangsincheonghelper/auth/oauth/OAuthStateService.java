@@ -16,12 +16,12 @@ public class OAuthStateService {
 
     public String createState() {
         String state = UUID.randomUUID().toString();
-        redisTemplate.opsForValue().set(KEY_PREFIX + state, "1", STATE_TTL_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(KEY_PREFIX + state + ":session", "1", STATE_TTL_SECONDS, TimeUnit.SECONDS);
         return state;
     }
 
     public boolean consumeState(String state) {
-        Boolean deleted = redisTemplate.delete(KEY_PREFIX + state);
+        Boolean deleted = redisTemplate.delete(KEY_PREFIX + state + ":session");
         return Boolean.TRUE.equals(deleted);
     }
 }

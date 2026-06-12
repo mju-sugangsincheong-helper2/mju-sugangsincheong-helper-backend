@@ -85,7 +85,7 @@ public class ExchangeService {
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override
 			public void afterCommit() {
-				evictCache("user-intents", term + ":member:" + memberId + ":intents:dto");
+				evictCache("user-intents", term + ":member:" + memberId + ":intents:cache");
 				evictAllCache("recent-intents-page");
 				cycleDetector.detectCyclesAndCreateRooms(term, saved);
 			}
@@ -120,7 +120,7 @@ public class ExchangeService {
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override
 			public void afterCommit() {
-				evictCache("user-intents", term + ":member:" + memberId + ":intents:dto");
+				evictCache("user-intents", term + ":member:" + memberId + ":intents:cache");
 				evictAllCache("recent-intents-page");
 				for (Long roomId : memberRoomIds) {
 					evictCache("room-active-intents", term + ":room:" + roomId + ":active_intents:cache");
@@ -248,7 +248,7 @@ public class ExchangeService {
 			@Override
 			public void afterCommit() {
 				for (Long mid : memberIds) {
-					evictCache("user-unread-counts", term + ":member:" + mid + ":unread_counts:dto");
+					evictCache("user-unread-counts", term + ":member:" + mid + ":unread_counts:cache");
 				}
 			}
 		});
@@ -284,9 +284,9 @@ public class ExchangeService {
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override
 			public void afterCommit() {
-				evictCache("room-dynamic-meta", term + ":room:" + roomId + ":dynamic_meta:dto");
+				evictCache("room-dynamic-meta", term + ":room:" + roomId + ":dynamic_meta:cache");
 				for (Long mid : memberIds) {
-					evictCache("user-unread-counts", term + ":member:" + mid + ":unread_counts:dto");
+					evictCache("user-unread-counts", term + ":member:" + mid + ":unread_counts:cache");
 				}
 			}
 		});

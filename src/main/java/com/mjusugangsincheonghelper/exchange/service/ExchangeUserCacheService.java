@@ -25,7 +25,7 @@ public class ExchangeUserCacheService {
 	private final ExchangeRoomReadRepository roomReadRepository;
 	private final ExchangeMessageRepository messageRepository;
 
-	@Cacheable(value = "user-intents", key = "#term + ':member:' + #memberId + ':intents:dto'", sync = true)
+	@Cacheable(value = "user-intents", key = "#term + ':member:' + #memberId + ':intents:cache'", sync = true)
 	public List<IntentDto> getUserIntents(String term, Long memberId) {
 		return intentRepository.findByTermAndMemberIdOrderByIdDesc(term, memberId).stream()
 				.map(IntentDto::from)
@@ -40,7 +40,7 @@ public class ExchangeUserCacheService {
 				.toList();
 	}
 
-	@Cacheable(value = "user-unread-counts", key = "#term + ':member:' + #memberId + ':unread_counts:dto'", sync = true)
+	@Cacheable(value = "user-unread-counts", key = "#term + ':member:' + #memberId + ':unread_counts:cache'", sync = true)
 	public Map<Long, Integer> getUserUnreadCounts(String term, Long memberId) {
 		List<ExchangeRoomMemberEntity> roomMembers = roomMemberRepository.findByTermAndMemberId(term, memberId);
 		Map<Long, Integer> counts = new HashMap<>();

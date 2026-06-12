@@ -107,7 +107,7 @@ public class SingleGameService {
 				.build();
 	}
 
-	@Cacheable(value = "singlegame-rank", key = "#totalCourses + ':' + #scope + ':dto'", sync = true)
+	@Cacheable(value = "singlegame-rank", key = "#totalCourses + ':' + #scope + ':cache'", sync = true)
 	public RankingResponse getRankings(int totalCourses, String scope, Long memberId) {
 		List<Object[]> raw;
 		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
@@ -241,7 +241,7 @@ public class SingleGameService {
 		return new PageImpl<>(records, pageable, gamesPage.getTotalElements());
 	}
 
-	@Cacheable(value = "singlegame-records", key = "#memberId + ':page:0:size:10:dto'", sync = true)
+	@Cacheable(value = "singlegame-records", key = "#memberId + ':page:0:size:10:cache'", sync = true)
 	public List<RecordCacheDto> getMyRecordsFirstPage(Long memberId) {
 		Pageable pageable = PageRequest.of(0, 10);
 		Page<SingleGameEntity> gamesPage = singleGameRepository
@@ -256,7 +256,7 @@ public class SingleGameService {
 				.toList();
 	}
 
-	@Cacheable(value = "singlegame-analysis", key = "#gameId + ':view'", sync = true)
+	@Cacheable(value = "singlegame-analysis", key = "#gameId + ':cache'", sync = true)
 	public AnalysisResponse getAnalysis(long gameId) {
 		SingleGameEntity game = singleGameRepository.findById(gameId)
 				.orElseThrow(() -> new BaseException(ErrorCode.SINGLEGAME_GAME_NOT_FOUND));
@@ -496,15 +496,15 @@ public class SingleGameService {
 	private void evictRankingCaches(int totalCourses) {
 		Cache cache = cacheManager.getCache("singlegame-rank");
 		if (cache != null) {
-			cache.evict(totalCourses + ":GLOBAL:dto");
-			cache.evict(totalCourses + ":DEPARTMENT:dto");
+			cache.evict(totalCourses + ":GLOBAL:cache");
+			cache.evict(totalCourses + ":DEPARTMENT:cache");
 		}
 	}
 
 	private void evictMemberRecordCaches(Long memberId) {
 		Cache cache = cacheManager.getCache("singlegame-records");
 		if (cache != null) {
-			cache.evict(memberId + ":page:0:size:10:dto");
+			cache.evict(memberId + ":page:0:size:10:cache");
 		}
 	}
 

@@ -61,7 +61,7 @@ public class ExchangeRoomCreationService {
 		}
 		if (unreadCache != null) {
 			for (Long memberId : memberIds) {
-				unreadCache.evict(term + ":member:" + memberId + ":unread_counts:dto");
+				unreadCache.evict(term + ":member:" + memberId + ":unread_counts:cache");
 			}
 		}
 	}

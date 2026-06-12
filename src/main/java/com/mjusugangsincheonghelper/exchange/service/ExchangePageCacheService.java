@@ -16,7 +16,7 @@ public class ExchangePageCacheService {
 
 	private final ExchangeIntentRepository intentRepository;
 
-	@Cacheable(value = "recent-intents-page", key = "#term + ':recent_intents:lastId:' + #lastIntentId + ':limit:' + #limit + ':dto'", sync = true)
+	@Cacheable(value = "recent-intents-page", key = "#term + ':recent_intents:lastId:' + #lastIntentId + ':limit:' + #limit + ':cache'", sync = true)
 	public List<RecentIntentDto> getRecentIntentsPage(String term, Long lastIntentId, int limit) {
 		PageRequest pageable = PageRequest.of(0, limit);
 		return intentRepository.findByTermAndIdGreaterThanOrderByIdAsc(term, lastIntentId, pageable).stream()
