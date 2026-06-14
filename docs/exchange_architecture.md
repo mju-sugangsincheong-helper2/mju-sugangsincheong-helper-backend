@@ -553,7 +553,7 @@ private void scheduleDoubleEvict(String key) {
       "memberId": 9931,
       "giveCourseNo": "10023",
       "wantCourseNo": "40101",
-      "isDeleted": false,
+      "deleted": false,
       "createdAt": 1749518850000
     }
   }
@@ -569,7 +569,7 @@ private void scheduleDoubleEvict(String key) {
   {
     "data": {
       "intentId": 10524,
-      "isDeleted": true,
+      "deleted": true,
       "deletedAt": 1749519312000
     }
   }
@@ -589,15 +589,15 @@ private void scheduleDoubleEvict(String key) {
           "intentId": 10524,
           "giveCourseNo": "10023",
           "wantCourseNo": "40101",
-          "isDeleted": false,
+          "deleted": false,
           "createdAt": 1749518850000
         }
       ],
       "myRooms": [
         {
           "roomId": 402,
-          "isActive": true,
-          "isOn": true,
+          "active": true,
+          "on": true,
           "unreadCount": 2,
           "lastMessageContent": "네 그럼 3시에 맞춰서 동시에 취소할까요?",
           "lastMessageAt": 1749519015000
@@ -693,11 +693,11 @@ private void scheduleDoubleEvict(String key) {
 
 ##### **7. 방 ON/OFF 토글**
 - **Method & Path:** `PATCH /api/v1/exchange/rooms/{roomId}/toggle`
-- **Description:** 특정 방의 알림 수신 상태 및 메인 목록 노출 여부를 전환합니다. `isOn: false`로 설정된 방은 메인 화면 폴링 목록에서 배제됩니다.
+- **Description:** 특정 방의 알림 수신 상태 및 메인 목록 노출 여부를 전환합니다. `on: false`로 설정된 방은 메인 화면 폴링 목록에서 배제됩니다.
 - **Request Body:**
   ```json
   {
-    "isOn": false
+    "on": false
   }
   ```
 - **Response JSON (200 OK):**
@@ -705,7 +705,7 @@ private void scheduleDoubleEvict(String key) {
   {
     "data": {
       "roomId": 402,
-      "isOn": false
+      "on": false
     }
   }
   ```

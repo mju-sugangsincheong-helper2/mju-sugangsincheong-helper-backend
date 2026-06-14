@@ -19,7 +19,7 @@ public class IntentCacheDto implements Serializable {
 	private Long intentId;
 	private String giveCourseNo;
 	private String wantCourseNo;
-	private boolean isDeleted;
+	private boolean deleted;
 	private Instant createdAt;
 
 	public static IntentCacheDto from(ExchangeIntentEntity entity) {
@@ -27,7 +27,7 @@ public class IntentCacheDto implements Serializable {
 				.intentId(entity.getId())
 				.giveCourseNo(entity.getGiveCourseNo())
 				.wantCourseNo(entity.getWantCourseNo())
-				.isDeleted(entity.isDeleted())
+				.deleted(entity.isDeleted())
 				.createdAt(entity.getCreatedAt())
 				.build();
 	}

@@ -22,7 +22,6 @@ public class SystemConfigEvictSubscriber {
 	}
 
 	public void receiveEviction(String message) {
-		System.err.println("RECEIVED MESSAGE IN SUBSCRIBER: " + message);
 		try {
 			int delimiterIdx = message.indexOf(':');
 			if (delimiterIdx == -1) {

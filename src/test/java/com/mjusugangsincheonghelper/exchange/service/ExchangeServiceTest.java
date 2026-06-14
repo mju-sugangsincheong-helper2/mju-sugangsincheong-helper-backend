@@ -296,7 +296,7 @@ class ExchangeServiceTest {
 							.intentId(10L)
 							.giveCourseNo("10001")
 							.wantCourseNo("10002")
-							.isDeleted(false)
+							.deleted(false)
 							.build()
 			));
 			given(cacheService.getRooms(term, memberId)).willReturn(List.of(
