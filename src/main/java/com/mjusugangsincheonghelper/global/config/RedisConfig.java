@@ -1,9 +1,5 @@
 package com.mjusugangsincheonghelper.global.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -20,7 +16,7 @@ import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
@@ -35,14 +31,10 @@ public class RedisConfig implements CachingConfigurer {
 
 	@Bean
 	public RedisSerializer<Object> redisSerializer() {
-		ObjectMapper redisMapper = new ObjectMapper();
-		redisMapper.registerModule(new JavaTimeModule());
-		redisMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-		redisMapper.activateDefaultTyping(
-				redisMapper.getPolymorphicTypeValidator(),
-				DefaultTyping.NON_FINAL
-		);
-		return new GenericJackson2JsonRedisSerializer(redisMapper);
+		return GenericJacksonJsonRedisSerializer.builder()
+				.enableUnsafeDefaultTyping()
+				.customize(builder -> builder.findAndAddModules())
+				.build();
 	}
 
 	@Bean

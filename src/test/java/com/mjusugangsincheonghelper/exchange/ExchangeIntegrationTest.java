@@ -1,77 +1,68 @@
 package com.mjusugangsincheonghelper.exchange;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
-import com.mjusugangsincheonghelper.database.entity.Member;
-import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
-import com.mjusugangsincheonghelper.database.repository.MemberRepository;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.cache.CacheManager;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.MediaType;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.web.servlet.MockMvc;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import tools.jackson.databind.ObjectMapper;
+import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
+import com.mjusugangsincheonghelper.database.entity.Member;
+import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
+import com.mjusugangsincheonghelper.database.repository.MemberRepository;
+import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
 @DisplayName("Exchange 통합 테스트")
 class ExchangeIntegrationTest {
 
 	@Autowired
 	private MockMvc mockMvc;
 
-	private final ObjectMapper objectMapper = new ObjectMapper();
+	@Autowired
+	private ObjectMapper objectMapper;
 
 	@Autowired
-	private ExchangeIntentRepository exchangeIntentRepository;
-
-	@Autowired
-	private MemberRepository memberRepository;
-
-	@Autowired
-	private StringRedisTemplate stringRedisTemplate;
-
-	@Autowired
-	private CacheManager cacheManager;
+	private ExchangeIntentRepository intentRepository;
 
 	@Autowired
 	private SystemConfigService systemConfigService;
 
+	@Autowired
+	private MemberRepository memberRepository;
+
 	private Member testMember;
-	private String term;
 
 	@BeforeEach
 	void setUp() {
-		exchangeIntentRepository.deleteAll();
+		intentRepository.deleteAll();
 		memberRepository.deleteAll();
-
-		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
-			connection.flushDb();
-			return null;
-		});
 
 		testMember = memberRepository.save(Member.builder()
 				.role(Member.Role.MEMBER)
 				.name("테스트유저")
 				.department("컴퓨터공학과")
 				.build());
-
-		term = systemConfigService.getCurrentTerm();
 
 		UsernamePasswordAuthenticationToken authentication =
 				new UsernamePasswordAuthenticationToken(testMember.getId(), null, null);
@@ -81,64 +72,80 @@ class ExchangeIntegrationTest {
 	@AfterEach
 	void tearDown() {
 		SecurityContextHolder.clearContext();
-		exchangeIntentRepository.deleteAll();
+		intentRepository.deleteAll();
 		memberRepository.deleteAll();
-		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
-			connection.flushDb();
-			return null;
-		});
 	}
 
 	@Nested
-	@DisplayName("Redis 캐시 동작은")
-	class Describe_redisCache {
+	@DisplayName("교환 의도 등록 API는")
+	class Describe_createIntent {
 
 		@Test
-		@DisplayName("메인 화면 조회 시 Redis 캐시가 생성된다")
-		void it_creates_redis_cache_on_main_query() throws Exception {
-			exchangeIntentRepository.save(ExchangeIntentEntity.builder()
+		@DisplayName("유효한 요청으로 의도를 등록할 수 있다")
+		void it_creates_intent() throws Exception {
+			// Given
+			IntentCreateRequest request = IntentCreateRequest.builder()
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			// When & Then
+			mockMvc.perform(post("/api/v1/exchange/intents")
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(objectMapper.writeValueAsString(request)))
+					.andExpect(status().isCreated())
+					.andExpect(jsonPath("$.data.giveCourseNo").value("10001"))
+					.andExpect(jsonPath("$.data.wantCourseNo").value("10002"))
+					.andExpect(jsonPath("$.data.deleted").value(false));
+
+			// Verify DB
+			String term = systemConfigService.getCurrentTerm();
+			List<ExchangeIntentEntity> intents = intentRepository.findByTermAndIsDeletedFalse(term);
+			assertThat(intents).hasSize(1);
+			assertThat(intents.get(0).getGiveCourseNo()).isEqualTo("10001");
+		}
+
+		@Test
+		@DisplayName("같은 과목 교환은 불가능하다")
+		void it_rejects_same_course() throws Exception {
+			// Given
+			IntentCreateRequest request = IntentCreateRequest.builder()
+					.giveCourseNo("10001")
+					.wantCourseNo("10001")
+					.build();
+
+			// When & Then
+			mockMvc.perform(post("/api/v1/exchange/intents")
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(objectMapper.writeValueAsString(request)))
+					.andExpect(status().isBadRequest())
+					.andExpect(jsonPath("$.error.code").value("EXCHANGE_006"));
+		}
+	}
+
+	@Nested
+	@DisplayName("메인 화면 조회 API는")
+	class Describe_getMain {
+
+		@Test
+		@DisplayName("나의 의도와 방 목록을 반환한다")
+		void it_returns_my_intents_and_rooms() throws Exception {
+			// Given
+			String term = systemConfigService.getCurrentTerm();
+			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
 					.term(term)
 					.memberId(testMember.getId())
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
-					.build());
+					.build();
+			intentRepository.save(intent);
 
-			Integer keysBefore = stringRedisTemplate.keys("*").size();
-
-			mockMvc.perform(get("/api/v1/exchange/main"))
-					.andExpect(status().isOk());
-
-			Integer keysAfter = stringRedisTemplate.keys("*").size();
-
-			assertThat(keysAfter).isGreaterThan(keysBefore);
-		}
-
-		@Test
-		@DisplayName("CacheManager가 Redis 캐시를 사용한다")
-		void it_uses_redis_cache_manager() {
-			assertThat(cacheManager).isNotNull();
-			assertThat(cacheManager.getCacheNames()).contains("user-intents");
-		}
-
-		@Test
-		@DisplayName("의도 등록 시 캐시가 무효화된다")
-		void it_invalidates_cache_on_intent_create() throws Exception {
-			String request = """
-					{
-						"giveCourseNo": "10001",
-						"wantCourseNo": "10002"
-					}
-					""";
-
-			mockMvc.perform(post("/api/v1/exchange/intents")
-							.contentType(MediaType.APPLICATION_JSON)
-							.content(request))
-					.andExpect(status().isCreated());
-
+			// When & Then
 			mockMvc.perform(get("/api/v1/exchange/main"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.myIntents").isArray())
-					.andExpect(jsonPath("$.data.myIntents[0].giveCourseNo").value("10001"));
+					.andExpect(jsonPath("$.data.myRooms").isArray())
+					.andExpect(jsonPath("$.data.recentIntents").isArray());
 		}
 	}
 }

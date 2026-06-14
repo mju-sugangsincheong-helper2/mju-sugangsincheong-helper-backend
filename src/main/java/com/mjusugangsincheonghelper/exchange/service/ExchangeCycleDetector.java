@@ -3,6 +3,8 @@ package com.mjusugangsincheonghelper.exchange.service;
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
+import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
+import com.mjusugangsincheonghelper.global.config.PgmqService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -15,7 +17,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -23,13 +24,28 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ExchangeCycleDetector {
 
+	public static final String QUEUE_NAME = "exchange_cycle_detection";
+
+	private final PgmqService pgmqService;
 	private final ExchangeIntentRepository intentRepository;
 	private final ExchangeRoomRepository roomRepository;
 	private final ExchangeRoomCreationService roomCreationService;
 
-	@Async
-	public void detectCyclesAndCreateRooms(String term, ExchangeIntentEntity newIntent) {
+	public void enqueueCycleDetection(CycleDetectionMessage message) {
+		pgmqService.send(QUEUE_NAME, message);
+	}
+
+	public void detectCyclesAndCreateRooms(String term, Long intentId, Long memberId, String giveCourseNo, String wantCourseNo) {
 		try {
+			ExchangeIntentEntity triggerIntent = intentRepository.findById(
+					new ExchangeIntentEntity.ExchangeIntentId(term, intentId)
+			).orElse(null);
+
+			if (triggerIntent == null || triggerIntent.isDeleted()) {
+				log.debug("Intent {} was deleted before cycle detection, skipping", intentId);
+				return;
+			}
+
 			List<ExchangeIntentEntity> allActive = intentRepository.findByTermAndIsDeletedFalse(term);
 
 			Map<String, List<ExchangeIntentEntity>> adjacency = new HashMap<>();
@@ -40,8 +56,9 @@ public class ExchangeCycleDetector {
 			List<List<ExchangeIntentEntity>> cycles = new ArrayList<>();
 			Set<String> visited = new HashSet<>();
 			List<ExchangeIntentEntity> path = new ArrayList<>();
+			path.add(triggerIntent);
 
-			dfs(newIntent.getWantCourseNo(), newIntent.getGiveCourseNo(), adjacency, visited, path, cycles);
+			dfs(wantCourseNo, giveCourseNo, adjacency, visited, path, cycles);
 
 			for (List<ExchangeIntentEntity> cycle : cycles) {
 				String cycleHash = computeCycleHash(cycle);
@@ -50,7 +67,7 @@ public class ExchangeCycleDetector {
 				}
 			}
 		} catch (Exception e) {
-			log.error("Cycle detection failed for term={}, intentId={}", term, newIntent.getId(), e);
+			log.error("Cycle detection failed for term={}, intentId={}", term, intentId, e);
 		}
 	}
 
@@ -68,6 +85,7 @@ public class ExchangeCycleDetector {
 
 		List<ExchangeIntentEntity> edges = adjacency.get(current);
 		if (edges == null) {
+			visited.remove(current);
 			return;
 		}
 

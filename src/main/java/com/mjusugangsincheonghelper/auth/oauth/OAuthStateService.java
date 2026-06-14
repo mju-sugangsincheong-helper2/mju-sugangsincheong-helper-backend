@@ -1,7 +1,7 @@
 package com.mjusugangsincheonghelper.auth.oauth;
 
+import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -16,7 +16,7 @@ public class OAuthStateService {
 
     public String createState() {
         String state = UUID.randomUUID().toString();
-        redisTemplate.opsForValue().set(KEY_PREFIX + state + ":session", "1", STATE_TTL_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(KEY_PREFIX + state + ":session", "1", Duration.ofSeconds(STATE_TTL_SECONDS));
         return state;
     }
 

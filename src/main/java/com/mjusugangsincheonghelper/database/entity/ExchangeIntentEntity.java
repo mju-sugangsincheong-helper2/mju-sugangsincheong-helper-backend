@@ -17,7 +17,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
@@ -31,7 +30,7 @@ public class ExchangeIntentEntity {
 	private static final AtomicLong ID_GENERATOR = new AtomicLong(1);
 
 	@Id
-	@Column(length = 6)
+	@Column(length = 10)
 	private String term;
 
 	@Id
@@ -40,22 +39,21 @@ public class ExchangeIntentEntity {
 	@Column(nullable = false)
 	private Long memberId;
 
-	@Column(nullable = false, length = 20)
+	@Column(name = "give_course_no", nullable = false, length = 20)
 	private String giveCourseNo;
 
-	@Column(nullable = false, length = 20)
+	@Column(name = "want_course_no", nullable = false, length = 20)
 	private String wantCourseNo;
 
-	@Column(nullable = false)
+	@Column(name = "is_deleted", nullable = false)
 	private boolean isDeleted;
 
 	@CreatedDate
-	@Column(nullable = false, updatable = false)
+	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
-	@LastModifiedDate
-	@Column(nullable = false)
-	private Instant updatedAt;
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
 
 	@Builder
 	public ExchangeIntentEntity(String term, Long memberId, String giveCourseNo, String wantCourseNo) {
@@ -73,8 +71,9 @@ public class ExchangeIntentEntity {
 		}
 	}
 
-	public void delete() {
+	public void markDeleted() {
 		this.isDeleted = true;
+		this.deletedAt = Instant.now();
 	}
 
 	@Getter

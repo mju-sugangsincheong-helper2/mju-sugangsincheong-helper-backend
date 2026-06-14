@@ -22,7 +22,7 @@ public class MergeTicketService {
 		try {
 			claims = tokenProvider.parseMergeTicket(ticket);
 		} catch (Exception e) {
-			throw new BaseException(ErrorCode.AUTH_MERGE_TICKET_EXPIRED);
+			throw new BaseException(ErrorCode.AUTH_MERGE_TICKET_EXPIRED, e);
 		}
 		return new MergeTicketClaims(
 				Long.parseLong(claims.getSubject()),

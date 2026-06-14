@@ -18,7 +18,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
@@ -34,27 +33,31 @@ public class ExchangeRoomEntity {
 	private static final AtomicLong ID_GENERATOR = new AtomicLong(1);
 
 	@Id
-	@Column(length = 6)
+	@Column(length = 10)
 	private String term;
 
 	@Id
 	private Long id;
 
-	@Column(nullable = false, length = 64)
+	@Column(name = "cycle_hash", nullable = false, length = 64)
 	private String cycleHash;
 
+	@Column(name = "status", nullable = false, length = 20)
+	private String status;
+
+	@Column(name = "is_active", nullable = false)
+	private boolean isActive;
+
 	@CreatedDate
-	@Column(nullable = false, updatable = false)
+	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
-	@LastModifiedDate
-	@Column(nullable = false)
-	private Instant updatedAt;
-
 	@Builder
-	public ExchangeRoomEntity(String term, String cycleHash) {
+	public ExchangeRoomEntity(String term, String cycleHash, String status, boolean isActive) {
 		this.term = term;
 		this.cycleHash = cycleHash;
+		this.status = status != null ? status : "ACTIVE";
+		this.isActive = isActive;
 	}
 
 	@PrePersist
@@ -62,6 +65,15 @@ public class ExchangeRoomEntity {
 		if (this.id == null) {
 			this.id = ID_GENERATOR.getAndIncrement();
 		}
+	}
+
+	public void updateActive(boolean isActive) {
+		this.isActive = isActive;
+	}
+
+	public void updateStatus(String status, boolean isActive) {
+		this.status = status;
+		this.isActive = isActive;
 	}
 
 	@Getter

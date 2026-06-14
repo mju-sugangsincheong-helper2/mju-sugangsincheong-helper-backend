@@ -35,13 +35,9 @@ app:
   cache:
     default-ttl: 24h
     ttls:
-      room-static-meta: 0s
-      user-intents: 24h
-      user-room-ids: 24h
-      user-unread-counts: 24h
-      room-dynamic-meta: 24h
-      room-active-intents: 24h
-      recent-intents-page: 24h
+      exchange-feed: 10m
+      exchange-intents: 10m
+      exchange-rooms: 10m
       singlegame-rank: 5m
       singlegame-records: 5m
       singlegame-analysis: 5m

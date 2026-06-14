@@ -2,6 +2,11 @@
 -- 모든 테이블 + course 파티셔닝 + 분석용 뷰 4개
 
 -- ============================================================
+-- 0. 확장 기능
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS pgmq;
+
+-- ============================================================
 -- 1. member
 -- ============================================================
 CREATE TABLE IF NOT EXISTS member (
@@ -275,3 +280,126 @@ FROM single_game_detail sgd
 JOIN single_game sg ON sgd.game_id = sg.id
 LEFT JOIN v_sequence_percentile_stats vps
     ON vps.total_courses = sg.total_courses AND vps.sequence = sgd.sequence;
+
+-- ============================================================
+-- 11. exchange_intent (파티셔닝)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS exchange_intent (
+    term            VARCHAR(10) NOT NULL,
+    id              BIGINT      NOT NULL,
+    member_id       BIGINT      NOT NULL REFERENCES member(id),
+    give_course_no  VARCHAR(20) NOT NULL,
+    want_course_no  VARCHAR(20) NOT NULL,
+    is_deleted      BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMP   NOT NULL DEFAULT now(),
+    deleted_at      TIMESTAMP,
+    PRIMARY KEY (term, id)
+) PARTITION BY LIST (term);
+
+CREATE INDEX IF NOT EXISTS idx_intent_member_active
+    ON exchange_intent(member_id)
+    WHERE is_deleted = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_intent_matching_pool
+    ON exchange_intent(give_course_no, want_course_no)
+    WHERE is_deleted = FALSE;
+
+-- ============================================================
+-- 12. exchange_room (파티셔닝)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS exchange_room (
+    term        VARCHAR(10) NOT NULL,
+    id          BIGINT      NOT NULL,
+    cycle_hash  VARCHAR(64) NOT NULL,
+    status      VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    PRIMARY KEY (term, id),
+    CONSTRAINT uniq_term_cycle_hash UNIQUE (term, cycle_hash)
+) PARTITION BY LIST (term);
+
+-- ============================================================
+-- 13. exchange_room_intent (파티셔닝)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS exchange_room_intent (
+    term        VARCHAR(10) NOT NULL,
+    room_id     BIGINT      NOT NULL,
+    intent_id   BIGINT      NOT NULL,
+    member_id   BIGINT      NOT NULL REFERENCES member(id),
+    is_deleted  BOOLEAN     NOT NULL DEFAULT FALSE,
+    is_on       BOOLEAN     NOT NULL DEFAULT TRUE,
+    joined_at   TIMESTAMP   NOT NULL DEFAULT now(),
+    PRIMARY KEY (term, room_id, intent_id),
+    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id),
+    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id)
+) PARTITION BY LIST (term);
+
+CREATE INDEX IF NOT EXISTS idx_room_intent_member
+    ON exchange_room_intent(member_id, room_id)
+    WHERE is_on = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_room_intent_reverse
+    ON exchange_room_intent(intent_id, room_id);
+
+-- ============================================================
+-- 14. exchange_room_message (파티셔닝)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS exchange_room_message (
+    term        VARCHAR(10) NOT NULL,
+    id          BIGINT      NOT NULL,
+    room_id     BIGINT      NOT NULL,
+    member_id   BIGINT      NOT NULL REFERENCES member(id),
+    intent_id   BIGINT      NOT NULL,
+    content     TEXT        NOT NULL,
+    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    PRIMARY KEY (term, id),
+    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id),
+    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id)
+) PARTITION BY LIST (term);
+
+CREATE INDEX IF NOT EXISTS idx_message_room_id_pagination
+    ON exchange_room_message(room_id, id DESC);
+
+-- ============================================================
+-- 15. exchange_room_read_status (파티셔닝)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS exchange_room_read_status (
+    term                  VARCHAR(10) NOT NULL,
+    room_id               BIGINT      NOT NULL,
+    member_id             BIGINT      NOT NULL REFERENCES member(id),
+    intent_id             BIGINT      NOT NULL,
+    last_read_message_id  BIGINT      NOT NULL,
+    last_read_at          TIMESTAMP   NOT NULL DEFAULT now(),
+    PRIMARY KEY (term, room_id, member_id),
+    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id),
+    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id),
+    FOREIGN KEY (term, last_read_message_id) REFERENCES exchange_room_message(term, id)
+) PARTITION BY LIST (term);
+
+CREATE INDEX IF NOT EXISTS idx_read_status_member
+    ON exchange_room_read_status(member_id, room_id);
+
+-- ============================================================
+-- 16. exchange 파티션 자동 생성
+-- ============================================================
+DO $$
+DECLARE
+    start_year INT := 2026;
+    end_year INT := 2100;
+    current_year INT;
+    terms TEXT[] := ARRAY['10', '15', '20', '25'];
+    t TEXT;
+    target_term TEXT;
+BEGIN
+    FOR current_year IN start_year..end_year LOOP
+        FOREACH t IN ARRAY terms LOOP
+            target_term := current_year::TEXT || t;
+
+            EXECUTE format('CREATE TABLE IF NOT EXISTS exchange_intent_%I PARTITION OF exchange_intent FOR VALUES IN (%L)', target_term, target_term);
+            EXECUTE format('CREATE TABLE IF NOT EXISTS exchange_room_%I PARTITION OF exchange_room FOR VALUES IN (%L)', target_term, target_term);
+            EXECUTE format('CREATE TABLE IF NOT EXISTS exchange_room_intent_%I PARTITION OF exchange_room_intent FOR VALUES IN (%L)', target_term, target_term);
+            EXECUTE format('CREATE TABLE IF NOT EXISTS exchange_room_message_%I PARTITION OF exchange_room_message FOR VALUES IN (%L)', target_term, target_term);
+            EXECUTE format('CREATE TABLE IF NOT EXISTS exchange_room_read_status_%I PARTITION OF exchange_room_read_status FOR VALUES IN (%L)', target_term, target_term);
+        END LOOP;
+    END LOOP;
+END $$;

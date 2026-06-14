@@ -15,65 +15,77 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
-@Table(name = "exchange_room_member")
+@Table(name = "exchange_room_intent")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@IdClass(ExchangeRoomMemberEntity.ExchangeRoomMemberId.class)
+@IdClass(ExchangeRoomIntentEntity.ExchangeRoomIntentId.class)
 @EntityListeners(AuditingEntityListener.class)
-public class ExchangeRoomMemberEntity {
+public class ExchangeRoomIntentEntity {
 
 	@Id
-	@Column(length = 6)
+	@Column(length = 10)
 	private String term;
 
 	@Id
 	private Long roomId;
 
 	@Id
-	private Long memberId;
-
-	@Column(nullable = false)
 	private Long intentId;
 
+	@Column(name = "member_id", nullable = false)
+	private Long memberId;
+
+	@Column(name = "is_deleted", nullable = false)
+	private boolean isDeleted;
+
+	@Column(name = "is_on", nullable = false)
+	private boolean isOn;
+
 	@CreatedDate
-	@Column(nullable = false, updatable = false)
+	@Column(name = "joined_at", nullable = false, updatable = false)
 	private Instant joinedAt;
 
-	@LastModifiedDate
-	@Column(nullable = false)
-	private Instant updatedAt;
-
 	@Builder
-	public ExchangeRoomMemberEntity(String term, Long roomId, Long memberId, Long intentId) {
+	public ExchangeRoomIntentEntity(String term, Long roomId, Long intentId, Long memberId) {
 		this.term = term;
 		this.roomId = roomId;
-		this.memberId = memberId;
 		this.intentId = intentId;
+		this.memberId = memberId;
+		this.isDeleted = false;
+		this.isOn = true;
+	}
+
+	public void markDeleted() {
+		this.isDeleted = true;
+		this.isOn = false;
+	}
+
+	public void toggle(boolean isOn) {
+		this.isOn = isOn;
 	}
 
 	@Getter
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class ExchangeRoomMemberId implements Serializable {
+	public static class ExchangeRoomIntentId implements Serializable {
 		private String term;
 		private Long roomId;
-		private Long memberId;
+		private Long intentId;
 
 		@Override
 		public boolean equals(Object o) {
 			if (this == o) return true;
 			if (o == null || getClass() != o.getClass()) return false;
-			ExchangeRoomMemberId that = (ExchangeRoomMemberId) o;
-			return Objects.equals(term, that.term) && Objects.equals(roomId, that.roomId) && Objects.equals(memberId, that.memberId);
+			ExchangeRoomIntentId that = (ExchangeRoomIntentId) o;
+			return Objects.equals(term, that.term) && Objects.equals(roomId, that.roomId) && Objects.equals(intentId, that.intentId);
 		}
 
 		@Override
 		public int hashCode() {
-			return Objects.hash(term, roomId, memberId);
+			return Objects.hash(term, roomId, intentId);
 		}
 	}
 }

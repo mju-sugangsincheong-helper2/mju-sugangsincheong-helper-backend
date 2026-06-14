@@ -1,39 +1,30 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
-import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import java.time.Instant;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @Builder
+@NoArgsConstructor
 @AllArgsConstructor
 public class RecentIntentsResponse {
 
-	private final String message;
-	private final Instant timestamp;
-	private final List<IntentFeedItem> intents;
-	private final Long nextLastIntentId;
-	private final boolean hasNext;
+	private List<IntentFeedItem> intents;
+	private Long nextLastIntentId;
+	private boolean hasNext;
 
 	@Getter
 	@Builder
+	@NoArgsConstructor
 	@AllArgsConstructor
 	public static class IntentFeedItem {
-		private final Long intentId;
-		private final String giveCourseNo;
-		private final String wantCourseNo;
-		private final Instant createdAt;
-
-		public static IntentFeedItem from(ExchangeIntentEntity entity) {
-			return IntentFeedItem.builder()
-					.intentId(entity.getId())
-					.giveCourseNo(entity.getGiveCourseNo())
-					.wantCourseNo(entity.getWantCourseNo())
-					.createdAt(entity.getCreatedAt())
-					.build();
-		}
+		private Long intentId;
+		private String giveCourseNo;
+		private String wantCourseNo;
+		private Instant createdAt;
 	}
 }

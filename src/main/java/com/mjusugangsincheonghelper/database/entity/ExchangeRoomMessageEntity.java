@@ -20,40 +20,44 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
-@Table(name = "exchange_message")
+@Table(name = "exchange_room_message")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@IdClass(ExchangeMessageEntity.ExchangeMessageId.class)
+@IdClass(ExchangeRoomMessageEntity.ExchangeRoomMessageId.class)
 @EntityListeners(AuditingEntityListener.class)
-public class ExchangeMessageEntity {
+public class ExchangeRoomMessageEntity {
 
 	private static final AtomicLong ID_GENERATOR = new AtomicLong(1);
 
 	@Id
-	@Column(length = 6)
+	@Column(length = 10)
 	private String term;
 
 	@Id
 	private Long id;
 
-	@Column(nullable = false)
+	@Column(name = "room_id", nullable = false)
 	private Long roomId;
 
-	@Column(nullable = false)
-	private Long senderId;
+	@Column(name = "member_id", nullable = false)
+	private Long memberId;
+
+	@Column(name = "intent_id", nullable = false)
+	private Long intentId;
 
 	@Column(nullable = false, columnDefinition = "TEXT")
 	private String content;
 
 	@CreatedDate
-	@Column(nullable = false, updatable = false)
+	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
 	@Builder
-	public ExchangeMessageEntity(String term, Long roomId, Long senderId, String content) {
+	public ExchangeRoomMessageEntity(String term, Long roomId, Long memberId, Long intentId, String content) {
 		this.term = term;
 		this.roomId = roomId;
-		this.senderId = senderId;
+		this.memberId = memberId;
+		this.intentId = intentId;
 		this.content = content;
 	}
 
@@ -67,7 +71,7 @@ public class ExchangeMessageEntity {
 	@Getter
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class ExchangeMessageId implements Serializable {
+	public static class ExchangeRoomMessageId implements Serializable {
 		private String term;
 		private Long id;
 
@@ -75,7 +79,7 @@ public class ExchangeMessageEntity {
 		public boolean equals(Object o) {
 			if (this == o) return true;
 			if (o == null || getClass() != o.getClass()) return false;
-			ExchangeMessageId that = (ExchangeMessageId) o;
+			ExchangeRoomMessageId that = (ExchangeRoomMessageId) o;
 			return Objects.equals(term, that.term) && Objects.equals(id, that.id);
 		}
 

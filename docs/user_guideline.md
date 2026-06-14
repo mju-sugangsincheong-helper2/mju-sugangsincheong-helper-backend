@@ -576,3 +576,229 @@ database/repository/{Entity}Repository.java
 ```
 
 - `JpaRepository<Entity, ID>` 확장
+
+---
+
+## 13. BaseException 사용 규칙
+
+### 생성자 3가지
+
+```java
+// 1. 기본: ErrorCode의 기본 메시지만 사용
+throw new BaseException(ErrorCode.EXCHANGE_INTENT_NOT_FOUND);
+
+// 2. 비즈니스 에러 + 상황별 상세 메시지
+throw new BaseException(ErrorCode.EXCHANGE_INTENT_NOT_FOUND, "의도 ID 123을 찾을 수 없습니다.");
+
+// 3. 기술적 에러 + 원본 예외 (catch 블록에서)
+catch (Exception e) {
+    throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED, e);
+}
+```
+
+### GlobalExceptionHandler 처리 우선순위
+
+| 우선순위 | 조건 | details 내용 |
+|----------|------|--------------|
+| 1 | `detailMessage` 있음 | `[{message: detailMessage}]` |
+| 2 | `cause` 있음 | `[{message: "ExceptionClass: message"}]` |
+| 3 | 둘 다 없음 | `[{message: ErrorCode.message}]` |
+
+### expose_error_details 설정
+
+| 설정 | `details` 필드 |
+|------|----------------|
+| `true` (dev) | 위 우선순위에 따라 채워짐 |
+| `false` (prod) | `null` (보안상 안전) |
+
+### 사용 패턴
+
+```java
+// 비즈니스 로직: 조회 실패
+public Domain findById(Long id) {
+    return repository.findById(id)
+            .orElseThrow(() -> new BaseException(ErrorCode.DOMAIN_NOT_FOUND));
+}
+
+// 비즈니스 로직: 상세 메시지 포함
+public void validateOwnership(Long ownerId, Long requesterId) {
+    if (!ownerId.equals(requesterId)) {
+        throw new BaseException(ErrorCode.DOMAIN_NOT_OWNER,
+                "소유자 ID: " + ownerId + ", 요청자 ID: " + requesterId);
+    }
+}
+
+// 기술적 에러: 원본 예외 포함
+public String callExternalApi(String param) {
+    try {
+        return externalClient.fetch(param);
+    } catch (IOException e) {
+        throw new BaseException(ErrorCode.EXTERNAL_API_FAILED, e);
+    }
+}
+```
+
+---
+
+## 14. PGMQ 작업(Task) 추가 방법
+
+### 개요
+
+본 프로젝트는 PostgreSQL 기반 메시지 큐(PGMQ)를 사용합니다. 별도 인프라 없이 Postgres를 큐로 활용하여 트랜잭셔널 일관성을 보장합니다.
+
+### 글로벌 인프라
+
+| 파일 | 위치 | 역할 |
+|------|------|------|
+| `PgmqService.java` | `global/config/` | 큐 생성, 메시지 발송/읽기/삭제/아카이브 |
+| `PgmqMessageDto.java` | `global/config/` | 메시지 DTO (msgId, readCt, message) |
+| `GlobalSchedulingConfig.java` | `global/config/` | `@EnableScheduling` + 2개 스케줄러 빈 |
+
+### 스케줄러 구성
+
+```java
+@EnableScheduling
+@Configuration
+public class GlobalSchedulingConfig {
+
+    @Bean
+    @Primary
+    public TaskScheduler taskScheduler() {
+        // 범용 스케줄러 (@Scheduled 애너테이션 사용 시)
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(2);
+        scheduler.setThreadNamePrefix("global-scheduler-");
+        return scheduler;
+    }
+
+    @Bean("pgmqScheduler")
+    public TaskScheduler pgmqScheduler() {
+        // PGMQ 워커 전용 스케줄러
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(2);
+        scheduler.setThreadNamePrefix("pgmq-worker-");
+        return scheduler;
+    }
+}
+```
+
+### PgmqService 사용법
+
+```java
+@Service
+@RequiredArgsConstructor
+public class MyDomainService {
+
+    private final PgmqService pgmqService;
+
+    // 큐 생성 (한 번만 호출, 보통 초기화 시점)
+    public void initializeQueue() {
+        pgmqService.createQueue("my_queue");
+    }
+
+    // 메시지 발송
+    public Long enqueue(MyEvent event) {
+        return pgmqService.send("my_queue", event);
+    }
+
+    // 메시지 읽기 (가시성 타임아웃 30초, 최대 10개)
+    public List<PgmqMessageDto> dequeue(int visibilityTimeout, int limit) {
+        return pgmqService.read("my_queue", visibilityTimeout, limit);
+    }
+
+    // 처리 완료 후 삭제
+    public void complete(Long msgId) {
+        pgmqService.delete("my_queue", msgId);
+    }
+
+    // 아카이브 (이력 보관용)
+    public void archive(Long msgId) {
+        pgmqService.archive("my_queue", msgId);
+    }
+}
+```
+
+### 워커 작성 패턴
+
+```java
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class MyQueueWorker {
+
+    private final PgmqService pgmqService;
+    private final MyDomainService myDomainService;
+
+    @Qualifier("pgmqScheduler")
+    @Autowired
+    private TaskScheduler pgmqScheduler;
+
+    private static final String QUEUE_NAME = "my_queue";
+    private static final int VISIBILITY_TIMEOUT = 30; // 초
+    private static final int BATCH_SIZE = 1;
+
+    @PostConstruct
+    public void start() {
+        pgmqScheduler.scheduleWithFixedDelay(this::poll, Duration.ofSeconds(1));
+    }
+
+    private void poll() {
+        List<PgmqMessageDto> messages = pgmqService.read(QUEUE_NAME, VISIBILITY_TIMEOUT, BATCH_SIZE);
+
+        for (PgmqMessageDto msg : messages) {
+            try {
+                MyEvent event = deserialize(msg.getMessage());
+                myDomainService.process(event);
+                pgmqService.delete(QUEUE_NAME, msg.getMsgId());
+            } catch (Exception e) {
+                log.error("큐 메시지 처리 실패: msgId={}", msg.getMsgId(), e);
+                // 가시성 타임아웃 후 자동 재시도됨
+            }
+        }
+    }
+}
+```
+
+### 워커 작성 규칙
+
+| # | 규칙 | 이유 |
+|---|------|------|
+| 1 | 워커 메서드에 `@Transactional` 금지 | Long-running transaction 방지 |
+| 2 | 메시지 읽기/삭제는 별도 트랜잭션으로 | 커넥션 점유 시간 최소화 |
+| 3 | 처리 실패 시 delete/archive 호출 금지 | 가시성 타임아웃 후 자동 재시도 |
+| 4 | `pgmqScheduler` 빈 사용 | PGMQ 전용 스레드 풀 분리 |
+| 5 | 에러 발생 시 로그만 남김 | 원본 예외는 로그로 추적 |
+
+### 에러 처리
+
+```java
+// PgmqService 내부에서 JacksonException 발생 시
+catch (JacksonException e) {
+    throw new BaseException(ErrorCode.PGMQ_SEND_FAILED, e);
+}
+
+// 워커에서 처리 실패 시
+catch (Exception e) {
+    log.error("큐 메시지 처리 실패: msgId={}", msg.getMsgId(), e);
+    // delete 호출하지 않음 → 30초 후 자동 재시도
+}
+```
+
+### 운영 가이드 (Bloat 방지)
+
+`PgmqService.createQueue()` 호출 시 다음 설정이 자동 적용됩니다:
+
+```sql
+ALTER TABLE pgmq.q_<queue_name> SET (
+    fillfactor = 80,                              -- HOT update를 위한 공간 확보
+    autovacuum_vacuum_scale_factor = 0.01,        -- 1% 변경 시 vacuum
+    autovacuum_vacuum_threshold = 100,            -- 100행 변경 시 vacuum
+    autovacuum_vacuum_cost_limit = 2000           -- vacuum 가속
+);
+```
+
+### 참고 문서
+
+- [PostgreSQL SKIP LOCKED](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE)
+- [PGMQ GitHub](https://github.com/pgmq/pgmq)
+- [Brandur Leach - Postgres Queues](https://brandur.org/blog/postgres-queues)

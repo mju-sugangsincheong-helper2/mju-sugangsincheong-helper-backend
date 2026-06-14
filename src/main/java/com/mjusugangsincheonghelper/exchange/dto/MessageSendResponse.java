@@ -1,6 +1,6 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
-import com.mjusugangsincheonghelper.database.entity.ExchangeMessageEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -11,21 +11,17 @@ import lombok.Getter;
 @AllArgsConstructor
 public class MessageSendResponse {
 
-	private final String message;
-	private final Instant timestamp;
-	private final Long messageId;
-	private final Long roomId;
-	private final Long senderId;
-	private final String content;
-	private final Instant createdAt;
+	private Long messageId;
+	private Long roomId;
+	private Long senderId;
+	private String content;
+	private Instant createdAt;
 
-	public static MessageSendResponse from(ExchangeMessageEntity entity) {
+	public static MessageSendResponse from(ExchangeRoomMessageEntity entity) {
 		return MessageSendResponse.builder()
-				.message("메시지가 전송되었습니다.")
-				.timestamp(entity.getCreatedAt())
 				.messageId(entity.getId())
 				.roomId(entity.getRoomId())
-				.senderId(entity.getSenderId())
+				.senderId(entity.getMemberId())
 				.content(entity.getContent())
 				.createdAt(entity.getCreatedAt())
 				.build();

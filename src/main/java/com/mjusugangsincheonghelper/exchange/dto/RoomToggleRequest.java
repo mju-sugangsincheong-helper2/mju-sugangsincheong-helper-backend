@@ -1,16 +1,15 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
-import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @Builder
+@NoArgsConstructor
 @AllArgsConstructor
-public class IntentDeleteResponse {
+public class RoomToggleRequest {
 
-	private Long intentId;
-	private boolean isDeleted;
-	private Instant deletedAt;
+	private boolean isOn;
 }

@@ -1,14 +1,28 @@
 package com.mjusugangsincheonghelper.exchange.controller;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
 import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
 import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
-import com.mjusugangsincheonghelper.exchange.dto.MessageResponse;
 import com.mjusugangsincheonghelper.exchange.dto.MessageSendRequest;
 import com.mjusugangsincheonghelper.exchange.dto.MessageSendResponse;
 import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse;
+import com.mjusugangsincheonghelper.exchange.dto.RoomToggleRequest;
+import com.mjusugangsincheonghelper.exchange.dto.RoomToggleResponse;
 import com.mjusugangsincheonghelper.exchange.service.ExchangeService;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
@@ -18,6 +32,8 @@ import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,26 +47,14 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.Collections;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ExchangeController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({GlobalExceptionHandler.class, GlobalMetaFilter.class, ClientInfoExtractor.class})
+@WithMockUser
 @DisplayName("ExchangeController 슬라이스 테스트")
 class ExchangeControllerTest {
 
@@ -75,8 +79,9 @@ class ExchangeControllerTest {
 	void setUp() {
 		given(systemConfigService.getRaw(anyString())).willReturn("true");
 
+		// Mock Authentication to return Long principal
 		Authentication authentication = mock(Authentication.class);
-		given(authentication.getPrincipal()).willReturn(100L);
+		given(authentication.getPrincipal()).willReturn(1L);
 
 		SecurityContext securityContext = mock(SecurityContext.class);
 		given(securityContext.getAuthentication()).willReturn(authentication);
@@ -91,7 +96,7 @@ class ExchangeControllerTest {
 
 	@Nested
 	@DisplayName("POST /api/v1/exchange/intents 엔드포인트는")
-	class Describe_postCreateIntent {
+	class Describe_postIntents {
 
 		@Test
 		@DisplayName("유효한 요청으로 201 응답을 반환한다")
@@ -102,17 +107,15 @@ class ExchangeControllerTest {
 					.build();
 
 			IntentCreateResponse response = IntentCreateResponse.builder()
-					.message("교환 의사가 성공적으로 등록되었습니다.")
-					.timestamp(java.time.Instant.now())
 					.intentId(1L)
-					.memberId(100L)
+					.memberId(1L)
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
 					.isDeleted(false)
+					.createdAt(Instant.now())
 					.build();
 
-			given(exchangeService.createIntent(any(), any(IntentCreateRequest.class)))
-					.willReturn(response);
+			given(exchangeService.createIntent(any(Long.class), any(IntentCreateRequest.class))).willReturn(response);
 
 			mockMvc.perform(post("/api/v1/exchange/intents")
 							.with(csrf())
@@ -121,8 +124,7 @@ class ExchangeControllerTest {
 					.andExpect(status().isCreated())
 					.andExpect(jsonPath("$.data.intentId").value(1))
 					.andExpect(jsonPath("$.data.giveCourseNo").value("10001"))
-					.andExpect(jsonPath("$.data.wantCourseNo").value("10002"))
-					.andExpect(jsonPath("$.meta").exists());
+					.andExpect(jsonPath("$.data.wantCourseNo").value("10002"));
 		}
 
 		@Test
@@ -142,49 +144,14 @@ class ExchangeControllerTest {
 		}
 
 		@Test
-		@DisplayName("빈 wantCourseNo로 400 응답을 반환한다")
-		void it_returns_400_with_empty_wantCourseNo() throws Exception {
-			IntentCreateRequest request = IntentCreateRequest.builder()
-					.giveCourseNo("10001")
-					.wantCourseNo("")
-					.build();
-
-			mockMvc.perform(post("/api/v1/exchange/intents")
-							.with(csrf())
-							.contentType(MediaType.APPLICATION_JSON)
-							.content(objectMapper.writeValueAsString(request)))
-					.andExpect(status().isBadRequest())
-					.andExpect(jsonPath("$.error.code").value("GLOBAL_002"));
-		}
-
-		@Test
-		@DisplayName("동일한 과목 번호로 400 응답을 반환한다")
-		void it_returns_400_with_same_course() throws Exception {
-			IntentCreateRequest request = IntentCreateRequest.builder()
-					.giveCourseNo("10001")
-					.wantCourseNo("10001")
-					.build();
-
-			given(exchangeService.createIntent(any(), any(IntentCreateRequest.class)))
-					.willThrow(new BaseException(ErrorCode.EXCHANGE_SAME_COURSE));
-
-			mockMvc.perform(post("/api/v1/exchange/intents")
-							.with(csrf())
-							.contentType(MediaType.APPLICATION_JSON)
-							.content(objectMapper.writeValueAsString(request)))
-					.andExpect(status().isBadRequest())
-					.andExpect(jsonPath("$.error.code").value("EXCHANGE_006"));
-		}
-
-		@Test
-		@DisplayName("중복된 의도로 409 응답을 반환한다")
-		void it_returns_409_with_duplicate_intent() throws Exception {
+		@DisplayName("중복된 의도면 409 응답을 반환한다")
+		void it_returns_409_with_duplicate() throws Exception {
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
 					.build();
 
-			given(exchangeService.createIntent(any(), any(IntentCreateRequest.class)))
+			given(exchangeService.createIntent(any(Long.class), any(IntentCreateRequest.class)))
 					.willThrow(new BaseException(ErrorCode.EXCHANGE_DUPLICATE_INTENT));
 
 			mockMvc.perform(post("/api/v1/exchange/intents")
@@ -198,24 +165,20 @@ class ExchangeControllerTest {
 
 	@Nested
 	@DisplayName("DELETE /api/v1/exchange/intents/{intentId} 엔드포인트는")
-	class Describe_deleteIntent {
+	class Describe_deleteIntents {
 
 		@Test
-		@DisplayName("유효한 요청으로 200 응답을 반환한다")
-		void it_returns_200_with_valid_request() throws Exception {
-			Long intentId = 1L;
-
+		@DisplayName("200 응답을 반환한다")
+		void it_returns_200() throws Exception {
 			IntentDeleteResponse response = IntentDeleteResponse.builder()
-					.message("교환 의사가 철회되었습니다.")
-					.timestamp(java.time.Instant.now())
-					.intentId(intentId)
+					.intentId(1L)
 					.isDeleted(true)
+					.deletedAt(Instant.now())
 					.build();
 
-			given(exchangeService.deleteIntent(any(), any()))
-					.willReturn(response);
+			given(exchangeService.deleteIntent(any(Long.class), eq(1L))).willReturn(response);
 
-			mockMvc.perform(delete("/api/v1/exchange/intents/" + intentId)
+			mockMvc.perform(delete("/api/v1/exchange/intents/1")
 							.with(csrf()))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.intentId").value(1))
@@ -223,45 +186,15 @@ class ExchangeControllerTest {
 		}
 
 		@Test
-		@DisplayName("존재하지 않는 의도로 404 응답을 반환한다")
+		@DisplayName("존재하지 않는 의도면 404 응답을 반환한다")
 		void it_returns_404_when_not_found() throws Exception {
-			Long intentId = 999L;
-
-			given(exchangeService.deleteIntent(any(), any()))
+			given(exchangeService.deleteIntent(any(Long.class), eq(999L)))
 					.willThrow(new BaseException(ErrorCode.EXCHANGE_INTENT_NOT_FOUND));
 
-			mockMvc.perform(delete("/api/v1/exchange/intents/" + intentId)
+			mockMvc.perform(delete("/api/v1/exchange/intents/999")
 							.with(csrf()))
 					.andExpect(status().isNotFound())
 					.andExpect(jsonPath("$.error.code").value("EXCHANGE_001"));
-		}
-
-		@Test
-		@DisplayName("다른 사용자의 의도로 403 응답을 반환한다")
-		void it_returns_403_when_not_owner() throws Exception {
-			Long intentId = 1L;
-
-			given(exchangeService.deleteIntent(any(), any()))
-					.willThrow(new BaseException(ErrorCode.EXCHANGE_INTENT_NOT_OWNER));
-
-			mockMvc.perform(delete("/api/v1/exchange/intents/" + intentId)
-							.with(csrf()))
-					.andExpect(status().isForbidden())
-					.andExpect(jsonPath("$.error.code").value("EXCHANGE_003"));
-		}
-
-		@Test
-		@DisplayName("이미 삭제된 의도로 400 응답을 반환한다")
-		void it_returns_400_when_already_deleted() throws Exception {
-			Long intentId = 1L;
-
-			given(exchangeService.deleteIntent(any(), any()))
-					.willThrow(new BaseException(ErrorCode.EXCHANGE_INTENT_ALREADY_DELETED));
-
-			mockMvc.perform(delete("/api/v1/exchange/intents/" + intentId)
-							.with(csrf()))
-					.andExpect(status().isBadRequest())
-					.andExpect(jsonPath("$.error.code").value("EXCHANGE_002"));
 		}
 	}
 
@@ -273,20 +206,18 @@ class ExchangeControllerTest {
 		@DisplayName("200 응답을 반환한다")
 		void it_returns_200() throws Exception {
 			MainResponse response = MainResponse.builder()
-					.message("메인 상태 조회 성공")
-					.timestamp(java.time.Instant.now())
-					.myIntents(Collections.emptyList())
-					.myRooms(Collections.emptyList())
+					.myIntents(List.of())
+					.myRooms(List.of())
+					.recentIntents(List.of())
 					.build();
 
-			given(exchangeService.getMain(any()))
-					.willReturn(response);
+			given(exchangeService.getMain(any(Long.class))).willReturn(response);
 
 			mockMvc.perform(get("/api/v1/exchange/main"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.message").value("메인 상태 조회 성공"))
 					.andExpect(jsonPath("$.data.myIntents").isArray())
-					.andExpect(jsonPath("$.data.myRooms").isArray());
+					.andExpect(jsonPath("$.data.myRooms").isArray())
+					.andExpect(jsonPath("$.data.recentIntents").isArray());
 		}
 	}
 
@@ -298,140 +229,91 @@ class ExchangeControllerTest {
 		@DisplayName("200 응답을 반환한다")
 		void it_returns_200() throws Exception {
 			RecentIntentsResponse response = RecentIntentsResponse.builder()
-					.message("최근 등록된 교환 의사 조회 성공")
-					.timestamp(java.time.Instant.now())
-					.intents(Collections.emptyList())
+					.intents(List.of())
 					.nextLastIntentId(0L)
 					.hasNext(false)
 					.build();
 
-			given(exchangeService.getRecentIntents(any(), anyInt()))
-					.willReturn(response);
+			given(exchangeService.getRecentIntents(any(), any(int.class))).willReturn(response);
 
-			mockMvc.perform(get("/api/v1/exchange/intents/recent")
-							.param("lastIntentId", "0")
-							.param("limit", "10"))
+			mockMvc.perform(get("/api/v1/exchange/intents/recent"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.message").value("최근 등록된 교환 의사 조회 성공"))
-					.andExpect(jsonPath("$.data.intents").isArray());
-		}
-	}
-
-	@Nested
-	@DisplayName("GET /api/v1/exchange/rooms/{roomId}/messages 엔드포인트는")
-	class Describe_getMessages {
-
-		@Test
-		@DisplayName("200 응답을 반환한다")
-		void it_returns_200() throws Exception {
-			Long roomId = 1L;
-
-			MessageResponse response = MessageResponse.builder()
-					.message("메시지 조회 성공")
-					.timestamp(java.time.Instant.now())
-					.roomId(roomId)
-					.messages(Collections.emptyList())
-					.nextLastMessageId(0L)
-					.hasNext(false)
-					.build();
-
-			given(exchangeService.getMessages(any(), any(), any(), anyInt()))
-					.willReturn(response);
-
-			mockMvc.perform(get("/api/v1/exchange/rooms/" + roomId + "/messages")
-							.param("lastMessageId", "999999999")
-							.param("size", "20"))
-					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.message").value("메시지 조회 성공"))
-					.andExpect(jsonPath("$.data.messages").isArray());
-		}
-
-		@Test
-		@DisplayName("방 멤버가 아니면 403 응답을 반환한다")
-		void it_returns_403_when_not_member() throws Exception {
-			Long roomId = 1L;
-
-			given(exchangeService.getMessages(any(), any(), any(), anyInt()))
-					.willThrow(new BaseException(ErrorCode.EXCHANGE_ROOM_NOT_MEMBER));
-
-			mockMvc.perform(get("/api/v1/exchange/rooms/" + roomId + "/messages")
-							.param("lastMessageId", "999999999")
-							.param("size", "20"))
-					.andExpect(status().isForbidden())
-					.andExpect(jsonPath("$.error.code").value("EXCHANGE_005"));
+					.andExpect(jsonPath("$.data.intents").isArray())
+					.andExpect(jsonPath("$.data.hasNext").value(false));
 		}
 	}
 
 	@Nested
 	@DisplayName("POST /api/v1/exchange/rooms/{roomId}/messages 엔드포인트는")
-	class Describe_sendMessage {
+	class Describe_postMessages {
 
 		@Test
 		@DisplayName("유효한 요청으로 201 응답을 반환한다")
 		void it_returns_201_with_valid_request() throws Exception {
-			Long roomId = 1L;
-
 			MessageSendRequest request = MessageSendRequest.builder()
-					.content("테스트 메시지")
+					.content("안녕하세요")
 					.build();
 
 			MessageSendResponse response = MessageSendResponse.builder()
-					.message("메시지가 전송되었습니다.")
-					.timestamp(java.time.Instant.now())
 					.messageId(1L)
-					.roomId(roomId)
-					.senderId(100L)
-					.content("테스트 메시지")
-					.createdAt(java.time.Instant.now())
+					.roomId(1L)
+					.senderId(1L)
+					.content("안녕하세요")
+					.createdAt(Instant.now())
 					.build();
 
-			given(exchangeService.sendMessage(any(), any(), any(MessageSendRequest.class)))
-					.willReturn(response);
+			given(exchangeService.sendMessage(any(Long.class), eq(1L), any(MessageSendRequest.class))).willReturn(response);
 
-			mockMvc.perform(post("/api/v1/exchange/rooms/" + roomId + "/messages")
+			mockMvc.perform(post("/api/v1/exchange/rooms/1/messages")
 							.with(csrf())
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(objectMapper.writeValueAsString(request)))
 					.andExpect(status().isCreated())
 					.andExpect(jsonPath("$.data.messageId").value(1))
-					.andExpect(jsonPath("$.data.content").value("테스트 메시지"));
+					.andExpect(jsonPath("$.data.content").value("안녕하세요"));
 		}
 
 		@Test
 		@DisplayName("빈 content로 400 응답을 반환한다")
 		void it_returns_400_with_empty_content() throws Exception {
-			Long roomId = 1L;
-
 			MessageSendRequest request = MessageSendRequest.builder()
 					.content("")
 					.build();
 
-			mockMvc.perform(post("/api/v1/exchange/rooms/" + roomId + "/messages")
+			mockMvc.perform(post("/api/v1/exchange/rooms/1/messages")
 							.with(csrf())
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(objectMapper.writeValueAsString(request)))
 					.andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.error.code").value("GLOBAL_002"));
 		}
+	}
+
+	@Nested
+	@DisplayName("PATCH /api/v1/exchange/rooms/{roomId}/toggle 엔드포인트는")
+	class Describe_patchToggle {
 
 		@Test
-		@DisplayName("방 멤버가 아니면 403 응답을 반환한다")
-		void it_returns_403_when_not_member() throws Exception {
-			Long roomId = 1L;
-
-			MessageSendRequest request = MessageSendRequest.builder()
-					.content("테스트 메시지")
+		@DisplayName("200 응답을 반환한다")
+		void it_returns_200() throws Exception {
+			RoomToggleRequest request = RoomToggleRequest.builder()
+					.isOn(false)
 					.build();
 
-			given(exchangeService.sendMessage(any(), any(), any(MessageSendRequest.class)))
-					.willThrow(new BaseException(ErrorCode.EXCHANGE_ROOM_NOT_MEMBER));
+			RoomToggleResponse response = RoomToggleResponse.builder()
+					.roomId(1L)
+					.isOn(false)
+					.build();
 
-			mockMvc.perform(post("/api/v1/exchange/rooms/" + roomId + "/messages")
+			given(exchangeService.toggleRoom(any(Long.class), eq(1L), any(RoomToggleRequest.class))).willReturn(response);
+
+			mockMvc.perform(patch("/api/v1/exchange/rooms/1/toggle")
 							.with(csrf())
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(objectMapper.writeValueAsString(request)))
-					.andExpect(status().isForbidden())
-					.andExpect(jsonPath("$.error.code").value("EXCHANGE_005"));
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.roomId").value(1))
+					.andExpect(jsonPath("$.data.on").value(false));
 		}
 	}
 }

@@ -16,14 +16,14 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.LastModifiedDate;
 
 @Entity
-@Table(name = "exchange_room_read")
+@Table(name = "exchange_room_read_status")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@IdClass(ExchangeRoomReadEntity.ExchangeRoomReadId.class)
-public class ExchangeRoomReadEntity {
+@IdClass(ExchangeRoomReadStatusEntity.ExchangeRoomReadStatusId.class)
+public class ExchangeRoomReadStatusEntity {
 
 	@Id
-	@Column(length = 6)
+	@Column(length = 10)
 	private String term;
 
 	@Id
@@ -32,29 +32,35 @@ public class ExchangeRoomReadEntity {
 	@Id
 	private Long memberId;
 
-	@Column(nullable = false)
+	@Column(name = "intent_id", nullable = false)
+	private Long intentId;
+
+	@Column(name = "last_read_message_id", nullable = false)
 	private Long lastReadMessageId;
 
 	@LastModifiedDate
-	@Column(nullable = false)
-	private Instant updatedAt;
+	@Column(name = "last_read_at", nullable = false)
+	private Instant lastReadAt;
 
 	@Builder
-	public ExchangeRoomReadEntity(String term, Long roomId, Long memberId) {
+	public ExchangeRoomReadStatusEntity(String term, Long roomId, Long memberId, Long intentId) {
 		this.term = term;
 		this.roomId = roomId;
 		this.memberId = memberId;
+		this.intentId = intentId;
 		this.lastReadMessageId = 0L;
+		this.lastReadAt = Instant.now();
 	}
 
 	public void updateLastReadMessageId(Long lastReadMessageId) {
 		this.lastReadMessageId = lastReadMessageId;
+		this.lastReadAt = Instant.now();
 	}
 
 	@Getter
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class ExchangeRoomReadId implements Serializable {
+	public static class ExchangeRoomReadStatusId implements Serializable {
 		private String term;
 		private Long roomId;
 		private Long memberId;
@@ -63,7 +69,7 @@ public class ExchangeRoomReadEntity {
 		public boolean equals(Object o) {
 			if (this == o) return true;
 			if (o == null || getClass() != o.getClass()) return false;
-			ExchangeRoomReadId that = (ExchangeRoomReadId) o;
+			ExchangeRoomReadStatusId that = (ExchangeRoomReadStatusId) o;
 			return Objects.equals(term, that.term) && Objects.equals(roomId, that.roomId) && Objects.equals(memberId, that.memberId);
 		}
 

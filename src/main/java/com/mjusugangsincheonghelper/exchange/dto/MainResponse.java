@@ -1,62 +1,55 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
-import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import java.time.Instant;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @Builder
+@NoArgsConstructor
 @AllArgsConstructor
 public class MainResponse {
 
-	private final String message;
-	private final Instant timestamp;
-	private final List<IntentItem> myIntents;
-	private final List<RoomSummary> myRooms;
+	private List<IntentItem> myIntents;
+	private List<RoomItem> myRooms;
+	private List<RecentIntentItem> recentIntents;
 
 	@Getter
 	@Builder
+	@NoArgsConstructor
 	@AllArgsConstructor
 	public static class IntentItem {
-		private final Long intentId;
-		private final String giveCourseNo;
-		private final String wantCourseNo;
-		private final boolean isDeleted;
-		private final Instant createdAt;
-
-		public static IntentItem from(ExchangeIntentEntity entity) {
-			return IntentItem.builder()
-					.intentId(entity.getId())
-					.giveCourseNo(entity.getGiveCourseNo())
-					.wantCourseNo(entity.getWantCourseNo())
-					.isDeleted(entity.isDeleted())
-					.createdAt(entity.getCreatedAt())
-					.build();
-		}
+		private Long intentId;
+		private String giveCourseNo;
+		private String wantCourseNo;
+		private boolean isDeleted;
+		private Instant createdAt;
 	}
 
 	@Getter
 	@Builder
+	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class RoomSummary {
-		private final Long roomId;
-		private final int totalParticipants;
-		private final int activeIntentCount;
-		private final int unreadMessageCount;
-		private final String lastMessage;
-		private final Instant lastMessageAt;
-		private final List<CycleDetail> cycleDetails;
+	public static class RoomItem {
+		private Long roomId;
+		private boolean isActive;
+		private boolean isOn;
+		private int unreadCount;
+		private String lastMessageContent;
+		private Instant lastMessageAt;
 	}
 
 	@Getter
 	@Builder
+	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class CycleDetail {
-		private final Long memberId;
-		private final String giveCourseNo;
-		private final String wantCourseNo;
+	public static class RecentIntentItem {
+		private Long intentId;
+		private String giveCourseNo;
+		private String wantCourseNo;
+		private Instant createdAt;
 	}
 }

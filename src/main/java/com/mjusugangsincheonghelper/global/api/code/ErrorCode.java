@@ -42,7 +42,12 @@ public enum ErrorCode {
 	EXCHANGE_ROOM_NOT_MEMBER(HttpStatus.FORBIDDEN, "EXCHANGE_005", "Not a member of this room."),
 	EXCHANGE_SAME_COURSE(HttpStatus.BAD_REQUEST, "EXCHANGE_006", "Give and want course numbers cannot be the same."),
 	EXCHANGE_DUPLICATE_INTENT(HttpStatus.CONFLICT, "EXCHANGE_007", "Same exchange intent already exists."),
-	EXCHANGE_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "EXCHANGE_008", "Message content cannot be empty.");
+	EXCHANGE_MESSAGE_EMPTY(HttpStatus.BAD_REQUEST, "EXCHANGE_008", "Message content cannot be empty."),
+
+	PGMQ_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_001", "Failed to send message to queue."),
+	PGMQ_QUEUE_NOT_FOUND(HttpStatus.NOT_FOUND, "PGMQ_002", "Queue not found."),
+	PGMQ_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_003", "Failed to delete message from queue."),
+	PGMQ_ARCHIVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_004", "Failed to archive message.");
 
 	private final HttpStatus status;
 	private final String code;

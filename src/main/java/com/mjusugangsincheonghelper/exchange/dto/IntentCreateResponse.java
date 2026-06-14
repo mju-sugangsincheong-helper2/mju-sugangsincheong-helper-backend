@@ -11,23 +11,21 @@ import lombok.Getter;
 @AllArgsConstructor
 public class IntentCreateResponse {
 
-	private final String message;
-	private final Instant timestamp;
-	private final Long intentId;
-	private final Long memberId;
-	private final String giveCourseNo;
-	private final String wantCourseNo;
-	private final boolean isDeleted;
+	private Long intentId;
+	private Long memberId;
+	private String giveCourseNo;
+	private String wantCourseNo;
+	private boolean isDeleted;
+	private Instant createdAt;
 
 	public static IntentCreateResponse from(ExchangeIntentEntity entity) {
 		return IntentCreateResponse.builder()
-				.message("교환 의사가 성공적으로 등록되었습니다.")
-				.timestamp(entity.getCreatedAt())
 				.intentId(entity.getId())
 				.memberId(entity.getMemberId())
 				.giveCourseNo(entity.getGiveCourseNo())
 				.wantCourseNo(entity.getWantCourseNo())
 				.isDeleted(entity.isDeleted())
+				.createdAt(entity.getCreatedAt())
 				.build();
 	}
 }

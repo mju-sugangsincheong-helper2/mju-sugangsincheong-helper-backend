@@ -131,7 +131,7 @@ public class GoogleOAuthService {
 			JsonNode json = jsonMapper.readTree(response);
 			return json.get("id_token").asString();
 		} catch (Exception e) {
-			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
+			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED, e);
 		}
 	}
 
@@ -149,7 +149,7 @@ public class GoogleOAuthService {
 			throw e;
 		} catch (Exception e) {
 			log.warn("ID token verification failed: {}", e.getMessage());
-			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
+			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED, e);
 		}
 	}
 
@@ -197,7 +197,7 @@ public class GoogleOAuthService {
 			keyCacheExpiresAt = System.currentTimeMillis() + 3600_000;
 		} catch (Exception e) {
 			log.error("Failed to fetch Google JWKS", e);
-			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
+			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED, e);
 		}
 	}
 

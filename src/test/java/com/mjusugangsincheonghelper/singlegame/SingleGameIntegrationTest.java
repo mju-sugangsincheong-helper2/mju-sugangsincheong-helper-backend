@@ -61,7 +61,7 @@ class SingleGameIntegrationTest {
 		memberRepository.deleteAll();
 
 		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
-			connection.flushDb();
+			connection.serverCommands().flushDb();
 			return null;
 		});
 
@@ -83,7 +83,7 @@ class SingleGameIntegrationTest {
 		singleGameRepository.deleteAll();
 		memberRepository.deleteAll();
 		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
-			connection.flushDb();
+			connection.serverCommands().flushDb();
 			return null;
 		});
 	}

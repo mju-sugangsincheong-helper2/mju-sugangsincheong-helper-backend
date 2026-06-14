@@ -1,0 +1,8 @@
+package com.mjusugangsincheonghelper.database.repository;
+
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadStatusEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadStatusEntity.ExchangeRoomReadStatusId;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ExchangeRoomReadStatusRepository extends JpaRepository<ExchangeRoomReadStatusEntity, ExchangeRoomReadStatusId> {
+}

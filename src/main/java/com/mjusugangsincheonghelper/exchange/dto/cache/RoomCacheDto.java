@@ -11,10 +11,14 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RoomDynamicMetaDto implements Serializable {
+public class RoomCacheDto implements Serializable {
 
 	private static final long serialVersionUID = 1L;
 
-	private String lastMessage;
+	private Long roomId;
+	private boolean isActive;
+	private boolean isOn;
+	private int unreadCount;
+	private String lastMessageContent;
 	private Instant lastMessageAt;
 }

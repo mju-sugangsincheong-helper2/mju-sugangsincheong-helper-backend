@@ -30,10 +30,26 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(BaseException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleBaseException(BaseException exception) {
 		ErrorCode errorCode = exception.getErrorCode();
-		log.warn("BaseException: code={}, message={}", errorCode.getCode(), errorCode.getMessage());
+		Throwable cause = exception.getCause();
+		String detailMessage = exception.getDetailMessage();
+
+		List<FieldViolation> details;
+		if (detailMessage != null) {
+			details = Collections.singletonList(FieldViolation.builder()
+					.message(detailMessage)
+					.build());
+		} else if (cause != null) {
+			details = Collections.singletonList(FieldViolation.builder()
+					.message(cause.getClass().getSimpleName() + ": " + cause.getMessage())
+					.build());
+		} else {
+			details = errorDetailFrom(errorCode);
+		}
+
+		log.warn("BaseException: code={}, message={}", errorCode.getCode(), errorCode.getMessage(), cause);
 		return ResponseEntity
 				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(errorCode), exposeErrorDetails));
+				.body(ErrorResponseEnvelope.from(errorCode, details, exposeErrorDetails));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

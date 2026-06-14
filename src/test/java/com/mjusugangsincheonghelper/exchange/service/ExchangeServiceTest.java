@@ -1,23 +1,39 @@
 package com.mjusugangsincheonghelper.exchange.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
-import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity.ExchangeIntentId;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeMessageRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMemberRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
 import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
-import com.mjusugangsincheonghelper.exchange.dto.cache.IntentDto;
-import com.mjusugangsincheonghelper.exchange.dto.cache.RoomActiveIntentsDto;
-import com.mjusugangsincheonghelper.exchange.dto.cache.RoomDynamicMetaDto;
-import com.mjusugangsincheonghelper.exchange.dto.cache.RoomStaticMetaDto;
+import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
+import com.mjusugangsincheonghelper.exchange.dto.MessageResponse;
+import com.mjusugangsincheonghelper.exchange.dto.MessageSendRequest;
+import com.mjusugangsincheonghelper.exchange.dto.MessageSendResponse;
+import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse;
+import com.mjusugangsincheonghelper.exchange.dto.RoomToggleRequest;
+import com.mjusugangsincheonghelper.exchange.dto.RoomToggleResponse;
+import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.RoomCacheDto;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -25,24 +41,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.BDDMockito.given;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("ExchangeService 단위 테스트")
 class ExchangeServiceTest {
 
@@ -50,28 +51,22 @@ class ExchangeServiceTest {
 	private ExchangeIntentRepository intentRepository;
 
 	@Mock
-	private ExchangeRoomMemberRepository roomMemberRepository;
+	private ExchangeRoomIntentRepository roomIntentRepository;
 
 	@Mock
-	private ExchangeMessageRepository messageRepository;
+	private ExchangeRoomRepository roomRepository;
 
 	@Mock
-	private ExchangeRoomReadRepository roomReadRepository;
+	private ExchangeRoomMessageRepository messageRepository;
+
+	@Mock
+	private ExchangeRoomReadStatusRepository readStatusRepository;
 
 	@Mock
 	private ExchangeCycleDetector cycleDetector;
 
 	@Mock
-	private ExchangeUserCacheService userCacheService;
-
-	@Mock
-	private ExchangeRoomCacheService roomCacheService;
-
-	@Mock
-	private ExchangePageCacheService pageCacheService;
-
-	@Mock
-	private CacheManager cacheManager;
+	private ExchangeCacheService cacheService;
 
 	@Mock
 	private SystemConfigService systemConfigService;
@@ -79,138 +74,95 @@ class ExchangeServiceTest {
 	@InjectMocks
 	private ExchangeService exchangeService;
 
-	private static final String TERM = "202510";
-	private static final Long MEMBER_ID = 100L;
-
-	@BeforeEach
-	void setUp() {
-		TransactionSynchronizationManager.initSynchronization();
-	}
-
-	@AfterEach
-	void tearDown() {
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.clearSynchronization();
-		}
-	}
-
-	private ExchangeIntentEntity createIntent(Long id, Long memberId, String give, String want) {
-		ExchangeIntentEntity entity = ExchangeIntentEntity.builder()
-				.term(TERM)
-				.memberId(memberId)
-				.giveCourseNo(give)
-				.wantCourseNo(want)
-				.build();
-
-		try {
-			var idField = ExchangeIntentEntity.class.getDeclaredField("id");
-			idField.setAccessible(true);
-			idField.set(entity, id);
-
-			var createdAtField = ExchangeIntentEntity.class.getDeclaredField("createdAt");
-			createdAtField.setAccessible(true);
-			createdAtField.set(entity, java.time.Instant.now());
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-
-		return entity;
-	}
-
 	@Nested
 	@DisplayName("createIntent 메서드는")
 	class Describe_createIntent {
 
 		@Test
-		@DisplayName("유효한 요청으로 의도를 생성한다")
-		void it_creates_intent_with_valid_request() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
+		@DisplayName("유효한 요청이면 교환 의사를 등록하고 응답을 반환한다")
+		void it_creates_intent_and_returns_response() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
 					.build();
 
-			ExchangeIntentEntity savedEntity = createIntent(1L, MEMBER_ID, "10001", "10002");
+			ExchangeIntentEntity savedEntity = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberId)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
 
-			given(userCacheService.getUserIntents(TERM, MEMBER_ID))
-					.willReturn(Collections.emptyList());
-			given(intentRepository.save(any(ExchangeIntentEntity.class)))
-					.willReturn(savedEntity);
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findByTermAndMemberIdAndGiveCourseNoAndWantCourseNoAndIsDeletedFalse(
+					term, memberId, "10001", "10002")).willReturn(List.of());
+			given(intentRepository.save(any(ExchangeIntentEntity.class))).willReturn(savedEntity);
 
-			IntentCreateResponse response = exchangeService.createIntent(MEMBER_ID, request);
+			// When
+			IntentCreateResponse response = exchangeService.createIntent(memberId, request);
 
-			assertThat(response.getIntentId()).isEqualTo(1L);
+			// Then
+			assertThat(response.getIntentId()).isEqualTo(savedEntity.getId());
+			assertThat(response.getMemberId()).isEqualTo(memberId);
 			assertThat(response.getGiveCourseNo()).isEqualTo("10001");
 			assertThat(response.getWantCourseNo()).isEqualTo("10002");
-			assertThat(response.isDeleted()).isFalse();
+			verify(intentRepository).save(any(ExchangeIntentEntity.class));
 		}
 
 		@Test
 		@DisplayName("giveCourseNo와 wantCourseNo가 같으면 예외를 발생시킨다")
-		void it_throws_when_same_course() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
+		void it_throws_exception_when_same_course() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
 					.wantCourseNo("10001")
 					.build();
 
-			assertThatThrownBy(() -> exchangeService.createIntent(MEMBER_ID, request))
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.createIntent(memberId, request))
 					.isInstanceOf(BaseException.class)
-					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.EXCHANGE_SAME_COURSE);
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_SAME_COURSE);
+					});
 		}
 
 		@Test
 		@DisplayName("중복된 의도가 있으면 예외를 발생시킨다")
-		void it_throws_when_duplicate_intent() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
+		void it_throws_exception_when_duplicate() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
 					.build();
 
-			IntentDto existingIntent = IntentDto.builder()
-					.intentId(1L)
+			ExchangeIntentEntity existingEntity = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberId)
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
-					.isDeleted(false)
-					.createdAt(java.time.Instant.now())
 					.build();
 
-			given(userCacheService.getUserIntents(TERM, MEMBER_ID))
-					.willReturn(List.of(existingIntent));
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findByTermAndMemberIdAndGiveCourseNoAndWantCourseNoAndIsDeletedFalse(
+					term, memberId, "10001", "10002")).willReturn(List.of(existingEntity));
 
-			assertThatThrownBy(() -> exchangeService.createIntent(MEMBER_ID, request))
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.createIntent(memberId, request))
 					.isInstanceOf(BaseException.class)
-					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.EXCHANGE_DUPLICATE_INTENT);
-		}
-
-		@Test
-		@DisplayName("이미 삭제된 의도는 중복 체크에서 제외한다")
-		void it_ignores_deleted_intents_for_duplicate_check() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
-			IntentCreateRequest request = IntentCreateRequest.builder()
-					.giveCourseNo("10001")
-					.wantCourseNo("10002")
-					.build();
-
-			IntentDto deletedIntent = IntentDto.builder()
-					.intentId(1L)
-					.giveCourseNo("10001")
-					.wantCourseNo("10002")
-					.isDeleted(true)
-					.createdAt(java.time.Instant.now())
-					.build();
-
-			ExchangeIntentEntity savedEntity = createIntent(2L, MEMBER_ID, "10001", "10002");
-
-			given(userCacheService.getUserIntents(TERM, MEMBER_ID))
-					.willReturn(List.of(deletedIntent));
-			given(intentRepository.save(any(ExchangeIntentEntity.class)))
-					.willReturn(savedEntity);
-
-			IntentCreateResponse response = exchangeService.createIntent(MEMBER_ID, request);
-
-			assertThat(response.getIntentId()).isEqualTo(2L);
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_DUPLICATE_INTENT);
+					});
 		}
 	}
 
@@ -219,71 +171,111 @@ class ExchangeServiceTest {
 	class Describe_deleteIntent {
 
 		@Test
-		@DisplayName("자신의 의도를 성공적으로 삭제한다")
+		@DisplayName("자신의 의사를 삭제할 수 있다")
 		void it_deletes_own_intent() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
-			Long intentId = 1L;
-			ExchangeIntentEntity intent = createIntent(intentId, MEMBER_ID, "10001", "10002");
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long intentId = 100L;
 
-			given(intentRepository.findById(new ExchangeIntentId(TERM, intentId)))
+			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberId)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
 					.willReturn(Optional.of(intent));
-			given(roomMemberRepository.findByTermAndMemberId(TERM, MEMBER_ID))
-					.willReturn(Collections.emptyList());
+			given(roomIntentRepository.findByTermAndIntentId(term, intentId)).willReturn(List.of());
 
-			Cache mockCache = org.mockito.Mockito.mock(Cache.class);
-			given(cacheManager.getCache(anyString())).willReturn(mockCache);
+			// When
+			IntentDeleteResponse response = exchangeService.deleteIntent(memberId, intentId);
 
-			IntentDeleteResponse response = exchangeService.deleteIntent(MEMBER_ID, intentId);
-
+			// Then
 			assertThat(response.getIntentId()).isEqualTo(intentId);
 			assertThat(response.isDeleted()).isTrue();
 			assertThat(intent.isDeleted()).isTrue();
 		}
 
 		@Test
-		@DisplayName("존재하지 않는 의도이면 예외를 발생시킨다")
-		void it_throws_when_intent_not_found() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
+		@DisplayName("존재하지 않는 의도면 예외를 발생시킨다")
+		void it_throws_exception_when_not_found() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
 			Long intentId = 999L;
 
-			given(intentRepository.findById(new ExchangeIntentId(TERM, intentId)))
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
 					.willReturn(Optional.empty());
 
-			assertThatThrownBy(() -> exchangeService.deleteIntent(MEMBER_ID, intentId))
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.deleteIntent(memberId, intentId))
 					.isInstanceOf(BaseException.class)
-					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.EXCHANGE_INTENT_NOT_FOUND);
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_INTENT_NOT_FOUND);
+					});
 		}
 
 		@Test
-		@DisplayName("다른 사용자의 의도이면 예외를 발생시킨다")
-		void it_throws_when_not_owner() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
-			Long intentId = 1L;
-			Long otherMemberId = 999L;
-			ExchangeIntentEntity intent = createIntent(intentId, otherMemberId, "10001", "10002");
+		@DisplayName("다른 사용자의 의도면 예외를 발생시킨다")
+		void it_throws_exception_when_not_owner() {
+			// Given
+			String term = "202510";
+			Long ownerId = 1L;
+			Long requesterId = 2L;
+			Long intentId = 100L;
 
-			given(intentRepository.findById(new ExchangeIntentId(TERM, intentId)))
+			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(ownerId)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
 					.willReturn(Optional.of(intent));
 
-			assertThatThrownBy(() -> exchangeService.deleteIntent(MEMBER_ID, intentId))
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.deleteIntent(requesterId, intentId))
 					.isInstanceOf(BaseException.class)
-					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.EXCHANGE_INTENT_NOT_OWNER);
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_INTENT_NOT_OWNER);
+					});
 		}
 
 		@Test
-		@DisplayName("이미 삭제된 의도이면 예외를 발생시킨다")
-		void it_throws_when_already_deleted() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
-			Long intentId = 1L;
-			ExchangeIntentEntity intent = createIntent(intentId, MEMBER_ID, "10001", "10002");
-			intent.delete();
+		@DisplayName("이미 삭제된 의도면 예외를 발생시킨다")
+		void it_throws_exception_when_already_deleted() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long intentId = 100L;
 
-			given(intentRepository.findById(new ExchangeIntentId(TERM, intentId)))
+			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberId)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+			intent.markDeleted();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
 					.willReturn(Optional.of(intent));
 
-			assertThatThrownBy(() -> exchangeService.deleteIntent(MEMBER_ID, intentId))
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.deleteIntent(memberId, intentId))
 					.isInstanceOf(BaseException.class)
-					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.EXCHANGE_INTENT_ALREADY_DELETED);
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_INTENT_ALREADY_DELETED);
+					});
 		}
 	}
 
@@ -292,73 +284,315 @@ class ExchangeServiceTest {
 	class Describe_getMain {
 
 		@Test
-		@DisplayName("나의 의도 목록과 방 목록을 반환한다")
-		void it_returns_my_intents_and_rooms() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
+		@DisplayName("사용자의 의도와 방 목록, 최근 피드를 조회하여 반환한다")
+		void it_returns_main_response() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
 
-			IntentDto intent = IntentDto.builder()
-					.intentId(1L)
-					.giveCourseNo("10001")
-					.wantCourseNo("10002")
-					.isDeleted(false)
-					.createdAt(java.time.Instant.now())
-					.build();
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(cacheService.getIntents(term, memberId)).willReturn(List.of(
+					IntentCacheDto.builder()
+							.intentId(10L)
+							.giveCourseNo("10001")
+							.wantCourseNo("10002")
+							.isDeleted(false)
+							.build()
+			));
+			given(cacheService.getRooms(term, memberId)).willReturn(List.of(
+					RoomCacheDto.builder()
+							.roomId(100L)
+							.isActive(true)
+							.isOn(true)
+							.unreadCount(2)
+							.lastMessageContent("Hello")
+							.lastMessageAt(java.time.Instant.now())
+							.build()
+			));
+			given(cacheService.getFeedSlice(term, null, 5)).willReturn(List.of(
+					FeedCacheDto.builder()
+							.intentId(20L)
+							.giveCourseNo("10003")
+							.wantCourseNo("10004")
+							.createdAt(java.time.Instant.now())
+							.build()
+			));
 
-			given(userCacheService.getUserIntents(TERM, MEMBER_ID))
-					.willReturn(List.of(intent));
-			given(userCacheService.getUserRoomIds(TERM, MEMBER_ID))
-					.willReturn(Collections.emptyList());
-			given(userCacheService.getUserUnreadCounts(TERM, MEMBER_ID))
-					.willReturn(Collections.emptyMap());
+			// When
+			MainResponse response = exchangeService.getMain(memberId);
 
-			var response = exchangeService.getMain(MEMBER_ID);
-
+			// Then
 			assertThat(response.getMyIntents()).hasSize(1);
-			assertThat(response.getMyIntents().get(0).getIntentId()).isEqualTo(1L);
-			assertThat(response.getMyRooms()).isEmpty();
+			assertThat(response.getMyIntents().get(0).getIntentId()).isEqualTo(10L);
+			assertThat(response.getMyRooms()).hasSize(1);
+			assertThat(response.getMyRooms().get(0).getRoomId()).isEqualTo(100L);
+			assertThat(response.getRecentIntents()).hasSize(1);
+			assertThat(response.getRecentIntents().get(0).getIntentId()).isEqualTo(20L);
+		}
+	}
+
+	@Nested
+	@DisplayName("getRecentIntents 메서드는")
+	class Describe_getRecentIntents {
+
+		@Test
+		@DisplayName("최근 교환 의도 목록을 반환한다")
+		void it_returns_recent_intents() {
+			// Given
+			String term = "202510";
+			Long lastIntentId = 0L;
+			int limit = 10;
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(cacheService.getFeedSlice(term, lastIntentId, limit + 1)).willReturn(List.of(
+					FeedCacheDto.builder()
+							.intentId(15L)
+							.giveCourseNo("10001")
+							.wantCourseNo("10002")
+							.createdAt(java.time.Instant.now())
+							.build()
+			));
+
+			// When
+			RecentIntentsResponse response = exchangeService.getRecentIntents(lastIntentId, limit);
+
+			// Then
+			assertThat(response.getIntents()).hasSize(1);
+			assertThat(response.getIntents().get(0).getIntentId()).isEqualTo(15L);
+			assertThat(response.isHasNext()).isFalse();
+		}
+	}
+
+	@Nested
+	@DisplayName("getMessages 메서드는")
+	class Describe_getMessages {
+
+		@Test
+		@DisplayName("방 참여자가 아니면 예외를 발생시킨다")
+		void it_throws_exception_when_not_member() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long roomId = 100L;
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of());
+
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.getMessages(memberId, roomId, null, 20))
+					.isInstanceOf(BaseException.class)
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_ROOM_NOT_MEMBER);
+					});
 		}
 
 		@Test
-		@DisplayName("방 정보를 마이크로 캐시에서 조립한다")
-		void it_assembles_rooms_from_micro_caches() {
-			given(systemConfigService.getCurrentTerm()).willReturn(TERM);
+		@DisplayName("유효한 방 참여자면 메시지 내역을 반환하고 읽음 처리한다")
+		void it_returns_messages_and_updates_read_status() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long roomId = 100L;
 
-			given(userCacheService.getUserIntents(TERM, MEMBER_ID))
-					.willReturn(Collections.emptyList());
-			given(userCacheService.getUserRoomIds(TERM, MEMBER_ID))
-					.willReturn(List.of(1L));
-			given(userCacheService.getUserUnreadCounts(TERM, MEMBER_ID))
-					.willReturn(java.util.Map.of(1L, 3));
+			ExchangeRoomIntentEntity roomIntent = 
+					ExchangeRoomIntentEntity.builder()
+							.term(term)
+							.roomId(roomId)
+							.memberId(memberId)
+							.intentId(50L)
+							.build();
 
-			RoomStaticMetaDto staticMeta = RoomStaticMetaDto.builder()
-					.roomId(1L)
-					.totalParticipants(3)
-					.cycleDetails(Collections.emptyList())
+			ExchangeRoomMessageEntity message =
+					ExchangeRoomMessageEntity.builder()
+							.term(term)
+							.roomId(roomId)
+							.memberId(memberId)
+							.intentId(50L)
+							.content("Test message")
+							.build();
+			ReflectionTestUtils.setField(message, "id", 1000L);
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent));
+			given(messageRepository.findByTermAndRoomIdOrderByIdDesc(eq(term), eq(roomId), any(org.springframework.data.domain.Pageable.class)))
+					.willReturn(List.of(message));
+			given(readStatusRepository.findById(any())).willReturn(Optional.empty());
+
+			// When
+			MessageResponse response = exchangeService.getMessages(memberId, roomId, null, 20);
+
+			// Then
+			assertThat(response.getRoomId()).isEqualTo(roomId);
+			assertThat(response.getMessages()).hasSize(1);
+			assertThat(response.getMessages().get(0).getContent()).isEqualTo("Test message");
+			verify(readStatusRepository).save(any());
+		}
+	}
+
+	@Nested
+	@DisplayName("sendMessage 메서드는")
+	class Describe_sendMessage {
+
+		@Test
+		@DisplayName("방 멤버가 아니면 예외를 발생시킨다")
+		void it_throws_exception_when_not_member() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long roomId = 100L;
+			MessageSendRequest request = MessageSendRequest.builder().content("Hello").build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of());
+
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.sendMessage(memberId, roomId, request))
+					.isInstanceOf(BaseException.class)
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_ROOM_NOT_MEMBER);
+					});
+		}
+
+		@Test
+		@DisplayName("방 멤버이지만 활성화된 의도가 없으면 예외를 발생시킨다")
+		void it_throws_exception_when_intent_already_deleted() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long roomId = 100L;
+			MessageSendRequest request = MessageSendRequest.builder().content("Hello").build();
+
+			ExchangeRoomIntentEntity roomIntent = 
+					ExchangeRoomIntentEntity.builder()
+							.term(term)
+							.roomId(roomId)
+							.memberId(memberId)
+							.intentId(50L)
+							.build();
+			roomIntent.markDeleted();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent));
+
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.sendMessage(memberId, roomId, request))
+					.isInstanceOf(BaseException.class)
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_INTENT_ALREADY_DELETED);
+					});
+		}
+
+		@Test
+		@DisplayName("유효한 방 멤버이면 메시지를 전송하고 방 목록 캐시를 만료시킨다")
+		void it_sends_message() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long roomId = 100L;
+			MessageSendRequest request = MessageSendRequest.builder().content("Hello").build();
+
+			ExchangeRoomIntentEntity roomIntent = 
+					ExchangeRoomIntentEntity.builder()
+							.term(term)
+							.roomId(roomId)
+							.memberId(memberId)
+							.intentId(50L)
+							.build();
+
+			ExchangeRoomMessageEntity message =
+					ExchangeRoomMessageEntity.builder()
+							.term(term)
+							.roomId(roomId)
+							.memberId(memberId)
+							.intentId(50L)
+							.content("Hello")
+							.build();
+			ReflectionTestUtils.setField(message, "id", 1000L);
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent));
+			given(messageRepository.save(any())).willReturn(message);
+			given(readStatusRepository.findById(any())).willReturn(Optional.empty());
+			given(roomIntentRepository.findDistinctMemberIdsByTermAndRoomId(term, roomId)).willReturn(List.of(1L, 2L));
+
+			// When
+			MessageSendResponse response = exchangeService.sendMessage(memberId, roomId, request);
+
+			// Then
+			assertThat(response.getMessageId()).isEqualTo(1000L);
+			assertThat(response.getContent()).isEqualTo("Hello");
+			verify(messageRepository).save(any());
+			verify(cacheService).evictRooms(term, 1L);
+			verify(cacheService).evictRooms(term, 2L);
+		}
+	}
+
+	@Nested
+	@DisplayName("toggleRoom 메서드는")
+	class Describe_toggleRoom {
+
+		@Test
+		@DisplayName("방 멤버가 아니면 예외를 발생시킨다")
+		void it_throws_exception_when_not_member() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long roomId = 100L;
+			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of());
+
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.toggleRoom(memberId, roomId, request))
+					.isInstanceOf(BaseException.class)
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_ROOM_NOT_MEMBER);
+					});
+		}
+
+		@Test
+		@DisplayName("방 멤버이면 상태를 토글하고 캐시를 만료시킨다")
+		void it_toggles_room_status() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long roomId = 100L;
+			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
+
+			ExchangeRoomIntentEntity roomIntent = 
+					ExchangeRoomIntentEntity.builder()
+							.term(term)
+							.roomId(roomId)
+							.memberId(memberId)
+							.intentId(50L)
+							.build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term)
+					.cycleHash("hash")
+					.status("ACTIVE")
+					.isActive(true)
 					.build();
-			given(roomCacheService.getRoomStaticMeta(TERM, 1L)).willReturn(staticMeta);
+			org.springframework.test.util.ReflectionTestUtils.setField(room, "id", roomId);
 
-			RoomDynamicMetaDto dynamicMeta = RoomDynamicMetaDto.builder()
-					.lastMessage("test")
-					.lastMessageAt(java.time.Instant.now())
-					.build();
-			given(roomCacheService.getRoomDynamicMeta(TERM, 1L)).willReturn(dynamicMeta);
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(roomIntent));
+			given(roomRepository.findByIdForUpdate(term, roomId)).willReturn(Optional.of(room));
 
-			RoomActiveIntentsDto activeIntents = RoomActiveIntentsDto.builder()
-					.intents(List.of(
-							RoomActiveIntentsDto.ActiveIntent.builder().intentId(1L).memberId(100L).isDeleted(false).build(),
-							RoomActiveIntentsDto.ActiveIntent.builder().intentId(2L).memberId(200L).isDeleted(false).build(),
-							RoomActiveIntentsDto.ActiveIntent.builder().intentId(3L).memberId(300L).isDeleted(false).build()
-					))
-					.build();
-			given(roomCacheService.getRoomActiveIntents(TERM, 1L)).willReturn(activeIntents);
+			// When
+			RoomToggleResponse response = exchangeService.toggleRoom(memberId, roomId, request);
 
-			var response = exchangeService.getMain(MEMBER_ID);
-
-			assertThat(response.getMyRooms()).hasSize(1);
-			assertThat(response.getMyRooms().get(0).getRoomId()).isEqualTo(1L);
-			assertThat(response.getMyRooms().get(0).getTotalParticipants()).isEqualTo(3);
-			assertThat(response.getMyRooms().get(0).getActiveIntentCount()).isEqualTo(3);
-			assertThat(response.getMyRooms().get(0).getUnreadMessageCount()).isEqualTo(3);
+			// Then
+			assertThat(response.getRoomId()).isEqualTo(roomId);
+			assertThat(response.isOn()).isFalse();
+			assertThat(roomIntent.isOn()).isFalse();
+			verify(cacheService).evictRooms(term, memberId);
 		}
 	}
 }
