@@ -13,7 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.springframework.test.context.ActiveProfiles;
+
 @SpringBootTest
+@ActiveProfiles("test")
 @Transactional
 @DisplayName("ExampleRepository 테스트")
 class ExampleRepositoryTest {

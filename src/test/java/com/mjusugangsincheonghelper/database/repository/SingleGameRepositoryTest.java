@@ -15,7 +15,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.springframework.test.context.ActiveProfiles;
+
 @SpringBootTest
+@ActiveProfiles("test")
 @Transactional
 @DisplayName("SingleGameRepository 테스트")
 class SingleGameRepositoryTest {

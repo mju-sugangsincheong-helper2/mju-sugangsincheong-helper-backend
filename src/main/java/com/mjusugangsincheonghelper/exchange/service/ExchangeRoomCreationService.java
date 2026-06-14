@@ -96,14 +96,20 @@ public class ExchangeRoomCreationService {
 
 		List<Long> memberIds = cycle.stream().map(ExchangeIntentEntity::getMemberId).toList();
 
-		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-			@Override
-			public void afterCommit() {
-				for (Long memberId : memberIds) {
-					cacheService.evictRooms(term, memberId);
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					for (Long memberId : memberIds) {
+						cacheService.evictRooms(term, memberId);
+					}
 				}
+			});
+		} else {
+			for (Long memberId : memberIds) {
+				cacheService.evictRooms(term, memberId);
 			}
-		});
+		}
 
 		return room.getId();
 	}
