@@ -10,28 +10,26 @@ import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
 
 @Component
 public class TokenProvider {
 
 	private final SecretKey key;
-	private final long accessTokenExpiryMs;
-	private final long refreshTokenExpiryMs;
-	private final long mergeTicketExpiryMs;
+	private final SystemConfigService systemConfigService;
 
 	public TokenProvider(
 			@Value("${app.jwt.secret}") String secret,
-			@Value("${app.jwt.access-token-expiry-ms}") long accessTokenExpiryMs,
-			@Value("${app.jwt.refresh-token-expiry-ms}") long refreshTokenExpiryMs,
-			@Value("${app.jwt.merge-ticket-expiry-ms}") long mergeTicketExpiryMs) {
+			SystemConfigService systemConfigService) {
 		this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-		this.accessTokenExpiryMs = accessTokenExpiryMs;
-		this.refreshTokenExpiryMs = refreshTokenExpiryMs;
-		this.mergeTicketExpiryMs = mergeTicketExpiryMs;
+		this.systemConfigService = systemConfigService;
 	}
 
 	public String createAccessToken(Long memberId, String role) {
 		Instant now = Instant.now();
+		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
+		long accessTokenExpiryMs = config.accessTokenExpiryMs();
 		return Jwts.builder()
 				.subject(String.valueOf(memberId))
 				.claim("role", role)
@@ -47,6 +45,8 @@ public class TokenProvider {
 
 	public String createMergeTicket(Long memberId, String googleSubId) {
 		Instant now = Instant.now();
+		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
+		long mergeTicketExpiryMs = config.mergeTicketExpiryMs();
 		return Jwts.builder()
 				.subject(String.valueOf(memberId))
 				.claim("googleSubId", googleSubId)
@@ -78,11 +78,13 @@ public class TokenProvider {
 	}
 
 	public long getAccessTokenExpiryMs() {
-		return accessTokenExpiryMs;
+		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
+		return config.accessTokenExpiryMs();
 	}
 
 	public long getRefreshTokenExpiryMs() {
-		return refreshTokenExpiryMs;
+		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
+		return config.refreshTokenExpiryMs();
 	}
 
 	public record TokenClaims(Long memberId, String role) {

@@ -16,6 +16,8 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
 
 @Slf4j
 @Component
@@ -24,12 +26,7 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 
 	private final ClientInfoExtractor clientInfoExtractor;
 	private final InstanceIdProvider instanceIdProvider;
-
-	@Value("${app.performance.slow-ms:1000}")
-	private long slowMs;
-
-	@Value("${app.performance.very-slow-ms:5000}")
-	private long verySlowMs;
+	private final SystemConfigService systemConfigService;
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -70,9 +67,10 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 	}
 
 	private void logSlowRequest(String method, String path, long durationMs) {
-		if (durationMs > verySlowMs) {
+		SettingDefinition.PerformanceThresholds thresholds = SettingDefinition.PERFORMANCE_THRESHOLDS.getFrom(systemConfigService);
+		if (durationMs > thresholds.verySlowMs()) {
 			log.error("Very slow request: {} {} took {}ms", method, path, durationMs);
-		} else if (durationMs > slowMs) {
+		} else if (durationMs > thresholds.slowMs()) {
 			log.warn("Slow request: {} {} took {}ms", method, path, durationMs);
 		}
 	}
