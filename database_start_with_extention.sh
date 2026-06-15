@@ -167,6 +167,7 @@ fi
 
 echo "📁 마운트용 데이터 디렉터리를 미리 생성합니다..."
 mkdir -p ./data/postgres ./data/redis
+chmod -R 777 ./data/postgres ./data/redis
 echo "🐳 Docker 컨테이너 빌드 및 실행 중..."
 docker compose -f "$COMPOSE_FILE" up -d --build
 
@@ -201,6 +202,12 @@ echo "🧩 PostgreSQL 확장 기능(pg_cron, pgmq, pg_stat_statements) 활성화
 docker exec -i ${DB_CONTAINER_NAME} psql -U ${DB_ROOT_USER} -d ${DB_NAME} -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
 docker exec -i ${DB_CONTAINER_NAME} psql -U ${DB_ROOT_USER} -d ${DB_NAME} -c "CREATE EXTENSION IF NOT EXISTS pg_cron;"
 docker exec -i ${DB_CONTAINER_NAME} psql -U ${DB_ROOT_USER} -d ${DB_NAME} -c "CREATE EXTENSION IF NOT EXISTS pgmq;"
+
+# 9. 확장 기능에 대한 일반 유저 권한 부여
+echo "🔑 일반 유저(${DB_USER})에게 pgmq 확장 기능 권한 부여 중..."
+docker exec -i ${DB_CONTAINER_NAME} psql -U ${DB_ROOT_USER} -d ${DB_NAME} -c "GRANT USAGE, CREATE ON SCHEMA pgmq TO ${DB_USER};"
+docker exec -i ${DB_CONTAINER_NAME} psql -U ${DB_ROOT_USER} -d ${DB_NAME} -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA pgmq TO ${DB_USER};"
+docker exec -i ${DB_CONTAINER_NAME} psql -U ${DB_ROOT_USER} -d ${DB_NAME} -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA pgmq TO ${DB_USER};"
 
 
 echo "========================================="

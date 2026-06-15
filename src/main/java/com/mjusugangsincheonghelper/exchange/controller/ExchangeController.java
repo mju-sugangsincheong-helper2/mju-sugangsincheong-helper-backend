@@ -75,6 +75,7 @@ public class ExchangeController {
 			ErrorCode.EXCHANGE_INTENT_NOT_FOUND,
 			ErrorCode.EXCHANGE_INTENT_NOT_OWNER,
 			ErrorCode.EXCHANGE_INTENT_ALREADY_DELETED,
+			ErrorCode.EXCHANGE_ROOM_NOT_FOUND,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<IntentDeleteResponse>> deleteIntent(
@@ -179,6 +180,7 @@ public class ExchangeController {
 	)
 	@OperationErrorCodes({
 			ErrorCode.EXCHANGE_ROOM_NOT_MEMBER,
+			ErrorCode.EXCHANGE_ROOM_NOT_FOUND,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<RoomToggleResponse>> toggleRoom(

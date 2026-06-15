@@ -36,38 +36,34 @@ public class ExchangeCycleDetector {
 	}
 
 	public void detectCyclesAndCreateRooms(String term, Long intentId, Long memberId, String giveCourseNo, String wantCourseNo) {
-		try {
-			ExchangeIntentEntity triggerIntent = intentRepository.findById(
-					new ExchangeIntentEntity.ExchangeIntentId(term, intentId)
-			).orElse(null);
+		ExchangeIntentEntity triggerIntent = intentRepository.findById(
+				new ExchangeIntentEntity.ExchangeIntentId(term, intentId)
+		).orElse(null);
 
-			if (triggerIntent == null || triggerIntent.isDeleted()) {
-				log.debug("Intent {} was deleted before cycle detection, skipping", intentId);
-				return;
+		if (triggerIntent == null || triggerIntent.isDeleted()) {
+			log.debug("Intent {} was deleted before cycle detection, skipping", intentId);
+			return;
+		}
+
+		List<ExchangeIntentEntity> allActive = intentRepository.findByTermAndIsDeletedFalse(term);
+
+		Map<String, List<ExchangeIntentEntity>> adjacency = new HashMap<>();
+		for (ExchangeIntentEntity intent : allActive) {
+			adjacency.computeIfAbsent(intent.getGiveCourseNo(), k -> new ArrayList<>()).add(intent);
+		}
+
+		List<List<ExchangeIntentEntity>> cycles = new ArrayList<>();
+		Set<String> visited = new HashSet<>();
+		List<ExchangeIntentEntity> path = new ArrayList<>();
+		path.add(triggerIntent);
+
+		dfs(wantCourseNo, giveCourseNo, adjacency, visited, path, cycles);
+
+		for (List<ExchangeIntentEntity> cycle : cycles) {
+			String cycleHash = computeCycleHash(cycle);
+			if (roomRepository.findByTermAndCycleHash(term, cycleHash).isEmpty()) {
+				roomCreationService.createRoom(term, cycle, cycleHash);
 			}
-
-			List<ExchangeIntentEntity> allActive = intentRepository.findByTermAndIsDeletedFalse(term);
-
-			Map<String, List<ExchangeIntentEntity>> adjacency = new HashMap<>();
-			for (ExchangeIntentEntity intent : allActive) {
-				adjacency.computeIfAbsent(intent.getGiveCourseNo(), k -> new ArrayList<>()).add(intent);
-			}
-
-			List<List<ExchangeIntentEntity>> cycles = new ArrayList<>();
-			Set<String> visited = new HashSet<>();
-			List<ExchangeIntentEntity> path = new ArrayList<>();
-			path.add(triggerIntent);
-
-			dfs(wantCourseNo, giveCourseNo, adjacency, visited, path, cycles);
-
-			for (List<ExchangeIntentEntity> cycle : cycles) {
-				String cycleHash = computeCycleHash(cycle);
-				if (roomRepository.findByTermAndCycleHash(term, cycleHash).isEmpty()) {
-					roomCreationService.createRoom(term, cycle, cycleHash);
-				}
-			}
-		} catch (Exception e) {
-			log.error("Cycle detection failed for term={}, intentId={}", term, intentId, e);
 		}
 	}
 

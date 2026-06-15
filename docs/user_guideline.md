@@ -768,6 +768,8 @@ public class MyQueueWorker {
 | 3 | 처리 실패 시 delete/archive 호출 금지 | 가시성 타임아웃 후 자동 재시도 |
 | 4 | `pgmqScheduler` 빈 사용 | PGMQ 전용 스레드 풀 분리 |
 | 5 | 에러 발생 시 로그만 남김 | 원본 예외는 로그로 추적 |
+| 6 | 독약 메시지(Poison Message) 방지를 위해 재시도 제한 | 무한 루프 및 리소스 고갈 방지 |
+| 7 | 비즈니스 로직(서비스/디텍터 등)에서 예외 삼킴(Swallow) 금지 | 실패 시 큐 재시도 작동을 위한 필수 조건 |
 
 ### 에러 처리
 
@@ -779,8 +781,15 @@ catch (JacksonException e) {
 
 // 워커에서 처리 실패 시
 catch (Exception e) {
-    log.error("큐 메시지 처리 실패: msgId={}", msg.getMsgId(), e);
-    // delete 호출하지 않음 → 30초 후 자동 재시도
+    log.error("큐 메시지 처리 실패: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt(), e);
+    // delete/archive 호출하지 않음 → 가시성 타임아웃 후 자동 재시도
+}
+
+// 독약 메시지(Poison Message) 방지를 위해 루프 시작 시 처리
+if (msg.getReadCt() > MAX_RETRY_COUNT) {
+    log.error("메시지 재시도 횟수 초과로 아카이브 처리: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
+    pgmqService.archive(QUEUE_NAME, msg.getMsgId());
+    continue;
 }
 ```
 

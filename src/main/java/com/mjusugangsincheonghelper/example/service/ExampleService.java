@@ -49,7 +49,7 @@ public class ExampleService {
 	}
 
 	public Page<ExamplePageItem> list(int page, int size) {
-		PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, ExampleEntity::getId));
 		return exampleRepository.findByActiveTrue(pageRequest)
 				.map(ExamplePageItem::from);
 	}

@@ -20,6 +20,7 @@ public class ExchangeCycleDetectionWorker {
 
 	private static final int VISIBILITY_TIMEOUT = 30;
 	private static final int BATCH_SIZE = 1;
+	private static final int MAX_RETRY_COUNT = 5;
 
 	private final PgmqService pgmqService;
 	private final ExchangeCycleDetector cycleDetector;
@@ -43,6 +44,12 @@ public class ExchangeCycleDetectionWorker {
 
 		for (PgmqMessageDto msg : messages) {
 			try {
+				if (msg.getReadCt() > MAX_RETRY_COUNT) {
+					log.error("Exchange cycle detection message exceeded max retries. Archiving message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
+					pgmqService.archive(ExchangeCycleDetector.QUEUE_NAME, msg.getMsgId());
+					continue;
+				}
+
 				CycleDetectionMessage detectionMsg = objectMapper.readValue(msg.getMessage(), CycleDetectionMessage.class);
 				cycleDetector.detectCyclesAndCreateRooms(
 						detectionMsg.getTerm(),
@@ -53,7 +60,7 @@ public class ExchangeCycleDetectionWorker {
 				);
 				pgmqService.delete(ExchangeCycleDetector.QUEUE_NAME, msg.getMsgId());
 			} catch (Exception e) {
-				log.error("Failed to process cycle detection message: msgId={}", msg.getMsgId(), e);
+				log.error("Failed to process cycle detection message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt(), e);
 			}
 		}
 	}

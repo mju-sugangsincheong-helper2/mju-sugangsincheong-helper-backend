@@ -133,5 +133,27 @@ class ExchangeCycleDetectionWorkerTest {
 			verifyNoInteractions(cycleDetector);
 			verify(pgmqService, never()).delete(any(), any());
 		}
+
+		@Test
+		@DisplayName("메시지 재시도 횟수가 초과되면 아카이브하고 처리를 생략한다")
+		void it_archives_message_when_retry_limit_exceeded() {
+			// Given
+			PgmqMessageDto messageDto = PgmqMessageDto.builder()
+					.msgId(123L)
+					.readCt(6)
+					.message("{\"term\":\"202510\",\"intentId\":10}")
+					.build();
+
+			given(pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, 30, 1))
+					.willReturn(List.of(messageDto));
+
+			// When
+			ReflectionTestUtils.invokeMethod(worker, "poll");
+
+			// Then
+			verifyNoInteractions(cycleDetector);
+			verify(pgmqService).archive(ExchangeCycleDetector.QUEUE_NAME, 123L);
+			verify(pgmqService, never()).delete(any(), any());
+		}
 	}
 }
