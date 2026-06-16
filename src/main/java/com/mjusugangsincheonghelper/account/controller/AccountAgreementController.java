@@ -3,12 +3,16 @@ package com.mjusugangsincheonghelper.account.controller;
 import com.mjusugangsincheonghelper.account.dto.PrivacyAgreementResponse;
 import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
 import com.mjusugangsincheonghelper.account.service.AccountAgreementService.ConsentStatus;
+import com.mjusugangsincheonghelper.auth.session.SessionService;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -24,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountAgreementController {
 
 	private final AccountAgreementService accountAgreementService;
+	private final SessionService sessionService;
 
 	@PostMapping(value = "/agree", version = "1+")
 	@Operation(
@@ -40,16 +45,33 @@ public class AccountAgreementController {
 			ErrorCode.GLOBAL_SECURITY_UNAUTHORIZED_ACCESS,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
-	public ResponseEntity<SingleSuccessResponseEnvelope<PrivacyAgreementResponse>> agreePrivacyPolicy() {
+	public ResponseEntity<SingleSuccessResponseEnvelope<PrivacyAgreementResponse>> agreePrivacyPolicy(
+			HttpServletRequest request, HttpServletResponse response) {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		Long memberId = (Long) authentication.getPrincipal();
 		ConsentStatus status = accountAgreementService.agree(memberId);
 
-		PrivacyAgreementResponse response = PrivacyAgreementResponse.builder()
+		String refreshToken = extractRefreshToken(request);
+		if (refreshToken != null) {
+			sessionService.reissueToken(memberId, refreshToken, response);
+		}
+
+		PrivacyAgreementResponse res = PrivacyAgreementResponse.builder()
 				.memberId(memberId)
 				.privacyPolicyAgreed(status.status())
 				.agreedAt(status.agreedAt())
 				.build();
-		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(res));
+	}
+
+	private String extractRefreshToken(HttpServletRequest request) {
+		if (request.getCookies() != null) {
+			for (Cookie cookie : request.getCookies()) {
+				if ("refresh_token".equals(cookie.getName())) {
+					return cookie.getValue();
+				}
+			}
+		}
+		return null;
 	}
 }

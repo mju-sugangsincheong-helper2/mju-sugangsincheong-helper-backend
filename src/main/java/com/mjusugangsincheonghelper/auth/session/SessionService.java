@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.auth.session;
 
+import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
@@ -27,6 +28,7 @@ public class SessionService {
 	private final DeviceSessionService deviceSessionService;
 	private final MemberRepository memberRepository;
 	private final MemberDeviceRepository memberDeviceRepository;
+	private final AccountAgreementService accountAgreementService;
 
 	@Transactional
 	public SessionResult createSession(AuthenticatedIdentity identity, DeviceInfo device, String fcmToken,
@@ -34,7 +36,8 @@ public class SessionService {
 		Member member = memberRepository.findById(identity.getMemberId())
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 
-		String accessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name());
+		boolean privacyAgreed = accountAgreementService.isAgreed(member.getId());
+		String accessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed);
 		String refreshToken = tokenProvider.createRefreshToken();
 
 		deviceSessionService.upsert(member.getId(), refreshToken, fcmToken, device,
@@ -69,7 +72,8 @@ public class SessionService {
 		String newRefreshToken = tokenProvider.createRefreshToken();
 		device.updateRefreshToken(newRefreshToken);
 
-		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name());
+		boolean privacyAgreed = accountAgreementService.isAgreed(member.getId());
+		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed);
 
 		tokenDeliveryStrategy.deliver(newAccessToken, newRefreshToken, response);
 
@@ -82,6 +86,27 @@ public class SessionService {
 				.position(member.getPosition())
 				.department(member.getDepartment())
 				.build();
+	}
+
+	@Transactional
+	public void reissueToken(Long memberId, String refreshToken, HttpServletResponse response) {
+		MemberDevice device = memberDeviceRepository.findByRefreshToken(refreshToken)
+				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
+
+		if (device.getExpiresAt() != null && device.getExpiresAt().isBefore(Instant.now())) {
+			memberDeviceRepository.delete(device);
+			throw new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
+		}
+
+		Member member = memberRepository.findById(memberId)
+				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
+
+		String newRefreshToken = tokenProvider.createRefreshToken();
+		device.updateRefreshToken(newRefreshToken);
+
+		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), true);
+
+		tokenDeliveryStrategy.deliver(newAccessToken, newRefreshToken, response);
 	}
 
 	@Transactional

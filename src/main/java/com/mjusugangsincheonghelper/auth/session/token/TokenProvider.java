@@ -26,13 +26,14 @@ public class TokenProvider {
 		this.systemConfigService = systemConfigService;
 	}
 
-	public String createAccessToken(Long memberId, String role) {
+	public String createAccessToken(Long memberId, String role, boolean privacyAgreed) {
 		Instant now = Instant.now();
 		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
 		long accessTokenExpiryMs = config.accessTokenExpiryMs();
 		return Jwts.builder()
 				.subject(String.valueOf(memberId))
 				.claim("role", role)
+				.claim("agreed", privacyAgreed)
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(now.plusMillis(accessTokenExpiryMs)))
 				.signWith(key)
@@ -65,7 +66,8 @@ public class TokenProvider {
 				.getPayload();
 		return new TokenClaims(
 				Long.parseLong(claims.getSubject()),
-				claims.get("role", String.class)
+				claims.get("role", String.class),
+				claims.get("agreed", Boolean.class) != null && claims.get("agreed", Boolean.class)
 		);
 	}
 
@@ -87,6 +89,6 @@ public class TokenProvider {
 		return config.refreshTokenExpiryMs();
 	}
 
-	public record TokenClaims(Long memberId, String role) {
+	public record TokenClaims(Long memberId, String role, boolean agreed) {
 	}
 }

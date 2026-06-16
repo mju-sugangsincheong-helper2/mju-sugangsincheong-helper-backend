@@ -458,12 +458,32 @@ JwtAuthenticationFilter (OncePerRequestFilter)
     → TokenExtractor로 토큰 추출
     → TokenProvider.parseAccessToken() 검증
     → SecurityContextHolder에 인증 정보 설정
+    → (MEMBER + 미동의) 경로 체크 → 403 or 통과
+    → 동의 화이트리스트 경로는 체크 제외
 ```
 
 **JwtAuthenticationFilter**:
 - `UsernamePasswordAuthenticationFilter` 이전에 실행
 - 토큰 추출 → 파싱 → `UsernamePasswordAuthenticationToken` 생성 (principal=`memberId`, authority=`ROLE_{role}`)
 - 토큰 없거나 유효하지 않으면 그냥 통과 (인증 없이 요청 진행)
+- **개인정보 동의 체크** (2025-06 추가):
+  - Access Token JWT에 `agreed` (boolean) 클레임 포함
+  - 역할이 `MEMBER`이고 `agreed=false`인 경우, 화이트리스트 경로가 아니면 403 Forbidden 응답
+  - GUEST는 동의 체크 대상에서 제외
+  - 동의 화이트리스트 경로:
+    - `/auth/privacy/agree` — 동의 API 자체
+    - `/auth/refresh` — 토큰 갱신
+    - `/auth/logout` — 로그아웃
+  - 동의 완료 시 `POST /api/{version}/auth/privacy/agree`에서 refresh token으로 새 access token(`agreed=true`)을 재발급하여 쿠키에 설정
+
+**Access Token JWT Claims**:
+| 클레임 | 타입 | 설명 |
+|--------|------|------|
+| `sub` | String | memberId (회원 ID) |
+| `role` | String | 권한 (`GUEST`, `MEMBER`, `ADMIN`) |
+| `agreed` | boolean | 개인정보 동의 여부 |
+| `iat` | Date | 발급 시간 |
+| `exp` | Date | 만료 시간 |
 
 **TokenExtractor 전략**:
 - **dev/test**: `BearerTokenExtractor` — `Authorization: Bearer {token}` 헤더 우선, 없으면 `access_token` 쿠키 확인

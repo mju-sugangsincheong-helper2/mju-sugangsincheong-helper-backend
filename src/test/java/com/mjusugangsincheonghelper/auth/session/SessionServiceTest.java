@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
+import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
@@ -53,6 +54,9 @@ class SessionServiceTest {
 	@Mock
 	MemberDeviceRepository memberDeviceRepository;
 
+	@Mock
+	AccountAgreementService accountAgreementService;
+
 	@Nested
 	@DisplayName("createSession 메서드는")
 	class Describe_createSession {
@@ -73,7 +77,8 @@ class SessionServiceTest {
 			HttpServletResponse response = new MockHttpServletResponse();
 
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-			given(tokenProvider.createAccessToken(1L, "GUEST")).willReturn("access-token");
+			given(accountAgreementService.isAgreed(1L)).willReturn(false);
+			given(tokenProvider.createAccessToken(1L, "GUEST", false)).willReturn("access-token");
 			given(tokenProvider.createRefreshToken()).willReturn("refresh-token");
 			given(tokenProvider.getRefreshTokenExpiryMs()).willReturn(604800000L);
 
@@ -114,7 +119,8 @@ class SessionServiceTest {
 
 			given(memberDeviceRepository.findByRefreshToken(refreshToken)).willReturn(Optional.of(device));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-			given(tokenProvider.createAccessToken(1L, "MEMBER")).willReturn("new-access-token");
+			given(accountAgreementService.isAgreed(1L)).willReturn(false);
+			given(tokenProvider.createAccessToken(1L, "MEMBER", false)).willReturn("new-access-token");
 			given(tokenProvider.createRefreshToken()).willReturn("new-refresh-token");
 
 			SessionResult result = sessionService.refreshSession(refreshToken, response);
