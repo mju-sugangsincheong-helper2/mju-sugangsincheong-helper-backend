@@ -1,0 +1,143 @@
+x-variables:
+  app_name: &APP_NAME "mju-sugangsincheong-helper"
+  postgres_db_name: &POSTGRES_DB_NAME "postgres"
+  postgres_user: &POSTGRES_USER "postgres"
+  postgres_password: &POSTGRES_PASSWORD "postgrespassword"
+  db_user: &DB_USER "mjusugangsincheonghelperuser"
+  db_password: &DB_PASSWORD "mjusugangsincheonghelperpassword"
+  dev_db_name: &DEV_DB_NAME "mjusugangsincheonghelperdb_dev"
+  test_db_name: &TEST_DB_NAME "mjusugangsincheonghelperdb_test"
+  pgadmin_email: &PGADMIN_EMAIL "admin@admin.com"
+  pgadmin_password: &PGADMIN_PASSWORD "1253"
+  # Container name anchors
+  postgres_container: &POSTGRES_CONTAINER "mju-sugangsincheong-helper-postgres"
+  db_setup_container: &DB_SETUP_CONTAINER "mju-sugangsincheong-helper-db-setup"
+  pgadmin_container: &PGADMIN_CONTAINER "mju-sugangsincheong-helper-pgadmin"
+  redis_container: &REDIS_CONTAINER "mju-sugangsincheong-helper-redis"
+  redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: ./docker/postgres/Dockerfile
+    container_name: *POSTGRES_CONTAINER
+    environment:
+      POSTGRES_DB: *POSTGRES_DB_NAME
+      POSTGRES_USER: *POSTGRES_USER
+      POSTGRES_PASSWORD: *POSTGRES_PASSWORD
+      PGPASSWORD: *POSTGRES_PASSWORD
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+
+  db-setup:
+    image: postgres:latest
+    container_name: *DB_SETUP_CONTAINER
+    profiles: ["setup"]
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: *POSTGRES_USER
+      POSTGRES_PASSWORD: *POSTGRES_PASSWORD
+      POSTGRES_DB_NAME: *POSTGRES_DB_NAME      # 이게 빠져 있었음
+      DB_USER: *DB_USER
+      DB_PASSWORD: *DB_PASSWORD
+      DEV_DB_NAME: *DEV_DB_NAME
+      TEST_DB_NAME: *TEST_DB_NAME
+      PGPASSWORD: *POSTGRES_PASSWORD
+    depends_on:
+      db:
+        condition: service_healthy
+    command: |
+      bash -c "
+        set -e
+        until pg_isready -h $$POSTGRES_HOST -U $$POSTGRES_USER; do
+          sleep 1
+        done
+        echo 'PostgreSQL is up - executing setup commands...'
+
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"SELECT 1 FROM pg_roles WHERE rolname='$$DB_USER'\" | grep -q 1 || psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE ROLE $$DB_USER WITH LOGIN PASSWORD '$$DB_PASSWORD' SUPERUSER;\"
+
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$DEV_DB_NAME OWNER $$DB_USER;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$TEST_DB_NAME OWNER $$DB_USER;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_cron;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS system_stats;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"ALTER DATABASE $$DEV_DB_NAME SET search_path TO public;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"ALTER DATABASE $$TEST_DB_NAME SET search_path TO public;\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public, '$$DB_USER';\"
+        echo 'Database setup complete!'
+      "
+    restart: "no"
+    
+  pgadmin:
+    build:
+      context: ./docker/pgadmin
+      dockerfile: Dockerfile
+    container_name: *PGADMIN_CONTAINER
+    environment:
+      PGADMIN_DEFAULT_EMAIL: *PGADMIN_EMAIL
+      PGADMIN_DEFAULT_PASSWORD: *PGADMIN_PASSWORD
+    ports:
+      - "8005:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - db
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: *REDIS_CONTAINER
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  redis-commander:
+    image: ghcr.io/joeferner/redis-commander:latest
+    platform: linux/amd64
+    container_name: *REDIS_COMMANDER_CONTAINER
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+    ports:
+      - "8006:8081"
+    depends_on:
+      - redis
+    restart: always
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+
+
+  # 애플리케이션 서비스 (예시)
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: ./docker/app/Dockerfile # 실제 애플리케이션 Dockerfile 경로로 변경 필요
+  #   container_name: *APP_CONTAINER
+  #   environment:
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/*DEV_DB_NAME # 개발 DB 사용 예시
+  #     SPRING_DATASOURCE_USERNAME: *DB_USER
+  #     SPRING_DATASOURCE_PASSWORD: *DB_PASSWORD
+  #     # 다른 환경 변수들 추가
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     - db
+  #     - redis
+  #   restart: always

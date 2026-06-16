@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "mjusugangsincheong_local_infra",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "mjusugangsincheonghelperdb_dev",
+      "Username": "mjusugangsincheonghelperuser",
+      "Password": "mjusugangsincheonghelperpassword",
+      "SSLMode": "prefer"
+    }
+  }
+}
