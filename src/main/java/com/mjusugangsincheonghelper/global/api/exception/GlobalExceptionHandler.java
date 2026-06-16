@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -119,6 +120,15 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ErrorResponseEnvelope> handleNoResourceFound(NoResourceFoundException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_NOT_FOUND;
 		log.warn("Resource not found: {}", exception.getMessage());
+		return ResponseEntity
+				.status(errorCode.getStatus())
+				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+	}
+
+	@ExceptionHandler(AccessDeniedException.class)
+	public ResponseEntity<ErrorResponseEnvelope> handleAccessDenied(AccessDeniedException exception) {
+		ErrorCode errorCode = ErrorCode.GLOBAL_SECURITY_FORBIDDEN;
+		log.warn("Access denied: {}", exception.getMessage());
 		return ResponseEntity
 				.status(errorCode.getStatus())
 				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
