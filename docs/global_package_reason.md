@@ -455,26 +455,20 @@ TokenExtractor (interface)
 └── CookieTokenExtractor   (@Profile("prod"))            → access_token 쿠키만
 
 JwtAuthenticationFilter (OncePerRequestFilter)
+    → shouldNotFilter: /api/** 외에는 skip
     → TokenExtractor로 토큰 추출
     → TokenProvider.parseAccessToken() 검증
-    → SecurityContextHolder에 인증 정보 설정
-    → (MEMBER + 미동의) 경로 체크 → 403 or 통과
-    → 동의 화이트리스트 경로는 체크 제외
+    → SecurityContextHolder에 인증 정보 설정 + request attribute에 agreed 저장
+    → filterChain.doFilter() (절대 막지 않음)
 ```
 
 **JwtAuthenticationFilter**:
 - `UsernamePasswordAuthenticationFilter` 이전에 실행
+- `shouldNotFilter()`: `/api/` 경로만 필터링 (정적 리소스, Swagger 등은 skip)
 - 토큰 추출 → 파싱 → `UsernamePasswordAuthenticationToken` 생성 (principal=`memberId`, authority=`ROLE_{role}`)
 - 토큰 없거나 유효하지 않으면 그냥 통과 (인증 없이 요청 진행)
-- **개인정보 동의 체크** (2025-06 추가):
-  - Access Token JWT에 `agreed` (boolean) 클레임 포함
-  - 역할이 `MEMBER`이고 `agreed=false`인 경우, 화이트리스트 경로가 아니면 403 Forbidden 응답
-  - GUEST는 동의 체크 대상에서 제외
-  - 동의 화이트리스트 경로:
-    - `/auth/privacy/agree` — 동의 API 자체
-    - `/auth/refresh` — 토큰 갱신
-    - `/auth/logout` — 로그아웃
-  - 동의 완료 시 `POST /api/{version}/auth/privacy/agree`에서 refresh token으로 새 access token(`agreed=true`)을 재발급하여 쿠키에 설정
+- 요청 차단하지 않음 — 항상 `filterChain.doFilter()` 호출
+- 동의 상태는 `request.setAttribute("privacyAgreed", claims.agreed())`로 저장
 
 **Access Token JWT Claims**:
 | 클레임 | 타입 | 설명 |
@@ -488,6 +482,33 @@ JwtAuthenticationFilter (OncePerRequestFilter)
 **TokenExtractor 전략**:
 - **dev/test**: `BearerTokenExtractor` — `Authorization: Bearer {token}` 헤더 우선, 없으면 `access_token` 쿠키 확인
 - **prod**: `CookieTokenExtractor` — `access_token` 쿠키만 확인 (보안 강화)
+
+### ConsentCheckInterceptor
+
+```
+Request → JwtAuthenticationFilter (인증 + agreed 저장, 항상 통과)
+       → SecurityFilterChain (GlobalSecurityConfig, permitAll)
+       → DispatcherServlet
+       → ConsentCheckInterceptor.preHandle() (consent 체크)
+       → Controller
+```
+
+**ConsentCheckInterceptor** (`global/security/interceptor/`):
+- `HandlerInterceptor` 구현, `GlobalWebMvcConfig`에서 `/api/**`에 등록
+- `preHandle()`에서 `SecurityContextHolder`의 인증 정보 + `request.getAttribute("privacyAgreed")` 확인
+- 조건: MEMBER + `agreed=false` + 화이트리스트 경로가 아님 → `BaseException(ErrorCode.AUTH_PRIVACY_POLICY_REQUIRED)` throw
+- GUEST는 role 체크에서 제외
+- 화이트리스트 경로 (동의 없이 접근 가능):
+  - `/auth/privacy/agree` — 동의 API 자체
+  - `/auth/refresh` — 토큰 갱신
+  - `/auth/logout` — 로그아웃
+- 예외는 `GlobalExceptionHandler`에서 처리 → 정상적인 `meta` 포함 `ErrorResponseEnvelope` 응답
+
+**설계 의도**:
+- `JwtAuthenticationFilter`는 인증만 담당하고 요청을 절대 차단하지 않음
+- consent 체크는 Controller 직전 `HandlerInterceptor`에서 수행
+- `GlobalExceptionHandler`가 예외를 잡아 일관된 응답 포맷 제공
+- 정적 리소스(`/*.html`, `/swagger-ui/**`)는 필터 자체에서 skip되므로 기존 동작 유지
 
 ### GlobalAsyncConfig
 

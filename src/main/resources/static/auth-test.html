@@ -378,8 +378,29 @@
         // 개인정보 동의 감사 기록 생성
         async function agreePrivacyPolicy() {
             try {
-                const result = await apiCall('POST', '/api/v1/auth/privacy/agree');
-                showApiResult('privacyAgreementResult', result);
+                const options = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                };
+                if (currentAccessToken) {
+                    options.headers['Authorization'] = 'Bearer ' + currentAccessToken;
+                }
+
+                const response = await fetch(API_BASE + '/api/v1/auth/privacy/agree', options);
+                const data = await response.json().catch(() => null);
+
+                // 응답 헤더에서 새 access token 읽기 (dev/test 모드, HeaderTokenDelivery)
+                const newAccessToken = response.headers.get('X-Access-Token');
+                if (newAccessToken) {
+                    currentAccessToken = newAccessToken;
+                }
+
+                showApiResult('privacyAgreementResult', {
+                    status: response.status,
+                    data: data,
+                    tokenUpdated: !!newAccessToken
+                });
             } catch (error) {
                 showApiResult('privacyAgreementResult', { error: error.message });
             }
