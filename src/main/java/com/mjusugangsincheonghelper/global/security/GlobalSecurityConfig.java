@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.global.security;
 
+import com.mjusugangsincheonghelper.global.security.filter.ConsentCheckFilter;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
@@ -19,13 +20,31 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import org.springframework.core.annotation.Order;
+
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class GlobalSecurityConfig {
 
+	public static final String[] PUBLIC_URLS = {
+			"/api/*/auth/guest",
+			"/api/*/auth/refresh",
+			"/api/*/auth/login/google/merge",
+			"/api/*/auth/oauth/start",
+			"/api/*/auth/token",
+			"/api/*/auth/config/google",
+			"/api/*/auth/test-**",
+			"/api/*/example/**",
+			"/swagger-ui/**",
+			"/v3/api-docs/**",
+			"/actuator/**",
+			"/*.html"
+	};
+
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
+	private final ConsentCheckFilter consentCheckFilter;
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -33,19 +52,29 @@ public class GlobalSecurityConfig {
 	}
 
 	@Bean
-	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	@Order(1)
+	public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
 		http
+				.securityMatchers(matchers -> matchers.requestMatchers(PUBLIC_URLS))
 				.csrf(csrf -> csrf.disable())
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/api/**").permitAll()
-						.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-						.requestMatchers("/actuator/**").permitAll()
-						.requestMatchers("/*.html").permitAll()
-						.anyRequest().authenticated()
-				)
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+				.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+
+		return http.build();
+	}
+
+	@Bean
+	@Order(2)
+	public SecurityFilterChain securedSecurityFilterChain(HttpSecurity http) throws Exception {
+		http
+				.securityMatchers(matchers -> matchers.requestMatchers("/api/**"))
+				.csrf(csrf -> csrf.disable())
+				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterAfter(consentCheckFilter, JwtAuthenticationFilter.class);
 
 		return http.build();
 	}

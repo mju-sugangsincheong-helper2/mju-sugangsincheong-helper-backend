@@ -25,10 +25,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "SingleGame", description = "싱글 게임 API")
 @RestController
+@PreAuthorize("hasRole('GUEST')")
 @RequiredArgsConstructor
 @RequestMapping("/api/{version}/singlegame")
 public class SingleGameController {

@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Course", description = "강좌 정보 API")
@@ -35,6 +36,7 @@ public class CourseController {
 	private final SystemConfigService systemConfigService;
 
 	@PostMapping(version = "1+")
+	@PreAuthorize("hasRole('ADMIN')")
 	@Operation(
 			summary = "Import course sections",
 			description = "강좌 정보를 일괄 등록/갱신합니다. 같은 coursecls+term 이 존재하면 갱신됩니다.",
@@ -57,6 +59,7 @@ public class CourseController {
 	}
 
 	@DeleteMapping(version = "1+")
+	@PreAuthorize("hasRole('ADMIN')")
 	@Operation(
 			summary = "Delete course sections by term",
 			description = "특정 학기의 강좌 정보를 일괄 삭제합니다.",
@@ -78,6 +81,7 @@ public class CourseController {
 	}
 
 	@GetMapping(version = "1+")
+	@PreAuthorize("hasRole('GUEST')")
 	@Operation(
 			summary = "List course sections",
 			description = "강좌 목록을 조회합니다. term 파라미터가 없으면 현재 학기(current_term)를 조회합니다.",

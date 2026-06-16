@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @Tag(name = "Auth", description = "인증 API")
 @RestController
@@ -58,6 +59,7 @@ public class SessionController {
 	}
 
 	@PostMapping(value = "/logout", version = "1+")
+	@PreAuthorize("hasRole('GUEST')")
 	@Operation(
 			summary = "Logout",
 			description = "로그아웃 API",

@@ -6,6 +6,8 @@ import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
+import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
+import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import jakarta.annotation.PostConstruct;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,7 @@ public class TestAccountInitializer {
 
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
+	private final MemberAgreementRepository memberAgreementRepository;
 
 	private List<TestAccount> testAccounts;
 
@@ -68,6 +71,9 @@ public class TestAccountInitializer {
 					.authKey(testKey)
 					.build();
 			memberAuthRepository.save(memberAuth);
+
+			MemberAgreement agreement = MemberAgreement.agree(member.getId());
+			memberAgreementRepository.save(agreement);
 
 			log.info("Created test account: {} ({})", name, account.getRole());
 		}

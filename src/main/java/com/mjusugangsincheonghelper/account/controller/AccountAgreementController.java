@@ -19,6 +19,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Auth", description = "인증 API")
@@ -31,6 +32,7 @@ public class AccountAgreementController {
 	private final SessionService sessionService;
 
 	@PostMapping(value = "/agree", version = "1+")
+	@PreAuthorize("hasRole('MEMBER')")
 	@Operation(
 			summary = "Privacy agreement",
 			description = "현재 인증된 사용자의 개인정보 동의 감사 기록을 생성하거나 갱신합니다.",

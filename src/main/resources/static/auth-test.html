@@ -269,9 +269,51 @@
                 }
 
                 updateLoginTokens(userData);
+
+                // 신규 가입자(newUser)인 경우 자동으로 개인정보 동의 API 호출하여 동의 처리 및 토큰 갱신 진행
+                if (userData.newUser === true) {
+                    setStatus('loading', '신규 가입 유저: 개인정보 약관 동의 자동 진행 중...');
+                    const agreeResult = await autoAgreePrivacyPolicy();
+                    if (agreeResult && agreeResult.newAccessToken) {
+                        userData.accessToken = agreeResult.newAccessToken;
+                        userData.newUser = false;
+                        updateLoginTokens(userData);
+                    }
+                }
+
                 showResult(userData);
             } catch (error) {
                 showError(error.message);
+            }
+        }
+
+        // 개인정보 약관 자동 동의 및 최신 토큰 확보
+        async function autoAgreePrivacyPolicy() {
+            try {
+                const options = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                };
+                if (currentAccessToken) {
+                    options.headers['Authorization'] = 'Bearer ' + currentAccessToken;
+                }
+
+                const response = await fetch(API_BASE + '/api/v1/auth/privacy/agree', options);
+                if (!response.ok) {
+                    console.error('자동 개인정보 동의 실패: ' + response.status);
+                    return null;
+                }
+
+                const data = await response.json().catch(() => null);
+                const newAccessToken = response.headers.get('X-Access-Token');
+                return {
+                    newAccessToken: newAccessToken,
+                    data: data
+                };
+            } catch (error) {
+                console.error('자동 개인정보 동의 예외 발생: ', error);
+                return null;
             }
         }
 

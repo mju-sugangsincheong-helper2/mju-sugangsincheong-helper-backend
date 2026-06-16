@@ -409,22 +409,33 @@ public ResponseEntity<...> create(@RequestBody Request request) { ... }
 ### GlobalSecurityConfig
 
 ```java
-@Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    http
-        .csrf(csrf -> csrf.disable())
-        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-        .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-        .authorizeHttpRequests(auth -> auth
-            .requestMatchers("/api/**").permitAll()
-            .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-            .requestMatchers("/actuator/**").permitAll()
-            .requestMatchers("/*.html").permitAll()
-            .anyRequest().authenticated()
-        )
-        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
-    return http.build();
-}
+	@Bean
+	@Order(1)
+	public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
+		http
+				.securityMatchers(matchers -> matchers.requestMatchers(PUBLIC_URLS))
+				.csrf(csrf -> csrf.disable())
+				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+
+		return http.build();
+	}
+
+	@Bean
+	@Order(2)
+	public SecurityFilterChain securedSecurityFilterChain(HttpSecurity http) throws Exception {
+		http
+				.securityMatchers(matchers -> matchers.requestMatchers("/api/**"))
+				.csrf(csrf -> csrf.disable())
+				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterAfter(consentCheckFilter, JwtAuthenticationFilter.class);
+
+		return http.build();
+	}
 
 @Bean
 public PasswordEncoder passwordEncoder() {
@@ -441,8 +452,8 @@ public RoleHierarchy roleHierarchy() {
 - **CORS**: 모든 Origin 허용, `Authorization`, `X-Access-Token`, `X-Refresh-Token`, `X-Request-Id`, `X-Api-Version`, `Set-Cookie` 헤더 노출, `maxAge=3600`, `allowCredentials=true`
 - **CSRF**: REST API이므로 비활성화
 - **세션**: Stateless (JWT 토큰 기반 인증)
-- **경로**: `/api/**` 전체 permitAll, Swagger UI(`/swagger-ui/**`), API docs(`/v3/api-docs/**`), Actuator(`/actuator/**`), 정적 HTML(`/*.html`)은 인증 없이 허용
-- **JWT 인증**: `JwtAuthenticationFilter`를 `UsernamePasswordAuthenticationFilter` 이전에 등록
+- **경로 및 필터 분리**: 공개 API인 `PUBLIC_URLS`는 `publicSecurityFilterChain`에서 인증 없이 전면 통과시키고, 그 외의 `/api/**`는 `securedSecurityFilterChain`에서 인증을 강제합니다.
+- **JWT 및 약관 동의 검증**: `JwtAuthenticationFilter`로 무상태 인증을 수행한 후, `ConsentCheckFilter`를 거쳐 일반 회원의 약관 동의 상태를 필터 단에서 즉시 차단/인가합니다.
 - **PasswordEncoder**: `BCryptPasswordEncoder` 사용
 - **Method Security**: `@EnableMethodSecurity`로 메서드 수준 인가 활성화
 - **Role Hierarchy**: `ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST` 계층 정의
@@ -483,32 +494,28 @@ JwtAuthenticationFilter (OncePerRequestFilter)
 - **dev/test**: `BearerTokenExtractor` — `Authorization: Bearer {token}` 헤더 우선, 없으면 `access_token` 쿠키 확인
 - **prod**: `CookieTokenExtractor` — `access_token` 쿠키만 확인 (보안 강화)
 
-### ConsentCheckInterceptor
+### ConsentCheckFilter
 
 ```
-Request → JwtAuthenticationFilter (인증 + agreed 저장, 항상 통과)
-       → SecurityFilterChain (GlobalSecurityConfig, permitAll)
+Request → JwtAuthenticationFilter (인증 + agreed 저장)
+       → ConsentCheckFilter (secured 체인인 경우 동작하여 약관 동의 검증)
        → DispatcherServlet
-       → ConsentCheckInterceptor.preHandle() (consent 체크)
        → Controller
 ```
 
-**ConsentCheckInterceptor** (`global/security/interceptor/`):
-- `HandlerInterceptor` 구현, `GlobalWebMvcConfig`에서 `/api/**`에 등록
-- `preHandle()`에서 `SecurityContextHolder`의 인증 정보 + `request.getAttribute("privacyAgreed")` 확인
-- 조건: MEMBER + `agreed=false` + 화이트리스트 경로가 아님 → `BaseException(ErrorCode.AUTH_PRIVACY_POLICY_REQUIRED)` throw
-- GUEST는 role 체크에서 제외
-- 화이트리스트 경로 (동의 없이 접근 가능):
+**ConsentCheckFilter** (`global/security/filter/`):
+- `OncePerRequestFilter` 구현, `securedSecurityFilterChain`에서 `JwtAuthenticationFilter` 바로 뒤에 위치
+- `doFilterInternal()`에서 `SecurityContextHolder`의 인증 정보 + `request.getAttribute("privacyAgreed")` 확인
+- 조건: MEMBER 이상 + `agreed=false` + 면제 경로가 아님 → `ObjectMapper`를 사용하여 `SC_FORBIDDEN (403)` 상태코드와 함께 `ErrorResponseEnvelope (AUTH_001)` JSON 응답을 서블릿에 직접 작성하고 필터 체인 차단
+- GUEST 및 비인가 공개 경로는 역할/필터 체인 구성에 따라 제외됨
+- 면제 경로 (동의 없이 접근 가능):
   - `/auth/privacy/agree` — 동의 API 자체
-  - `/auth/refresh` — 토큰 갱신
   - `/auth/logout` — 로그아웃
-- 예외는 `GlobalExceptionHandler`에서 처리 → 정상적인 `meta` 포함 `ErrorResponseEnvelope` 응답
 
 **설계 의도**:
-- `JwtAuthenticationFilter`는 인증만 담당하고 요청을 절대 차단하지 않음
-- consent 체크는 Controller 직전 `HandlerInterceptor`에서 수행
-- `GlobalExceptionHandler`가 예외를 잡아 일관된 응답 포맷 제공
-- 정적 리소스(`/*.html`, `/swagger-ui/**`)는 필터 자체에서 skip되므로 기존 동작 유지
+- **인가 및 보안 정책의 단일화**: 스프링 MVC 인터셉터(`ConsentCheckInterceptor`)를 제거하고 모든 보안 정책을 스프링 시큐리티 필터 체인(`ConsentCheckFilter`)으로 이관하여 보안 관심사를 하나의 인프라 레이어로 일치시킵니다.
+- **비인가 공개 API 효율적 우회**: 공개 API(`PUBLIC_URLS`가 타는 `publicSecurityFilterChain`)에는 해당 필터가 존재하지 않으므로, 이전 로그인 세션이나 쿠키 잔재 여부와 관계없이 어떤 검증도 거치지 않고 빠르게 무조건 통과합니다.
+- **예외 발생 시 서블릿 직접 직렬화**: 디스패처 서블릿 도달 전에 에러를 차단하므로, `ObjectMapper`를 주입받아 애플리케이션 공통 규격의 `ErrorResponseEnvelope` 응답 데이터를 직접 반환합니다.
 
 ### GlobalAsyncConfig
 

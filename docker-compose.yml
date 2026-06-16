@@ -42,12 +42,11 @@ services:
   db-setup:
     image: postgres:latest
     container_name: *DB_SETUP_CONTAINER
-    profiles: ["setup"]
     environment:
       POSTGRES_HOST: db
       POSTGRES_USER: *POSTGRES_USER
       POSTGRES_PASSWORD: *POSTGRES_PASSWORD
-      POSTGRES_DB_NAME: *POSTGRES_DB_NAME      # 이게 빠져 있었음
+      POSTGRES_DB_NAME: *POSTGRES_DB_NAME
       DB_USER: *DB_USER
       DB_PASSWORD: *DB_PASSWORD
       DEV_DB_NAME: *DEV_DB_NAME
@@ -64,18 +63,30 @@ services:
         done
         echo 'PostgreSQL is up - executing setup commands...'
 
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"SELECT 1 FROM pg_roles WHERE rolname='$$DB_USER'\" | grep -q 1 || psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE ROLE $$DB_USER WITH LOGIN PASSWORD '$$DB_PASSWORD' SUPERUSER;\"
+        # 1. 역할(Role) 존재 여부 체크 후 생성
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$$DB_USER'\" | grep -q 1 || \
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE ROLE $$DB_USER WITH LOGIN PASSWORD '$$DB_PASSWORD' SUPERUSER;\"
 
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$DEV_DB_NAME OWNER $$DB_USER;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$TEST_DB_NAME OWNER $$DB_USER;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_cron;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS system_stats;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"ALTER DATABASE $$DEV_DB_NAME SET search_path TO public;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"ALTER DATABASE $$TEST_DB_NAME SET search_path TO public;\"
+        # 2. 개발용 DB 존재 여부 체크 후 생성 및 확장 설정
+        if ! psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_database WHERE datname='$$DEV_DB_NAME'\" | grep -q 1; then
+          echo 'Creating dev database...'
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$DEV_DB_NAME OWNER $$DB_USER;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_cron;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS system_stats;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"ALTER DATABASE $$DEV_DB_NAME SET search_path TO public;\"
+        fi
+
+        # 3. 테스트용 DB 존재 여부 체크 후 생성 및 확장 설정
+        if ! psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_database WHERE datname='$$TEST_DB_NAME'\" | grep -q 1; then
+          echo 'Creating test database...'
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$TEST_DB_NAME OWNER $$DB_USER;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
+          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"ALTER DATABASE $$TEST_DB_NAME SET search_path TO public;\"
+        fi
+
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public, '$$DB_USER';\"
         echo 'Database setup complete!'
       "

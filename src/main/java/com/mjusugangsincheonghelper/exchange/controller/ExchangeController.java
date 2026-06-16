@@ -32,10 +32,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Exchange", description = "수강신청 과목 교환 API")
 @RestController
+@PreAuthorize("hasRole('MEMBER')")
 @RequiredArgsConstructor
 @RequestMapping("/api/{version}/exchange")
 public class ExchangeController {

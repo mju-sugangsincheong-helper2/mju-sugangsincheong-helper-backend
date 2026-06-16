@@ -164,6 +164,7 @@ public class DomainController {
 
     private final DomainService domainService;
 
+    @PreAuthorize("hasRole('ADMIN')")                  // 권한 체계 ADMIN > MEMBER > GUEST, 달지 않아도 됨
     @GetMapping(value = "/{id}", version = "1+")       // version = "1+" 필수
     @Operation(
         summary = "Domain detail",                      // Swagger 요약
@@ -200,6 +201,7 @@ public class DomainController {
 | 6 | 리턴 타입: `SingleSuccessResponseEnvelope<T>` 또는 `PagedSuccessResponseEnvelope<T>` | 필수 |
 | 7 | 응답 생성 시 `SingleSuccessResponseEnvelope.of(data)` 사용 | 필수 |
 | 8 | `ResponseEntity.ok(...)` 로 감싸서 반환 | 필수 |
+| 9 | @PreAuthorize("hasRole('ADMIN')"), ADMIN, MEMBER, GEUST | 선택 |
 
 ### 금지 사항
 
