@@ -34,7 +34,8 @@ public class ConsentCheckFilter extends OncePerRequestFilter {
 					.anyMatch(role -> "ROLE_MEMBER".equals(role) || "ROLE_ADMIN".equals(role));
 
 			if (isMemberOrAbove) {
-				boolean agreed = Boolean.TRUE.equals(request.getAttribute("privacyAgreed"));
+				Object agreedAttr = request.getAttribute("privacyAgreed");
+				boolean agreed = agreedAttr == null || Boolean.TRUE.equals(agreedAttr);
 
 				if (!agreed && !isConsentExemptPath(request)) {
 					sendErrorResponse(response);

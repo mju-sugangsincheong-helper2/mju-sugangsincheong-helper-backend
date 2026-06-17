@@ -77,7 +77,8 @@ class SingleGameIntegrationTest {
 				.build());
 
 		UsernamePasswordAuthenticationToken authentication =
-				new UsernamePasswordAuthenticationToken(testMember.getId(), null, null);
+				new UsernamePasswordAuthenticationToken(testMember.getId(), null,
+						java.util.Collections.singletonList(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MEMBER")));
 		SecurityContextHolder.getContext().setAuthentication(authentication);
 	}
 
