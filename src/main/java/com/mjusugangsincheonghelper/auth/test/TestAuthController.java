@@ -3,13 +3,15 @@ package com.mjusugangsincheonghelper.auth.test;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.session.SessionResult;
 import com.mjusugangsincheonghelper.auth.session.SessionService;
+import com.mjusugangsincheonghelper.database.entity.Member;
+import com.mjusugangsincheonghelper.database.entity.Member.Role;
+import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
+import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
-import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
-import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
+import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
-import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +20,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,7 +34,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/{version}/auth")
 public class TestAuthController {
 
+	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
+	private final MemberAgreementRepository memberAgreementRepository;
 	private final SessionService sessionService;
 	private final TestAccountInitializer testAccountInitializer;
 
@@ -73,17 +78,27 @@ public class TestAuthController {
 					)
 			}
 	)
-	@OperationErrorCodes({
-			ErrorCode.AUTH_MEMBER_NOT_FOUND,
-			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
-	})
+	@Transactional
 	public ResponseEntity<SingleSuccessResponseEnvelope<TestLoginResponse>> testLogin(
 			@RequestParam String name,
 			HttpServletResponse response) {
 		String testKey = "test_" + name;
 
 		MemberAuth memberAuth = memberAuthRepository.findByAuthKeyAndAuthType(testKey, AuthType.TEST)
-				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
+				.orElseGet(() -> {
+					Member member = memberRepository.save(Member.builder()
+							.role(Role.MEMBER)
+							.name(name)
+							.position("test")
+							.department("test")
+							.build());
+					memberAgreementRepository.save(MemberAgreement.agree(member.getId()));
+					return memberAuthRepository.save(MemberAuth.builder()
+							.memberId(member.getId())
+							.authType(AuthType.TEST)
+							.authKey(testKey)
+							.build());
+				});
 
 		AuthenticatedIdentity identity = AuthenticatedIdentity.builder()
 				.memberId(memberAuth.getMemberId())
