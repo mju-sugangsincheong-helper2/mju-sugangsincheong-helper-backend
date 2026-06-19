@@ -24,6 +24,9 @@ import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.cache.RecordCacheDto;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition.ReactionTimeConfig;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -52,6 +55,7 @@ public class SingleGameService {
 	private final SingleGameDetailRepository singleGameDetailRepository;
 	private final MemberRepository memberRepository;
 	private final CacheManager cacheManager;
+	private final SystemConfigService systemConfigService;
 
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
 
@@ -63,6 +67,38 @@ public class SingleGameService {
 
 		if (!ALLOWED_TOTAL_COURSES.contains(request.getTotalCourses())) {
 			throw new BaseException(ErrorCode.SINGLEGAME_INVALID_TOTAL_COURSES);
+		}
+
+		int detailsCount = request.getDetails().size();
+		int totalCourses = request.getTotalCourses();
+		if (request.isCompleted()) {
+			if (detailsCount != totalCourses) {
+				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_DETAILS_COUNT);
+			}
+		} else {
+			if (detailsCount >= totalCourses) {
+				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_DETAILS_COUNT);
+			}
+		}
+
+		ReactionTimeConfig reactionTimeConfig = SettingDefinition.SINGLEGAME_REACTION_TIME_CONFIG.getFrom(systemConfigService);
+		int minMs = reactionTimeConfig.minMs();
+		int maxMs = reactionTimeConfig.maxMs();
+
+		if (request.getTEnterMain() < minMs || request.getTEnterMain() > maxMs) {
+			throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
+		}
+
+		for (SingleGameDetailRequest d : request.getDetails()) {
+			if (d.getTClickCourse() < minMs || d.getTClickCourse() > maxMs) {
+				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
+			}
+			if (d.getTClickYes() < minMs || d.getTClickYes() > maxMs) {
+				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
+			}
+			if (d.getTClickOk() < minMs || d.getTClickOk() > maxMs) {
+				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
+			}
 		}
 
 		int tTotal = request.getTEnterMain();
@@ -90,8 +126,6 @@ public class SingleGameService {
 						.build())
 				.toList();
 		singleGameDetailRepository.saveAll(details);
-
-		int totalCourses = request.getTotalCourses();
 
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 			@Override

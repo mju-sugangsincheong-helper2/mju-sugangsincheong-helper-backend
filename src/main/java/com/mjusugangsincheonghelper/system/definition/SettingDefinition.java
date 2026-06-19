@@ -99,6 +99,28 @@ public enum SettingDefinition {
 					return false;
 				}
 			}
+	),
+
+	SINGLEGAME_REACTION_TIME_CONFIG(
+			"singlegame_reaction_time_config",
+			ConfigType.JSON,
+			"싱글게임 반응 시간 유효 범위 설정 (ms)",
+			"{\"minMs\":1,\"maxMs\":60000}",
+			raw -> {
+				try {
+					return new ObjectMapper().readValue(raw, ReactionTimeConfig.class);
+				} catch (Exception e) {
+					return new ReactionTimeConfig(1, 60000);
+				}
+			},
+			raw -> {
+				try {
+					new ObjectMapper().readValue(raw, ReactionTimeConfig.class);
+					return true;
+				} catch (Exception e) {
+					return false;
+				}
+			}
 	);
 
 	private final String key;
@@ -160,5 +182,7 @@ public enum SettingDefinition {
 	public record PerformanceThresholds(long slowMs, long verySlowMs) {}
 
 	public record JwtExpiryConfig(long accessTokenExpiryMs, long refreshTokenExpiryMs, long mergeTicketExpiryMs) {}
+
+	public record ReactionTimeConfig(int minMs, int maxMs) {}
 
 }

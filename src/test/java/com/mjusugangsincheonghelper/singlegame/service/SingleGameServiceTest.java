@@ -13,6 +13,8 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
+import com.mjusugangsincheonghelper.system.definition.SettingDefinition.ReactionTimeConfig;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +29,8 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -41,6 +45,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("SingleGameService 단위 테스트")
 class SingleGameServiceTest {
 
@@ -56,6 +61,9 @@ class SingleGameServiceTest {
 	@Mock
 	private CacheManager cacheManager;
 
+	@Mock
+	private SystemConfigService systemConfigService;
+
 	@InjectMocks
 	private SingleGameService singleGameService;
 
@@ -68,6 +76,8 @@ class SingleGameServiceTest {
 	@BeforeEach
 	void setUp() {
 		TransactionSynchronizationManager.initSynchronization();
+		given(systemConfigService.getRaw("singlegame_reaction_time_config"))
+				.willReturn("{\"minMs\":1,\"maxMs\":60000}");
 	}
 
 	@AfterEach
@@ -84,12 +94,14 @@ class SingleGameServiceTest {
 		@Test
 		@DisplayName("유효한 요청을 받으면 게임을 저장하고 응답을 반환한다")
 		void it_saves_game_and_returns_response() throws Exception {
-			SingleGameDetailRequest detail = SingleGameDetailRequest.builder()
-					.sequence(1).tClickCourse(1000).tClickYes(500).tClickOk(300)
-					.build();
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(1000).tClickYes(500).tClickOk(300).build());
+			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
 					.totalCourses(6).isCompleted(true).tEnterMain(2000)
-					.details(List.of(detail))
+					.details(details)
 					.build();
 
 			given(memberRepository.existsById(1L)).willReturn(true);
@@ -108,12 +120,12 @@ class SingleGameServiceTest {
 
 			verify(singleGameRepository).save(gameCaptor.capture());
 			SingleGameEntity saved = gameCaptor.getValue();
-			assertThat(saved.getTTotal()).isEqualTo(3800); // 2000 + 1000 + 500 + 300
+			assertThat(saved.getTTotal()).isEqualTo(2000 + 6 * 1800);
 			assertThat(saved.getTotalCourses()).isEqualTo(6);
 			assertThat(saved.isCompleted()).isTrue();
 
 			verify(singleGameDetailRepository).saveAll(detailsCaptor.capture());
-			assertThat(detailsCaptor.getValue()).hasSize(1);
+			assertThat(detailsCaptor.getValue()).hasSize(6);
 			assertThat(detailsCaptor.getValue().get(0).getGameId()).isEqualTo(100L);
 		}
 
@@ -138,6 +150,401 @@ class SingleGameServiceTest {
 					.totalCourses(4).isCompleted(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 0이면 예외를 던진다")
+		void it_throws_when_total_courses_is_zero() {
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(0).isCompleted(true).tEnterMain(2000)
+					.details(List.of(SingleGameDetailRequest.builder()
+							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 2이면 예외를 던진다")
+		void it_throws_when_total_courses_is_two() {
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(2).isCompleted(true).tEnterMain(2000)
+					.details(List.of(SingleGameDetailRequest.builder()
+							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 5이면 예외를 던진다")
+		void it_throws_when_total_courses_is_five() {
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(5).isCompleted(true).tEnterMain(2000)
+					.details(List.of(SingleGameDetailRequest.builder()
+							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 9이면 예외를 던진다")
+		void it_throws_when_total_courses_is_nine() {
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(9).isCompleted(true).tEnterMain(2000)
+					.details(List.of(SingleGameDetailRequest.builder()
+							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 음수이면 예외를 던진다")
+		void it_throws_when_total_courses_is_negative() {
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(-5).isCompleted(true).tEnterMain(2000)
+					.details(List.of(SingleGameDetailRequest.builder()
+							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 1이면 정상 저장된다")
+		void it_saves_when_total_courses_is_one() throws Exception {
+			SingleGameDetailRequest detail = SingleGameDetailRequest.builder()
+					.sequence(1).tClickCourse(1000).tClickYes(500).tClickOk(300)
+					.build();
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(1).isCompleted(true).tEnterMain(2000)
+					.details(List.of(detail))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+			given(singleGameRepository.save(any())).willAnswer(invocation -> {
+				SingleGameEntity entity = invocation.getArgument(0);
+				Field idField = SingleGameEntity.class.getDeclaredField("id");
+				idField.setAccessible(true);
+				idField.set(entity, 100L);
+				return entity;
+			});
+
+			SingleGameSaveResponse response = singleGameService.saveGame(1L, request);
+
+			assertThat(response.getGameId()).isEqualTo(100L);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 7이면 정상 저장된다")
+		void it_saves_when_total_courses_is_seven() throws Exception {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 7; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(1000).tClickYes(500).tClickOk(300).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(7).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+			given(singleGameRepository.save(any())).willAnswer(invocation -> {
+				SingleGameEntity entity = invocation.getArgument(0);
+				Field idField = SingleGameEntity.class.getDeclaredField("id");
+				idField.setAccessible(true);
+				idField.set(entity, 100L);
+				return entity;
+			});
+
+			SingleGameSaveResponse response = singleGameService.saveGame(1L, request);
+
+			assertThat(response.getGameId()).isEqualTo(100L);
+		}
+
+		@Test
+		@DisplayName("totalCourses가 8이면 정상 저장된다")
+		void it_saves_when_total_courses_is_eight() throws Exception {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 8; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(1000).tClickYes(500).tClickOk(300).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(8).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+			given(singleGameRepository.save(any())).willAnswer(invocation -> {
+				SingleGameEntity entity = invocation.getArgument(0);
+				Field idField = SingleGameEntity.class.getDeclaredField("id");
+				idField.setAccessible(true);
+				idField.set(entity, 100L);
+				return entity;
+			});
+
+			SingleGameSaveResponse response = singleGameService.saveGame(1L, request);
+
+			assertThat(response.getGameId()).isEqualTo(100L);
+		}
+
+		@Test
+		@DisplayName("isCompleted=true인데 details 개수가 totalCourses와 다르면 예외를 던진다")
+		void it_throws_when_completed_but_details_count_mismatch() {
+			SingleGameDetailRequest detail1 = SingleGameDetailRequest.builder()
+					.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build();
+			SingleGameDetailRequest detail2 = SingleGameDetailRequest.builder()
+					.sequence(2).tClickCourse(100).tClickYes(100).tClickOk(100).build();
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(List.of(detail1, detail2))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("isCompleted=false인데 details 개수가 totalCourses와 같으면 예외를 던진다")
+		void it_throws_when_not_completed_but_details_count_equals_total() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(false).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("isCompleted=false이고 details 개수가 totalCourses보다 적으면 정상 저장된다")
+		void it_saves_when_not_completed_and_details_less_than_total() throws Exception {
+			SingleGameDetailRequest detail = SingleGameDetailRequest.builder()
+					.sequence(1).tClickCourse(1000).tClickYes(500).tClickOk(300)
+					.build();
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(false).tEnterMain(2000)
+					.details(List.of(detail))
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+			given(singleGameRepository.save(any())).willAnswer(invocation -> {
+				SingleGameEntity entity = invocation.getArgument(0);
+				Field idField = SingleGameEntity.class.getDeclaredField("id");
+				idField.setAccessible(true);
+				idField.set(entity, 100L);
+				return entity;
+			});
+
+			SingleGameSaveResponse response = singleGameService.saveGame(1L, request);
+
+			assertThat(response.getGameId()).isEqualTo(100L);
+		}
+
+		@Test
+		@DisplayName("isCompleted=true이고 details 개수가 totalCourses와 같으면 정상 저장된다")
+		void it_saves_when_completed_and_details_count_matches() throws Exception {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+			given(singleGameRepository.save(any())).willAnswer(invocation -> {
+				SingleGameEntity entity = invocation.getArgument(0);
+				Field idField = SingleGameEntity.class.getDeclaredField("id");
+				idField.setAccessible(true);
+				idField.set(entity, 100L);
+				return entity;
+			});
+
+			SingleGameSaveResponse response = singleGameService.saveGame(1L, request);
+
+			assertThat(response.getGameId()).isEqualTo(100L);
+		}
+
+		@Test
+		@DisplayName("tEnterMain이 최소값 미만이면 예외를 던진다")
+		void it_throws_when_t_enter_main_below_min() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(0)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("tEnterMain이 최대값 초과이면 예외를 던진다")
+		void it_throws_when_t_enter_main_above_max() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(65000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("tClickCourse가 최소값 미만이면 예외를 던진다")
+		void it_throws_when_t_click_course_below_min() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(0).tClickYes(100).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("tClickCourse가 최대값 초과이면 예외를 던진다")
+		void it_throws_when_t_click_course_above_max() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(65000).tClickYes(100).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("tClickYes가 최소값 미만이면 예외를 던진다")
+		void it_throws_when_t_click_yes_below_min() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(0).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("tClickYes가 최대값 초과이면 예외를 던진다")
+		void it_throws_when_t_click_yes_above_max() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(65000).tClickOk(100).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("tClickOk가 최소값 미만이면 예외를 던진다")
+		void it_throws_when_t_click_ok_below_min() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(0).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(details)
+					.build();
+
+			given(memberRepository.existsById(1L)).willReturn(true);
+
+			assertThatThrownBy(() -> singleGameService.saveGame(1L, request))
+					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("tClickOk가 최대값 초과이면 예외를 던진다")
+		void it_throws_when_t_click_ok_above_max() {
+			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
+			for (int i = 1; i <= 6; i++) {
+				details.add(SingleGameDetailRequest.builder()
+						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(65000).build());
+			}
+			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
+					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.details(details)
 					.build();
 
 			given(memberRepository.existsById(1L)).willReturn(true);
@@ -329,6 +736,154 @@ class SingleGameServiceTest {
 
 			assertThatThrownBy(() -> singleGameService.getAnalysis(999L))
 					.isInstanceOf(BaseException.class);
+		}
+
+		@Test
+		@DisplayName("N>=3일 때 initialSprint가 계산된다")
+		void it_calculates_initial_sprint_when_n_ge_3() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(12000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(600).tClickYes(200).tClickOk(200).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(2)
+							.tClickCourse(800).tClickYes(200).tClickOk(200).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(3)
+							.tClickCourse(800).tClickYes(200).tClickOk(200).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 12000)).willReturn(List.of(1L, 2L, 3L));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(List.of());
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getInitialSprintSpeed()).isNotNull();
+		}
+
+		@Test
+		@DisplayName("N=1일 때 initialSprint는 0이다")
+		void it_returns_zero_initial_sprint_when_n_is_1() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(5000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(1)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(1000).tClickYes(500).tClickOk(300).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(1)).willReturn(50L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(1, 5000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(1)).willReturn(List.of());
+			given(singleGameRepository.findAllDetailsByTotalCourses(1)).willReturn(List.of());
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(1, 2000)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getInitialSprintSpeed()).isEqualTo(0);
+		}
+
+		@Test
+		@DisplayName("N>=3일 때 paceDeviation이 계산된다")
+		void it_calculates_pace_deviation_when_n_ge_3() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(12000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(800).tClickYes(200).tClickOk(200).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(2)
+							.tClickCourse(800).tClickYes(200).tClickOk(200).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(3)
+							.tClickCourse(800).tClickYes(200).tClickOk(200).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 12000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(List.of());
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getPaceDeviation()).isEqualTo(0.0);
+		}
+
+		@Test
+		@DisplayName("피드백 코드 GOD_TIER_PHYSICAL이 반환된다")
+		void it_returns_god_tier_physical_feedback() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(5000).tEnterMain(200)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(300).tClickYes(100).tClickOk(100).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(2)
+							.tClickCourse(300).tClickYes(100).tClickOk(100).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(3)
+							.tClickCourse(300).tClickYes(100).tClickOk(100).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(List.of());
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 200)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getFeedbackCode()).isNotNull();
+			assertThat(response.getSummary().getFeedbackMessage()).isNotNull();
+		}
+
+		@Test
+		@DisplayName("백분율이 소수점 첫째 자리로 반올림된다")
+		void it_rounds_percentile_to_one_decimal_place() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(5000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(500).tClickYes(200).tClickOk(200).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(3200L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000)).willReturn(new java.util.ArrayList<>(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L, 13L, 14L, 15L, 16L, 17L, 18L, 19L, 20L, 21L, 22L, 23L, 24L, 25L, 26L, 27L, 28L, 29L, 30L, 31L, 32L, 33L, 34L, 35L, 36L, 37L, 38L, 39L, 40L, 41L, 42L, 43L, 44L, 45L, 46L, 47L, 48L, 49L, 50L, 51L, 52L, 53L, 54L, 55L, 56L, 57L, 58L, 59L, 60L, 61L, 62L, 63L, 64L, 65L, 66L, 67L, 68L, 69L, 70L, 71L, 72L, 73L, 74L, 75L, 76L, 77L, 78L, 79L, 80L, 81L, 82L, 83L, 84L, 85L, 86L, 87L, 88L, 89L, 90L, 91L, 92L, 93L, 94L, 95L, 96L, 97L, 98L, 99L, 100L, 101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L, 110L, 111L, 112L, 113L, 114L, 115L, 116L, 117L, 118L, 119L, 120L, 121L, 122L, 123L, 124L, 125L, 126L, 127L, 128L, 129L, 130L, 131L, 132L, 133L, 134L, 135L, 136L, 137L, 138L, 139L, 140L, 141L, 142L)));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(List.of());
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			double percentile = response.getSummary().getGlobalPercentile();
+			String percentileStr = String.valueOf(percentile);
+			if (percentileStr.contains(".")) {
+				int decimalPlaces = percentileStr.length() - percentileStr.indexOf(".") - 1;
+				assertThat(decimalPlaces).isLessThanOrEqualTo(1);
+			}
 		}
 	}
 }

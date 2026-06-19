@@ -16,6 +16,7 @@ import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentReposi
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
+import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
 import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
@@ -164,6 +165,38 @@ class ExchangeServiceTest {
 						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_DUPLICATE_INTENT);
 					});
 		}
+
+		@Test
+		@DisplayName("등록 후 pushFeed, evictIntents, enqueueCycleDetection 후처리가 수행된다")
+		void it_performs_aftercare_after_create() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			IntentCreateRequest request = IntentCreateRequest.builder()
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			ExchangeIntentEntity savedEntity = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberId)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findByTermAndMemberIdAndGiveCourseNoAndWantCourseNoAndIsDeletedFalse(
+					term, memberId, "10001", "10002")).willReturn(List.of());
+			given(intentRepository.save(any(ExchangeIntentEntity.class))).willReturn(savedEntity);
+
+			// When
+			exchangeService.createIntent(memberId, request);
+
+			// Then
+			verify(cacheService).pushFeed(eq(term), any(FeedCacheDto.class));
+			verify(cacheService).evictIntents(term, memberId);
+			verify(cycleDetector).enqueueCycleDetection(any(CycleDetectionMessage.class));
+		}
 	}
 
 	@Nested
@@ -276,6 +309,221 @@ class ExchangeServiceTest {
 						BaseException baseException = (BaseException) ex;
 						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_INTENT_ALREADY_DELETED);
 					});
+		}
+
+		@Test
+		@DisplayName("의사 철회 시 연관된 RoomIntent에 markDeleted가 호출된다")
+		void it_cascades_mark_deleted_to_room_intents() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			Long intentId = 100L;
+			Long roomId = 200L;
+
+			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberId)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			ExchangeRoomIntentEntity roomIntent = ExchangeRoomIntentEntity.builder()
+					.term(term)
+					.roomId(roomId)
+					.intentId(intentId)
+					.memberId(memberId)
+					.build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term)
+					.cycleHash("hash")
+					.status("ACTIVE")
+					.isActive(true)
+					.build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
+					.willReturn(Optional.of(intent));
+			given(roomIntentRepository.findByTermAndIntentId(term, intentId))
+					.willReturn(List.of(roomIntent));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
+					.willReturn(List.of(roomIntent));
+			given(roomRepository.findByIdForUpdate(term, roomId))
+					.willReturn(Optional.of(room));
+
+			// When
+			exchangeService.deleteIntent(memberId, intentId);
+
+			// Then
+			assertThat(roomIntent.isDeleted()).isTrue();
+			assertThat(roomIntent.isOn()).isFalse();
+		}
+
+		@Test
+		@DisplayName("2인 방에서 1명 이탈 시 방 상태가 ALL_DELETE로 전이된다")
+		void it_transitions_to_all_delete_when_2_person_room_loses_member() {
+			// Given
+			String term = "202510";
+			Long memberIdA = 1L;
+			Long memberIdB = 2L;
+			Long intentIdA = 100L;
+			Long roomId = 200L;
+
+			ExchangeIntentEntity intentA = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberIdA)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(intentIdA).memberId(memberIdA).build();
+			ExchangeRoomIntentEntity riB = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(200L).memberId(memberIdB).build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+					.willReturn(Optional.of(intentA));
+			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
+					.willReturn(List.of(riA));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
+					.willReturn(List.of(riA, riB));
+			given(roomRepository.findByIdForUpdate(term, roomId))
+					.willReturn(Optional.of(room));
+
+			// When
+			exchangeService.deleteIntent(memberIdA, intentIdA);
+
+			// Then
+			assertThat(room.getStatus()).isEqualTo("ALL_DELETE");
+			assertThat(room.isActive()).isFalse();
+		}
+
+		@Test
+		@DisplayName("3인 방에서 1명 이탈 시 방 상태가 PARTIAL_DELETE로 전이된다")
+		void it_transitions_to_partial_delete_when_3_person_room_loses_member() {
+			// Given
+			String term = "202510";
+			Long memberIdA = 1L;
+			Long memberIdB = 2L;
+			Long memberIdC = 3L;
+			Long intentIdA = 100L;
+			Long roomId = 200L;
+
+			ExchangeIntentEntity intentA = ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberIdA)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(intentIdA).memberId(memberIdA).build();
+			ExchangeRoomIntentEntity riB = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(200L).memberId(memberIdB).build();
+			ExchangeRoomIntentEntity riC = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(300L).memberId(memberIdC).build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+					.willReturn(Optional.of(intentA));
+			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
+					.willReturn(List.of(riA));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
+					.willReturn(List.of(riA, riB, riC));
+			given(roomRepository.findByIdForUpdate(term, roomId))
+					.willReturn(Optional.of(room));
+
+			// When
+			exchangeService.deleteIntent(memberIdA, intentIdA);
+
+			// Then
+			assertThat(room.getStatus()).isEqualTo("PARTIAL_DELETE");
+			assertThat(room.isActive()).isTrue();
+		}
+
+		@Test
+		@DisplayName("ALL_DELETE 전이 시 이탈 안내 시스템 메시지가 저장된다")
+		void it_saves_system_message_on_all_delete() {
+			// Given
+			String term = "202510";
+			Long memberIdA = 1L;
+			Long memberIdB = 2L;
+			Long intentIdA = 100L;
+			Long roomId = 200L;
+
+			ExchangeIntentEntity intentA = ExchangeIntentEntity.builder()
+					.term(term).memberId(memberIdA).giveCourseNo("10001").wantCourseNo("10002").build();
+
+			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(intentIdA).memberId(memberIdA).build();
+			ExchangeRoomIntentEntity riB = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(200L).memberId(memberIdB).build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+					.willReturn(Optional.of(intentA));
+			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
+					.willReturn(List.of(riA));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
+					.willReturn(List.of(riA, riB));
+			given(roomRepository.findByIdForUpdate(term, roomId))
+					.willReturn(Optional.of(room));
+
+			// When
+			exchangeService.deleteIntent(memberIdA, intentIdA);
+
+			// Then
+			verify(messageRepository).save(any(ExchangeRoomMessageEntity.class));
+		}
+
+		@Test
+		@DisplayName("삭제 후 본인 intents:cache와 영향받은 참여자 전원의 rooms:cache가 Evict된다")
+		void it_evicts_caches_after_delete() {
+			// Given
+			String term = "202510";
+			Long memberIdA = 1L;
+			Long memberIdB = 2L;
+			Long intentIdA = 100L;
+			Long roomId = 200L;
+
+			ExchangeIntentEntity intentA = ExchangeIntentEntity.builder()
+					.term(term).memberId(memberIdA).giveCourseNo("10001").wantCourseNo("10002").build();
+
+			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(intentIdA).memberId(memberIdA).build();
+			ExchangeRoomIntentEntity riB = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).intentId(200L).memberId(memberIdB).build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+					.willReturn(Optional.of(intentA));
+			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
+					.willReturn(List.of(riA, riB));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
+					.willReturn(List.of(riA, riB));
+			given(roomRepository.findByIdForUpdate(term, roomId))
+					.willReturn(Optional.of(room));
+
+			// When
+			exchangeService.deleteIntent(memberIdA, intentIdA);
+
+			// Then
+			verify(cacheService).evictIntents(term, memberIdA);
+			verify(cacheService).evictRooms(term, memberIdA);
+			verify(cacheService).evictRooms(term, memberIdB);
 		}
 	}
 
@@ -593,6 +841,69 @@ class ExchangeServiceTest {
 			assertThat(response.isOn()).isFalse();
 			assertThat(roomIntent.isOn()).isFalse();
 			verify(cacheService).evictRooms(term, memberId);
+		}
+
+		@Test
+		@DisplayName("토글 OFF 시 삭제된 카드가 없고 일부가 OFF이면 방 상태가 PARTIAL_OFF로 전이된다")
+		void it_transitions_to_partial_off_on_toggle_off() {
+			// Given
+			String term = "202510";
+			Long memberIdA = 1L;
+			Long memberIdB = 2L;
+			Long roomId = 100L;
+			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
+
+			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).memberId(memberIdA).intentId(50L).build();
+			ExchangeRoomIntentEntity riB = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).memberId(memberIdB).intentId(60L).build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberIdA)).willReturn(List.of(riA));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(riA, riB));
+			given(roomRepository.findByIdForUpdate(term, roomId)).willReturn(Optional.of(room));
+
+			// When
+			exchangeService.toggleRoom(memberIdA, roomId, request);
+
+			// Then
+			assertThat(room.getStatus()).isEqualTo("PARTIAL_OFF");
+			assertThat(room.isActive()).isTrue();
+		}
+
+		@Test
+		@DisplayName("토글 ON 복귀 시 삭제된 카드도 없고 모두 ON이면 방 상태가 ACTIVE로 전이된다")
+		void it_transitions_to_active_on_toggle_on() {
+			// Given
+			String term = "202510";
+			Long memberIdA = 1L;
+			Long memberIdB = 2L;
+			Long roomId = 100L;
+			RoomToggleRequest request = RoomToggleRequest.builder().isOn(true).build();
+
+			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).memberId(memberIdA).intentId(50L).build();
+			riA.toggle(false);
+			ExchangeRoomIntentEntity riB = ExchangeRoomIntentEntity.builder()
+					.term(term).roomId(roomId).memberId(memberIdB).intentId(60L).build();
+
+			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
+					.term(term).cycleHash("hash").status("PARTIAL_OFF").isActive(true).build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberIdA)).willReturn(List.of(riA));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(riA, riB));
+			given(roomRepository.findByIdForUpdate(term, roomId)).willReturn(Optional.of(room));
+
+			// When
+			exchangeService.toggleRoom(memberIdA, roomId, request);
+
+			// Then
+			assertThat(room.getStatus()).isEqualTo("ACTIVE");
+			assertThat(room.isActive()).isTrue();
 		}
 	}
 }

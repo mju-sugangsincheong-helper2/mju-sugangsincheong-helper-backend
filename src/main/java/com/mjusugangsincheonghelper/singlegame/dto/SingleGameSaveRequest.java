@@ -24,7 +24,6 @@ public class SingleGameSaveRequest {
 	@JsonProperty("isCompleted")
 	private boolean isCompleted;
 
-	@Min(0)
 	private int tEnterMain;
 
 	@Valid

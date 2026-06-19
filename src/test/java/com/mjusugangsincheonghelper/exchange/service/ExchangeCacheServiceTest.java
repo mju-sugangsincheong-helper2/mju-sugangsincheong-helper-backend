@@ -286,4 +286,90 @@ class ExchangeCacheServiceTest {
 			assertThat(result.get(0).getLastMessageContent()).isEqualTo("Hello");
 		}
 	}
+
+	@Nested
+	@DisplayName("evictIntents 메서드는")
+	class Describe_evictIntents {
+
+		@Test
+		@DisplayName("캐시를 즉시 삭제하고 2초 후 2차 이중 무효화를 스케줄링한다")
+		void it_deletes_cache_and_schedules_double_evict() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			String key = "exchange::" + term + ":member:" + memberId + ":intents:cache";
+
+			doAnswer(invocation -> {
+				Runnable runnable = invocation.getArgument(0);
+				runnable.run();
+				return null;
+			}).when(taskScheduler).schedule(any(Runnable.class), any(java.time.Instant.class));
+
+			// When
+			cacheService.evictIntents(term, memberId);
+
+			// Then
+			verify(redisTemplate, times(2)).delete(key);
+		}
+	}
+
+	@Nested
+	@DisplayName("evictRooms 메서드는")
+	class Describe_evictRooms {
+
+		@Test
+		@DisplayName("캐시를 즉시 삭제하고 2초 후 2차 이중 무효화를 스케줄링한다")
+		void it_deletes_cache_and_schedules_double_evict() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			String key = "exchange::" + term + ":member:" + memberId + ":rooms:cache";
+
+			doAnswer(invocation -> {
+				Runnable runnable = invocation.getArgument(0);
+				runnable.run();
+				return null;
+			}).when(taskScheduler).schedule(any(Runnable.class), any(java.time.Instant.class));
+
+			// When
+			cacheService.evictRooms(term, memberId);
+
+			// Then
+			verify(redisTemplate, times(2)).delete(key);
+		}
+	}
+
+	@Nested
+	@DisplayName("getIntents 메서드는")
+	class Describe_getIntents_rebuild {
+
+		@Test
+		@DisplayName("캐시가 비어있으면 DB에서 조회하여 재빌드한다")
+		void it_rebuilds_intents_from_db_on_cache_miss() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			String key = "exchange::" + term + ":member:" + memberId + ":intents:cache";
+
+			given(listOperations.range(key, 0, -1)).willReturn(Collections.emptyList());
+
+			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
+					.term(term).memberId(memberId).giveCourseNo("10001").wantCourseNo("10002")
+					.build();
+			ReflectionTestUtils.setField(intent, "id", 5L);
+
+			given(intentRepository.findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(term, memberId))
+					.willReturn(List.of(intent));
+			given(cacheProperties.getTtl("exchange-intents")).willReturn(Duration.ofMinutes(10));
+
+			// When
+			List<IntentCacheDto> result = cacheService.getIntents(term, memberId);
+
+			// Then
+			assertThat(result).hasSize(1);
+			assertThat(result.get(0).getIntentId()).isEqualTo(5L);
+			verify(redisTemplate).delete(key);
+			verify(listOperations).rightPushAll(eq(key), any(List.class));
+		}
+	}
 }

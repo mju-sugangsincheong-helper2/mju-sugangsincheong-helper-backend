@@ -34,6 +34,8 @@ public enum ErrorCode {
 
 	SINGLEGAME_GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "SINGLEGAME_001", "Game not found."),
 	SINGLEGAME_INVALID_TOTAL_COURSES(HttpStatus.BAD_REQUEST, "SINGLEGAME_002", "Invalid total courses. Allowed: 1, 3, 6, 7, 8."),
+	SINGLEGAME_INVALID_DETAILS_COUNT(HttpStatus.BAD_REQUEST, "SINGLEGAME_003", "Details count does not match total courses or game completion status."),
+	SINGLEGAME_INVALID_REACTION_TIME(HttpStatus.BAD_REQUEST, "SINGLEGAME_004", "Reaction time is out of valid range."),
 
 	EXCHANGE_INTENT_NOT_FOUND(HttpStatus.NOT_FOUND, "EXCHANGE_001", "Exchange intent not found."),
 	EXCHANGE_INTENT_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "EXCHANGE_002", "Exchange intent already deleted."),

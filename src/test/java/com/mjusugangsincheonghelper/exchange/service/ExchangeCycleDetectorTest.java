@@ -104,6 +104,40 @@ class ExchangeCycleDetectorTest {
 		}
 
 		@Test
+		@DisplayName("2자 간 직관적 사이클을 탐색하여 방 생성을 요청한다")
+		void it_detects_2_person_cycle() {
+			// Given
+			String term = "202510";
+			Long triggerIntentId = 1L;
+
+			// 사이클: A(101 -> 102), B(102 -> 101)
+			ExchangeIntentEntity intentA = ExchangeIntentEntity.builder()
+					.term(term).memberId(10L).giveCourseNo("10001").wantCourseNo("10002")
+					.build();
+			ReflectionTestUtils.setField(intentA, "id", triggerIntentId);
+
+			ExchangeIntentEntity intentB = ExchangeIntentEntity.builder()
+					.term(term).memberId(20L).giveCourseNo("10002").wantCourseNo("10001")
+					.build();
+			ReflectionTestUtils.setField(intentB, "id", 2L);
+
+			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
+					.willReturn(Optional.of(intentA));
+
+			given(intentRepository.findByTermAndIsDeletedFalse(term))
+					.willReturn(List.of(intentA, intentB));
+
+			String cycleHash = cycleDetector.computeCycleHash(List.of(intentA, intentB));
+			given(roomRepository.findByTermAndCycleHash(term, cycleHash)).willReturn(Optional.empty());
+
+			// When
+			cycleDetector.detectCyclesAndCreateRooms(term, triggerIntentId, 10L, "10001", "10002");
+
+			// Then
+			verify(roomCreationService).createRoom(eq(term), any(), eq(cycleHash));
+		}
+
+		@Test
 		@DisplayName("트리거된 Intent가 이미 존재하지 않으면 매칭 처리를 건너뛴다")
 		void it_skips_when_trigger_intent_not_found() {
 			// Given

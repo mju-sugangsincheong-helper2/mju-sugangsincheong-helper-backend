@@ -15,12 +15,9 @@ public class SingleGameDetailRequest {
 	@Min(1)
 	private int sequence;
 
-	@Min(0)
 	private int tClickCourse;
 
-	@Min(0)
 	private int tClickYes;
 
-	@Min(0)
 	private int tClickOk;
 }

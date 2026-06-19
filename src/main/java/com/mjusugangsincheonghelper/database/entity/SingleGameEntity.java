@@ -1,17 +1,23 @@
 package com.mjusugangsincheonghelper.database.entity;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -49,6 +55,10 @@ public class SingleGameEntity {
 	@LastModifiedDate
 	@Column(nullable = false)
 	private Instant updatedAt;
+
+	@OneToMany(mappedBy = "game", cascade = CascadeType.ALL, orphanRemoval = true)
+	@OnDelete(action = OnDeleteAction.CASCADE)
+	private List<SingleGameDetailEntity> details = new ArrayList<>();
 
 	@Builder
 	public SingleGameEntity(Long memberId, int tTotal, int tEnterMain, boolean isCompleted, int totalCourses) {
