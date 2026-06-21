@@ -304,6 +304,10 @@ CREATE INDEX IF NOT EXISTS idx_intent_matching_pool
     ON exchange_intent(give_course_no, want_course_no)
     WHERE is_deleted = FALSE;
 
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_active_intent 
+    ON exchange_intent (term, member_id, give_course_no, want_course_no) 
+    WHERE is_deleted = FALSE;
+
 -- ============================================================
 -- 12. exchange_room (파티셔닝)
 -- ============================================================

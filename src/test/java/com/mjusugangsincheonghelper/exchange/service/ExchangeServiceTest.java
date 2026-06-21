@@ -100,7 +100,7 @@ class ExchangeServiceTest {
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(intentRepository.findByTermAndMemberIdAndGiveCourseNoAndWantCourseNoAndIsDeletedFalse(
 					term, memberId, "10001", "10002")).willReturn(List.of());
-			given(intentRepository.save(any(ExchangeIntentEntity.class))).willReturn(savedEntity);
+			given(intentRepository.saveAndFlush(any(ExchangeIntentEntity.class))).willReturn(savedEntity);
 
 			// When
 			IntentCreateResponse response = exchangeService.createIntent(memberId, request);
@@ -110,7 +110,7 @@ class ExchangeServiceTest {
 			assertThat(response.getMemberId()).isEqualTo(memberId);
 			assertThat(response.getGiveCourseNo()).isEqualTo("10001");
 			assertThat(response.getWantCourseNo()).isEqualTo("10002");
-			verify(intentRepository).save(any(ExchangeIntentEntity.class));
+			verify(intentRepository).saveAndFlush(any(ExchangeIntentEntity.class));
 		}
 
 		@Test
@@ -167,6 +167,32 @@ class ExchangeServiceTest {
 		}
 
 		@Test
+		@DisplayName("동시성으로 인해 DB 저장 시 중복 예외가 발생하면 EXCHANGE_DUPLICATE_INTENT 예외를 발생시킨다")
+		void it_throws_duplicate_intent_exception_when_db_unique_violation_occurs() {
+			// Given
+			String term = "202510";
+			Long memberId = 1L;
+			IntentCreateRequest request = IntentCreateRequest.builder()
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.build();
+
+			given(systemConfigService.getCurrentTerm()).willReturn(term);
+			given(intentRepository.findByTermAndMemberIdAndGiveCourseNoAndWantCourseNoAndIsDeletedFalse(
+					term, memberId, "10001", "10002")).willReturn(List.of());
+			given(intentRepository.saveAndFlush(any(ExchangeIntentEntity.class)))
+					.willThrow(new org.springframework.dao.DataIntegrityViolationException("Unique constraint violation"));
+
+			// When & Then
+			assertThatThrownBy(() -> exchangeService.createIntent(memberId, request))
+					.isInstanceOf(BaseException.class)
+					.satisfies(ex -> {
+						BaseException baseException = (BaseException) ex;
+						assertThat(baseException.getErrorCode()).isEqualTo(ErrorCode.EXCHANGE_DUPLICATE_INTENT);
+					});
+		}
+
+		@Test
 		@DisplayName("등록 후 pushFeed, evictIntents, enqueueCycleDetection 후처리가 수행된다")
 		void it_performs_aftercare_after_create() {
 			// Given
@@ -187,7 +213,7 @@ class ExchangeServiceTest {
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(intentRepository.findByTermAndMemberIdAndGiveCourseNoAndWantCourseNoAndIsDeletedFalse(
 					term, memberId, "10001", "10002")).willReturn(List.of());
-			given(intentRepository.save(any(ExchangeIntentEntity.class))).willReturn(savedEntity);
+			given(intentRepository.saveAndFlush(any(ExchangeIntentEntity.class))).willReturn(savedEntity);
 
 			// When
 			exchangeService.createIntent(memberId, request);

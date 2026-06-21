@@ -97,3 +97,8 @@ FROM single_game_detail sgd
 JOIN single_game sg ON sgd.game_id = sg.id
 LEFT JOIN v_sequence_percentile_stats vps
     ON vps.total_courses = sg.total_courses AND vps.sequence = sgd.sequence;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_active_intent 
+ON exchange_intent (term, member_id, give_course_no, want_course_no) 
+WHERE is_deleted = FALSE;
+

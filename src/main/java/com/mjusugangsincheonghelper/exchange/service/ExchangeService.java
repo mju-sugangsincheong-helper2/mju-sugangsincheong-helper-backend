@@ -36,6 +36,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -68,12 +69,17 @@ public class ExchangeService {
 			throw new BaseException(ErrorCode.EXCHANGE_DUPLICATE_INTENT);
 		}
 
-		ExchangeIntentEntity saved = intentRepository.save(ExchangeIntentEntity.builder()
-				.term(term)
-				.memberId(memberId)
-				.giveCourseNo(request.getGiveCourseNo())
-				.wantCourseNo(request.getWantCourseNo())
-				.build());
+		ExchangeIntentEntity saved;
+		try {
+			saved = intentRepository.saveAndFlush(ExchangeIntentEntity.builder()
+					.term(term)
+					.memberId(memberId)
+					.giveCourseNo(request.getGiveCourseNo())
+					.wantCourseNo(request.getWantCourseNo())
+					.build());
+		} catch (DataIntegrityViolationException e) {
+			throw new BaseException(ErrorCode.EXCHANGE_DUPLICATE_INTENT);
+		}
 
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

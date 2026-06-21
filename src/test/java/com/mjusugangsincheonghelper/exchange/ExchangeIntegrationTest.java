@@ -40,6 +40,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -83,6 +84,9 @@ class ExchangeIntegrationTest {
 	@Autowired
 	private ExchangeCycleDetector cycleDetector;
 
+	@Autowired
+	private StringRedisTemplate stringRedisTemplate;
+
 	private Member testMember;
 
 	@BeforeEach
@@ -93,6 +97,11 @@ class ExchangeIntegrationTest {
 		roomRepository.deleteAll();
 		intentRepository.deleteAll();
 		memberRepository.deleteAll();
+
+		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
+			connection.serverCommands().flushDb();
+			return null;
+		});
 
 		testMember = memberRepository.save(Member.builder()
 				.role(Member.Role.MEMBER)
