@@ -5,12 +5,13 @@ import { testLogin } from '../common/login.js';
 import { exchangeThresholds } from '../common/thresholds.js';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const VU_MAX = parseInt(__ENV.VU_MAX) || 1500;
 
 export const options = {
   stages: [
-    { target: 500, duration: '20s' },
-    { target: 1500, duration: '30s' },
-    { target: 1500, duration: '180s' },
+    { target: Math.floor(VU_MAX * 0.3), duration: '20s' },
+    { target: VU_MAX, duration: '30s' },
+    { target: VU_MAX, duration: '180s' },
     { target: 0, duration: '20s' },
   ],
   thresholds: exchangeThresholds,
@@ -32,15 +33,19 @@ const coursePairs = new SharedArray('course-pairs', function () {
 
 const testUsers = new SharedArray('test-users', function () {
   const users = [];
-  for (let i = 0; i < 1500; i++) {
+  for (let i = 0; i < 2000; i++) {
     users.push(`stampede_user_${i}`);
   }
   return users;
 });
 
+let token;
+
 export default function () {
-  const userName = testUsers[__VU - 1];
-  const token = testLogin(userName);
+  if (!token) {
+    const userName = testUsers[__VU - 1] || `stampede_user_${__VU}`;
+    token = testLogin(userName);
+  }
   if (!token) return;
 
   const params = {
@@ -50,32 +55,63 @@ export default function () {
     },
   };
 
-  // 90%: write-heavy eviction triggers
+  // 10% of VUs act as Writers (evictors)
   if (__VU % 10 === 0) {
     const pair = coursePairs[Math.floor(Math.random() * coursePairs.length)];
+    
+    // 1. Post intent (triggers search, match, and potential caching eviction)
     const intentRes = http.post(
       `${BASE_URL}/api/v1/exchange/intents`,
       JSON.stringify(pair),
       { tags: { name: 'POST_intents' }, ...params }
     );
 
-    http.get(
+    // 2. Fetch main screen status
+    let roomId = null;
+    const mainRes = http.get(
       `${BASE_URL}/api/v1/exchange/main`,
       { tags: { name: 'GET_main' }, ...params }
     );
 
-    if (Math.random() < 0.3 && intentRes.status === 201) {
-      const intentId = intentRes.json('data.intentId');
-      if (intentId) {
-        http.del(
-          `${BASE_URL}/api/v1/exchange/intents/${intentId}`,
-          null,
-          { tags: { name: 'DELETE_intent' }, ...params }
-        );
+    if (mainRes.status === 200) {
+      try {
+        const body = JSON.parse(mainRes.body);
+        if (body.data && body.data.rooms && body.data.rooms.length > 0) {
+          roomId = body.data.rooms[0].roomId;
+        }
+      } catch (e) {
+        // Ignore json parse error
       }
     }
+
+    // 3. Send message to room if matched, which evicts message/room cache for other members
+    if (roomId && Math.random() < 0.5) {
+      http.post(
+        `${BASE_URL}/api/v1/exchange/rooms/${roomId}/messages`,
+        JSON.stringify({ content: `Eviction triggering test message ${Math.random()}` }),
+        { tags: { name: 'POST_message' }, ...params }
+      );
+    }
+
+    // 4. Sometimes delete/retract the intent to cause further evictions
+    if (Math.random() < 0.3 && intentRes.status === 201) {
+      try {
+        const body = JSON.parse(intentRes.body);
+        const intentId = body.data && body.data.intentId;
+        if (intentId) {
+          http.del(
+            `${BASE_URL}/api/v1/exchange/intents/${intentId}`,
+            null,
+            { tags: { name: 'DELETE_intent' }, ...params }
+          );
+        }
+      } catch (e) {
+        // Ignore json parse error
+      }
+    }
+
   } else {
-    // 90%: pure polling (cache consumer)
+    // 90% of VUs act as Pollers (cache consumers)
     http.get(
       `${BASE_URL}/api/v1/exchange/main`,
       { tags: { name: 'GET_main' }, ...params }

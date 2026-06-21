@@ -9,9 +9,9 @@ const VU_MAX = parseInt(__ENV.VU_MAX) || 1500;
 
 export const options = {
   stages: [
-    { target: VU_MAX, duration: '10s' },
-    { target: VU_MAX, duration: '30s' },
-    { target: 0, duration: '10s' },
+    { target: VU_MAX, duration: '10s' },  // Rapid ramp-up in 10 seconds
+    { target: VU_MAX, duration: '60s' },  // Hold to allow users to play and submit results
+    { target: 0, duration: '10s' },       // Ramp-down
   ],
   thresholds: singlegameThresholds,
   noConnectionReuse: true,
@@ -40,8 +40,13 @@ const gamePayloads = new SharedArray('game-payloads', function () {
   return payloads;
 });
 
+let token;
+let hasPlayed = false;
+
 export default function () {
-  const token = guestLogin();
+  if (!token) {
+    token = guestLogin();
+  }
   if (!token) return;
 
   const params = {
@@ -51,19 +56,31 @@ export default function () {
     },
   };
 
-  const payload = gamePayloads[Math.floor(Math.random() * gamePayloads.length)];
-  http.post(
-    `${BASE_URL}/api/v1/singlegame`,
-    JSON.stringify(payload),
-    { tags: { name: 'POST_singlegame' }, ...params }
-  );
+  // Run the game simulation only once per VU session to simulate a single spike completion
+  if (!hasPlayed) {
+    // 1. Simulate playing duration: sleep for 30 to 50 seconds before submitting
+    const playDuration = Math.random() * 20 + 30; // 30s to 50s
+    sleep(playDuration);
 
-  if (Math.random() < 0.3) {
-    http.get(
-      `${BASE_URL}/api/v1/singlegame/rank?totalCourses=${payload.totalCourses}&scope=GLOBAL`,
-      { tags: { name: 'GET_rank' }, ...params }
+    // 2. Submit game completion result
+    const payload = gamePayloads[Math.floor(Math.random() * gamePayloads.length)];
+    http.post(
+      `${BASE_URL}/api/v1/singlegame`,
+      JSON.stringify(payload),
+      { tags: { name: 'POST_singlegame' }, ...params }
     );
+
+    // 3. Query ranking right after completing the game (30% chance)
+    if (Math.random() < 0.3) {
+      http.get(
+        `${BASE_URL}/api/v1/singlegame/rank?totalCourses=${payload.totalCourses}&scope=GLOBAL`,
+        { tags: { name: 'GET_rank' }, ...params }
+      );
+    }
+
+    hasPlayed = true;
   }
 
-  sleep(Math.random() * 2 + 1);
+  // Once the spike submission is complete, wait out the remaining duration
+  sleep(1);
 }

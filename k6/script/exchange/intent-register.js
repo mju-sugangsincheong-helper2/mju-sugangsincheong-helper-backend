@@ -5,16 +5,18 @@ import { testLogin } from '../common/login.js';
 import { exchangeThresholds } from '../common/thresholds.js';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const VU_MAX = parseInt(__ENV.VU_MAX) || 300;
 
 export const options = {
   stages: [
-    { target: 50, duration: '10s' },
-    { target: 200, duration: '20s' },
-    { target: 300, duration: '30s' },
-    { target: 300, duration: '120s' },
+    { target: Math.floor(VU_MAX * 0.2), duration: '10s' },
+    { target: Math.floor(VU_MAX * 0.6), duration: '20s' },
+    { target: VU_MAX, duration: '30s' },
+    { target: VU_MAX, duration: '120s' },
     { target: 0, duration: '20s' },
   ],
   thresholds: exchangeThresholds,
+  noConnectionReuse: true,
 };
 
 const coursePairs = new SharedArray('course-pairs', function () {
@@ -32,15 +34,19 @@ const coursePairs = new SharedArray('course-pairs', function () {
 
 const testUsers = new SharedArray('test-users', function () {
   const users = [];
-  for (let i = 0; i < 500; i++) {
+  for (let i = 0; i < 1000; i++) {
     users.push(`intent_user_${i}`);
   }
   return users;
 });
 
+let token;
+
 export default function () {
-  const userName = testUsers[__VU - 1];
-  const token = testLogin(userName);
+  if (!token) {
+    const userName = testUsers[__VU - 1] || `intent_user_${__VU}`;
+    token = testLogin(userName);
+  }
   if (!token) return;
 
   const params = {
@@ -57,21 +63,29 @@ export default function () {
     { tags: { name: 'POST_intents' }, ...params }
   );
 
+  // Check main screen to see matches/rooms
   http.get(
     `${BASE_URL}/api/v1/exchange/main`,
     { tags: { name: 'GET_main' }, ...params }
   );
 
+  // 20% chance to delete/retract the intent to simulate eviction/cancellation
   if (Math.random() < 0.2 && intentRes.status === 201) {
-    const intentId = intentRes.json('data.intentId');
-    if (intentId) {
-      http.del(
-        `${BASE_URL}/api/v1/exchange/intents/${intentId}`,
-        null,
-        { tags: { name: 'DELETE_intent' }, ...params }
-      );
+    try {
+      const body = JSON.parse(intentRes.body);
+      const intentId = body.data && body.data.intentId;
+      if (intentId) {
+        http.del(
+          `${BASE_URL}/api/v1/exchange/intents/${intentId}`,
+          null,
+          { tags: { name: 'DELETE_intent' }, ...params }
+        );
+      }
+    } catch (e) {
+      // Ignore json parse error
     }
   }
 
-  sleep(Math.random() * 3 + 2);
+  // Sleep shortly to simulate continuous active registration & graph exploration
+  sleep(Math.random() * 2 + 1);
 }

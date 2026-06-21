@@ -25,9 +25,15 @@ const testUsers = new SharedArray('test-users', function () {
   return users;
 });
 
+let token;
+let cachedRoomId = null;
+let step = 0;
+
 export default function () {
-  const userName = testUsers[__VU - 1];
-  const token = testLogin(userName);
+  if (!token) {
+    const userName = testUsers[__VU - 1] || `poll_user_${__VU}`;
+    token = testLogin(userName);
+  }
   if (!token) return;
 
   const params = {
@@ -37,17 +43,30 @@ export default function () {
     },
   };
 
-  http.get(
-    `${BASE_URL}/api/v1/exchange/main`,
-    { tags: { name: 'GET_main' }, ...params }
-  );
+  // Alternately call /main and /rooms/{id}/messages every 5s
+  if (step % 2 === 0 || !cachedRoomId) {
+    const mainRes = http.get(
+      `${BASE_URL}/api/v1/exchange/main`,
+      { tags: { name: 'GET_main' }, ...params }
+    );
 
-  if (Math.random() < 0.3) {
+    if (mainRes.status === 200) {
+      try {
+        const body = JSON.parse(mainRes.body);
+        if (body.data && body.data.rooms && body.data.rooms.length > 0) {
+          cachedRoomId = body.data.rooms[0].roomId;
+        }
+      } catch (e) {
+        // Ignore json parse error
+      }
+    }
+  } else {
     http.get(
-      `${BASE_URL}/api/v1/exchange/intents/recent?lastIntentId=0&limit=10`,
-      { tags: { name: 'GET_recent_intents' }, ...params }
+      `${BASE_URL}/api/v1/exchange/rooms/${cachedRoomId}/messages?lastMessageId=999999999&size=20`,
+      { tags: { name: 'GET_messages' }, ...params }
     );
   }
 
+  step++;
   sleep(5);
 }

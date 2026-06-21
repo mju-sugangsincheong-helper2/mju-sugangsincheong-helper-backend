@@ -7,7 +7,7 @@ export function guestLogin() {
   const res = http.post(`${BASE_URL}/api/v1/auth/guest`, null, {
     tags: { name: 'GuestLogin' },
   });
-  check(res, { 'guest login 201': (r) => r.status === 201 });
+  check(res, { 'guest login 201': (r) => r.status === 201 || r.status === 200 });
   return extractToken(res);
 }
 
@@ -20,9 +20,20 @@ export function testLogin(name) {
 }
 
 function extractToken(res) {
-  if (res.json('accessToken')) {
-    return res.json('accessToken');
+  try {
+    const json = res.json();
+    if (json) {
+      if (json.data && json.data.accessToken) {
+        return json.data.accessToken;
+      }
+      if (json.accessToken) {
+        return json.accessToken;
+      }
+    }
+  } catch (e) {
+    // Ignore JSON parsing errors and fall back to headers
   }
+
   const authHeader = res.headers['Authorization'] || res.headers['authorization'];
   if (authHeader) {
     return authHeader.replace('Bearer ', '');

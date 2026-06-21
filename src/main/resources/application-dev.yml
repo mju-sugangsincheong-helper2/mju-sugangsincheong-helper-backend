@@ -34,6 +34,13 @@ logging:
 app:
   auth:
     token-in-response: true
+    test-accounts:
+      - name: "TEST_ADMIN/TEST_POSITION/TEST_DEPARTMENT"
+        role: ADMIN
+      - name: "TEST_MEMBER/TEST_POSITION/TEST_DEPARTMENT"
+        role: MEMBER
+      - name: "TEST_GUEST/TEST_POSITION/TEST_DEPARTMENT"
+        role: GUEST
   jwt:
     secret: dev-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-prod
     access-token-expiry-ms: 3600000       # 1시간
