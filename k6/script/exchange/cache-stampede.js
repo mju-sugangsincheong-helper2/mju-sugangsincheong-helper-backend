@@ -18,19 +18,6 @@ export const options = {
   noConnectionReuse: true,
 };
 
-const coursePairs = new SharedArray('course-pairs', function () {
-  const pairs = [];
-  for (let i = 0; i < 200; i++) {
-    const give = String(20000 + Math.floor(Math.random() * 50000));
-    let want = String(20000 + Math.floor(Math.random() * 50000));
-    while (want === give) {
-      want = String(20000 + Math.floor(Math.random() * 50000));
-    }
-    pairs.push({ giveCourseNo: give, wantCourseNo: want });
-  }
-  return pairs;
-});
-
 const testUsers = new SharedArray('test-users', function () {
   const users = [];
   for (let i = 0; i < 2000; i++) {
@@ -40,6 +27,7 @@ const testUsers = new SharedArray('test-users', function () {
 });
 
 let token;
+let iteration = 0;
 
 export default function () {
   if (!token) {
@@ -57,7 +45,12 @@ export default function () {
 
   // 10% of VUs act as Writers (evictors)
   if (__VU % 10 === 0) {
-    const pair = coursePairs[Math.floor(Math.random() * coursePairs.length)];
+    // Generate completely unique course pair for this VU and iteration to avoid 409 Conflict
+    const giveCourseNo = String(100000 + (__VU * 1000) + iteration);
+    const wantCourseNo = String(200000 + (__VU * 1000) + iteration);
+    iteration++;
+
+    const pair = { giveCourseNo, wantCourseNo };
     
     // 1. Post intent (triggers search, match, and potential caching eviction)
     const intentRes = http.post(
@@ -77,7 +70,7 @@ export default function () {
       try {
         const body = JSON.parse(mainRes.body);
         if (body.data && body.data.rooms && body.data.rooms.length > 0) {
-          roomId = body.data.rooms[0].roomId;
+          cachedRoomId = body.data.rooms[0].roomId;
         }
       } catch (e) {
         // Ignore json parse error

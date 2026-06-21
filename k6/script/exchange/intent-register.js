@@ -19,19 +19,6 @@ export const options = {
   noConnectionReuse: true,
 };
 
-const coursePairs = new SharedArray('course-pairs', function () {
-  const pairs = [];
-  for (let i = 0; i < 1000; i++) {
-    const give = String(10000 + Math.floor(Math.random() * 90000));
-    let want = String(10000 + Math.floor(Math.random() * 90000));
-    while (want === give) {
-      want = String(10000 + Math.floor(Math.random() * 90000));
-    }
-    pairs.push({ giveCourseNo: give, wantCourseNo: want });
-  }
-  return pairs;
-});
-
 const testUsers = new SharedArray('test-users', function () {
   const users = [];
   for (let i = 0; i < 1000; i++) {
@@ -41,6 +28,7 @@ const testUsers = new SharedArray('test-users', function () {
 });
 
 let token;
+let iteration = 0;
 
 export default function () {
   if (!token) {
@@ -56,7 +44,13 @@ export default function () {
     },
   };
 
-  const pair = coursePairs[Math.floor(Math.random() * coursePairs.length)];
+  // Generate completely unique course pair for this VU and iteration to avoid 409 Conflict
+  const giveCourseNo = String(100000 + (__VU * 1000) + iteration);
+  const wantCourseNo = String(200000 + (__VU * 1000) + iteration);
+  iteration++;
+
+  const pair = { giveCourseNo, wantCourseNo };
+
   const intentRes = http.post(
     `${BASE_URL}/api/v1/exchange/intents`,
     JSON.stringify(pair),

@@ -40,3 +40,4 @@ out/
 data/
 client_secret*.json
 .opencode
+k6/report/
