@@ -31,10 +31,10 @@ spring:
       host: localhost
       port: 6379
 
-server:
-  tomcat:
-    threads:
-      max: 500
+# server:
+#   tomcat:
+#     threads:
+#       max: 500
 
 logging:
   level:
