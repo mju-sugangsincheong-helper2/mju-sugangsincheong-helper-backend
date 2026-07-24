@@ -392,6 +392,7 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, fcmToken, device}
      └→ MergeService.merge(mergeTicket)
          ├→ MergeTicketService.consume(ticket) -> guestMemberId, googleSubId
          ├→ MemberAuth(GOOGLE) 조회로 target Member 식별
+         ├→ SingleGameRepository.updateMemberId(guestId, targetId)  (싱글게임 기록 이전)
          ├→ 게스트 MemberAuth(GUEST_KEY) 삭제
          ├→ DeviceSessionService.switchMember(guestId, targetId)  (디바이스 소유권 이전)
          └→ guest Member 레코드 삭제

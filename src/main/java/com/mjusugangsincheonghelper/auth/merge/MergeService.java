@@ -7,6 +7,7 @@ import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
+import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ public class MergeService {
 
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
+	private final SingleGameRepository singleGameRepository;
 	private final DeviceSessionService deviceSessionService;
 	private final MergeTicketService mergeTicketService;
 
@@ -36,18 +38,20 @@ public class MergeService {
 		Member guestMember = memberRepository.findById(claims.guestMemberId())
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_GUEST_NOT_FOUND));
 
-		MemberAuth guestAuth = memberAuthRepository.findByMemberIdAndAuthType(claims.guestMemberId(),
-				AuthType.GUEST_KEY).orElse(null);
-		if (guestAuth != null) {
-			memberAuthRepository.delete(guestAuth);
-		}
+		Long guestId = guestMember.getId();
+		Long targetId = targetMember.getId();
 
-		deviceSessionService.switchMember(claims.guestMemberId(), targetMember.getId());
+		singleGameRepository.updateMemberId(guestId, targetId);
+
+		memberAuthRepository.findByMemberIdAndAuthType(guestId, AuthType.GUEST_KEY)
+				.ifPresent(memberAuthRepository::delete);
+
+		deviceSessionService.switchMember(guestId, targetId);
 
 		memberRepository.delete(guestMember);
 
 		return AuthenticatedIdentity.builder()
-				.memberId(targetMember.getId())
+				.memberId(targetId)
 				.build();
 	}
 }
