@@ -130,16 +130,19 @@ protected void doFilterInternal(HttpServletRequest request, HttpServletResponse 
 | > 1,000ms | WARN | `log.warn("Slow request: {} {} took {}ms", method, path, durationMs)` |
 | > 5,000ms | ERROR | `log.error("Very slow request: {} {} took {}ms", method, path, durationMs)` |
 
-임계값은 `system_config` 테이블의 `performance_thresholds` 키로 관리:
+임계값은 `application.yml`에서 관리:
 
-```json
-{"slow_ms": 1000, "very_slow_ms": 5000}
+```yaml
+app:
+  performance:
+    slow-ms: 1000        # WARN 로그 임계값
+    very-slow-ms: 5000   # ERROR 로그 임계값
 ```
 
-- `slow_ms`: WARN 로그 임계값 (기본 1000ms)
-- `very_slow_ms`: ERROR 로그 임계값 (기본 5000ms)
+- `slow-ms`: WARN 로그 임계값 (기본 1000ms)
+- `very-slow-ms`: ERROR 로그 임계값 (기본 5000ms)
 
-admin API로 실시간 변경 가능 (`PUT /api/v1/system/configs/performance_thresholds`).
+환경별 프로파일(`application-dev.yml`, `application-prod.yml`)에서 다르게 설정 가능.
 
 ### 느린 DB 쿼리
 

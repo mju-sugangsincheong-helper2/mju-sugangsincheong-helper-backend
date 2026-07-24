@@ -24,16 +24,12 @@ import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.cache.RecordCacheDto;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition.ReactionTimeConfig;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
@@ -47,7 +43,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class SingleGameService {
 
@@ -55,7 +50,23 @@ public class SingleGameService {
 	private final SingleGameDetailRepository singleGameDetailRepository;
 	private final MemberRepository memberRepository;
 	private final CacheManager cacheManager;
-	private final SystemConfigService systemConfigService;
+	private final int reactionTimeMinMs;
+	private final int reactionTimeMaxMs;
+
+	public SingleGameService(
+			SingleGameRepository singleGameRepository,
+			SingleGameDetailRepository singleGameDetailRepository,
+			MemberRepository memberRepository,
+			CacheManager cacheManager,
+			@org.springframework.beans.factory.annotation.Value("${app.singlegame.reaction-time-min-ms:1}") int reactionTimeMinMs,
+			@org.springframework.beans.factory.annotation.Value("${app.singlegame.reaction-time-max-ms:60000}") int reactionTimeMaxMs) {
+		this.singleGameRepository = singleGameRepository;
+		this.singleGameDetailRepository = singleGameDetailRepository;
+		this.memberRepository = memberRepository;
+		this.cacheManager = cacheManager;
+		this.reactionTimeMinMs = reactionTimeMinMs;
+		this.reactionTimeMaxMs = reactionTimeMaxMs;
+	}
 
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
 
@@ -81,22 +92,18 @@ public class SingleGameService {
 			}
 		}
 
-		ReactionTimeConfig reactionTimeConfig = SettingDefinition.SINGLEGAME_REACTION_TIME_CONFIG.getFrom(systemConfigService);
-		int minMs = reactionTimeConfig.minMs();
-		int maxMs = reactionTimeConfig.maxMs();
-
-		if (request.getTEnterMain() < minMs || request.getTEnterMain() > maxMs) {
+		if (request.getTEnterMain() < reactionTimeMinMs || request.getTEnterMain() > reactionTimeMaxMs) {
 			throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 		}
 
 		for (SingleGameDetailRequest d : request.getDetails()) {
-			if (d.getTClickCourse() < minMs || d.getTClickCourse() > maxMs) {
+			if (d.getTClickCourse() < reactionTimeMinMs || d.getTClickCourse() > reactionTimeMaxMs) {
 				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 			}
-			if (d.getTClickYes() < minMs || d.getTClickYes() > maxMs) {
+			if (d.getTClickYes() < reactionTimeMinMs || d.getTClickYes() > reactionTimeMaxMs) {
 				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 			}
-			if (d.getTClickOk() < minMs || d.getTClickOk() > maxMs) {
+			if (d.getTClickOk() < reactionTimeMinMs || d.getTClickOk() > reactionTimeMaxMs) {
 				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 			}
 		}

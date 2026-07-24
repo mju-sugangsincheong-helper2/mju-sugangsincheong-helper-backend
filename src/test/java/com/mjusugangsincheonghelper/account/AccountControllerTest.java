@@ -11,7 +11,6 @@ import com.mjusugangsincheonghelper.global.api.exception.GlobalExceptionHandler;
 import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,7 +27,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -54,9 +52,6 @@ class AccountControllerTest {
 	private TokenDeliveryStrategy tokenDeliveryStrategy;
 
 	@MockitoBean
-	private SystemConfigService systemConfigService;
-
-	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;
 
 	@MockitoBean
@@ -64,8 +59,6 @@ class AccountControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		given(systemConfigService.getRaw(anyString())).willReturn("true");
-
 		// Mock Authentication to return Long principal
 		Authentication authentication = mock(Authentication.class);
 		given(authentication.getPrincipal()).willReturn(1L);

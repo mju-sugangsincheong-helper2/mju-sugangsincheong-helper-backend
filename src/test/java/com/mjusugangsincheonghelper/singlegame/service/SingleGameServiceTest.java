@@ -13,8 +13,6 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition.ReactionTimeConfig;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
@@ -26,7 +24,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -61,10 +58,6 @@ class SingleGameServiceTest {
 	@Mock
 	private CacheManager cacheManager;
 
-	@Mock
-	private SystemConfigService systemConfigService;
-
-	@InjectMocks
 	private SingleGameService singleGameService;
 
 	@Captor
@@ -76,8 +69,8 @@ class SingleGameServiceTest {
 	@BeforeEach
 	void setUp() {
 		TransactionSynchronizationManager.initSynchronization();
-		given(systemConfigService.getRaw("singlegame_reaction_time_config"))
-				.willReturn("{\"minMs\":1,\"maxMs\":60000}");
+		singleGameService = new SingleGameService(
+				singleGameRepository, singleGameDetailRepository, memberRepository, cacheManager, 1, 60000);
 	}
 
 	@AfterEach

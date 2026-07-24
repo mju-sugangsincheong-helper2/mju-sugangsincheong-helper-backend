@@ -1,7 +1,6 @@
 package com.mjusugangsincheonghelper.exchange.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.BDDMockito.given;
@@ -31,7 +30,6 @@ import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -67,9 +65,6 @@ class ExchangeControllerTest {
 	private ExchangeService exchangeService;
 
 	@MockitoBean
-	private SystemConfigService systemConfigService;
-
-	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;
 
 	@MockitoBean
@@ -77,8 +72,6 @@ class ExchangeControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		given(systemConfigService.getRaw(anyString())).willReturn("true");
-
 		// Mock Authentication to return Long principal
 		Authentication authentication = mock(Authentication.class);
 		given(authentication.getPrincipal()).willReturn(1L);

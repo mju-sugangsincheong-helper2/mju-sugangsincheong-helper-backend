@@ -7,11 +7,11 @@ import com.mjusugangsincheonghelper.course.dto.CourseSectionImportResponse;
 import com.mjusugangsincheonghelper.course.dto.CourseSectionResponse;
 import com.mjusugangsincheonghelper.course.service.CourseService;
 import com.mjusugangsincheonghelper.global.api.exception.GlobalExceptionHandler;
+import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,7 +27,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -61,7 +60,6 @@ class CourseControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		given(systemConfigService.getRaw(anyString())).willReturn("true");
 	}
 
 	@Nested

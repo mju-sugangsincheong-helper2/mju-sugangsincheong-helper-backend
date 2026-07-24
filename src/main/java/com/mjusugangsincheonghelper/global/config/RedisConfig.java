@@ -3,7 +3,6 @@ package com.mjusugangsincheonghelper.global.config;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
@@ -17,9 +16,6 @@ import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.listener.ChannelTopic;
-import org.springframework.data.redis.listener.RedisMessageListenerContainer;
-import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.RedisSerializer;
@@ -31,14 +27,8 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 @RequiredArgsConstructor
 public class RedisConfig implements CachingConfigurer {
 
-	public static final String SYSTEM_CONFIG_EVICT_TOPIC = "system-config-evict-topic";
-
 	private final CacheProperties cacheProperties;
 
-	@Bean
-	public String instanceId() {
-		return UUID.randomUUID().toString();
-	}
 	@Bean
 	public RedisSerializer<Object> redisSerializer() {
 		return GenericJacksonJsonRedisSerializer.builder()
@@ -102,22 +92,5 @@ public class RedisConfig implements CachingConfigurer {
 				log.warn("Cache clear error on {}: {}", cache.getName(), exception.getMessage());
 			}
 		};
-	}
-
-	@Bean
-	public RedisMessageListenerContainer systemConfigEvictContainer(
-			RedisConnectionFactory connectionFactory,
-			MessageListenerAdapter systemConfigListenerAdapter) {
-		RedisMessageListenerContainer container = new RedisMessageListenerContainer();
-		container.setConnectionFactory(connectionFactory);
-		container.addMessageListener(systemConfigListenerAdapter, new ChannelTopic(SYSTEM_CONFIG_EVICT_TOPIC));
-		return container;
-	}
-
-	@Bean
-	public MessageListenerAdapter systemConfigListenerAdapter(SystemConfigEvictSubscriber subscriber, RedisSerializer<Object> redisSerializer) {
-		MessageListenerAdapter adapter = new MessageListenerAdapter(subscriber, "receiveEviction");
-		adapter.setSerializer(redisSerializer);
-		return adapter;
 	}
 }

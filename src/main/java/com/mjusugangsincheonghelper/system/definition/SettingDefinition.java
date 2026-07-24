@@ -46,81 +46,6 @@ public enum SettingDefinition {
 			"",
 			raw -> raw,
 			raw -> true
-	),
-
-	EXPOSE_ERROR_DETAILS(
-			"expose_error_details",
-			ConfigType.BOOLEAN,
-			"에러 응답에 원본 예외 상세 정보 포함 여부",
-			"false",
-			Boolean::parseBoolean,
-			raw -> "true".equalsIgnoreCase(raw) || "false".equalsIgnoreCase(raw)
-	),
-
-	PERFORMANCE_THRESHOLDS(
-			"performance_thresholds",
-			ConfigType.JSON,
-			"성능 임계값 설정 (slow_ms, very_slow_ms)",
-			"{\"slowMs\":1000,\"verySlowMs\":5000}",
-			raw -> {
-				try {
-					return new ObjectMapper().readValue(raw, PerformanceThresholds.class);
-				} catch (Exception e) {
-					return new PerformanceThresholds(1000L, 5000L);
-				}
-			},
-			raw -> {
-				try {
-					new ObjectMapper().readValue(raw, PerformanceThresholds.class);
-					return true;
-				} catch (Exception e) {
-					return false;
-				}
-			}
-	),
-
-	JWT_EXPIRY_CONFIG(
-			"jwt_expiry_config",
-			ConfigType.JSON,
-			"JWT 토큰 만료 시간 설정 (ms)",
-			"{\"accessTokenExpiryMs\":3600000,\"refreshTokenExpiryMs\":604800000,\"mergeTicketExpiryMs\":300000}",
-			raw -> {
-				try {
-					return new ObjectMapper().readValue(raw, JwtExpiryConfig.class);
-				} catch (Exception e) {
-					return new JwtExpiryConfig(3600000L, 604800000L, 300000L);
-				}
-			},
-			raw -> {
-				try {
-					new ObjectMapper().readValue(raw, JwtExpiryConfig.class);
-					return true;
-				} catch (Exception e) {
-					return false;
-				}
-			}
-	),
-
-	SINGLEGAME_REACTION_TIME_CONFIG(
-			"singlegame_reaction_time_config",
-			ConfigType.JSON,
-			"싱글게임 반응 시간 유효 범위 설정 (ms)",
-			"{\"minMs\":1,\"maxMs\":60000}",
-			raw -> {
-				try {
-					return new ObjectMapper().readValue(raw, ReactionTimeConfig.class);
-				} catch (Exception e) {
-					return new ReactionTimeConfig(1, 60000);
-				}
-			},
-			raw -> {
-				try {
-					new ObjectMapper().readValue(raw, ReactionTimeConfig.class);
-					return true;
-				} catch (Exception e) {
-					return false;
-				}
-			}
 	);
 
 	private final String key;
@@ -178,11 +103,5 @@ public enum SettingDefinition {
 			};
 		}
 	}
-
-	public record PerformanceThresholds(long slowMs, long verySlowMs) {}
-
-	public record JwtExpiryConfig(long accessTokenExpiryMs, long refreshTokenExpiryMs, long mergeTicketExpiryMs) {}
-
-	public record ReactionTimeConfig(int minMs, int maxMs) {}
 
 }

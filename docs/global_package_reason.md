@@ -670,53 +670,6 @@ public class RedisConfig {
 
 **Redis 캐시 사용처**: `SystemConfigService.getCurrentTerm()`에 `@Cacheable("system_config", key = "'current_term'")`로 고빈도 읽기 최적화, `update()`에 `@CacheEvict`로 쓰기 시 캐시 무효화.
 
-### CaffeineConfig
-
-**도입 의도**: Redis조차 느린 경우를 대비한 **인메모리 로컬 캐시**입니다. `current_term`이나 에러 상세 노출 여부처럼 **매우 고빈도로 읽히고 거의 변하지 않는 값**을 Redis 네트워크 왕복 없이 즉시 반환하기 위해 도입했습니다.
-
-```
-요청 → CaffeineCache (인메모리, ~μs)
-     → miss 시에만 실제 로직 수행 → 결과 캐싱
-     → TTL 만료 후 다음 요청에서 재조회
-```
-
-```java
-@Configuration
-public class CaffeineConfig {
-
-    record TimestampedValue(Object value, int ttlSeconds) {}
-
-    @Bean
-    public Cache<String, TimestampedValue> caffeineCache() {
-        return Caffeine.newBuilder()
-                .maximumSize(2000)
-                .expireAfter(new Expiry<String, TimestampedValue>() {
-                    @Override
-                    public long expireAfterCreate(String key, TimestampedValue value, long currentTime) {
-                        return TimeUnit.SECONDS.toNanos(value.ttlSeconds());
-                    }
-                    // ... update/read 시 currentDuration 유지
-                })
-                .build();
-    }
-}
-```
-
-#### 커스텀 애너테이션
-
-```java
-@CaffeineCache(key = "someKey", ttl = 10)   // TTL 10초 (기본값 10초)
-public SomeResult expensiveComputation() { ... }
-
-@CaffeineCacheEvict(key = "someKey")
-public void invalidateCache() { ... }
-```
-
-**설계 결정**:
-- `maximumSize=2000`: LRU 기반 최대 2000개 엔트리 보관
-- per-key TTL: `TimestampedValue` 레코드로 엔트리마다 독립 TTL 관리
-- AOP(`@Aspect`) 기반: `@CaffeineCache` / `@CaffeineCacheEvict` 애너테이션으로 선언적 캐싱
-
 ### JpaAuditingConfig
 
 ```java
@@ -766,7 +719,7 @@ updated_at   TIMESTAMP WITH TIME ZONE
 | `notices` | `"[]"` | JSON | 공지사항 목록 |
 | `announcement` | `""` | STRING | 상단 배너 공지 텍스트 |
 
-> `expose_error_details`와 `performance_thresholds`는 더 이상 DB 기반 시스템 설정이 아닌 `application.yml` 프로퍼티로 관리됩니다. 각각 `app.expose-error-details`, `app.performance.slow-ms` / `app.performance.very-slow-ms`를 참조하세요.
+> `expose_error_details`, `performance_thresholds`, `jwt_expiry_config`, `singlegame_reaction_time_config`는 더 이상 DB 기반 시스템 설정이 아닌 `application.yml` 프로퍼티로 관리됩니다. 각각 `app.expose-error-details`, `app.performance.slow-ms` / `app.performance.very-slow-ms`, `app.jwt.*`, `app.singlegame.reaction-time-*`를 참조하세요.
 
 ### SettingDefinition (타입 안전 설정 정의)
 

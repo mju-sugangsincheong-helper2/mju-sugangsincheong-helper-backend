@@ -54,6 +54,7 @@ src/main/java/com/mjusugangsincheonghelper/
 │   │       ├── InstanceIdProvider.java
 │   │       └── MetaGenerator.java
 │   └── config/
+│       ├── CacheProperties.java               # Redis 캐시 TTL 설정
 │       ├── GlobalAsyncConfig.java
 │       ├── GlobalOpenApiConfig.java
 │       ├── GlobalSecurityConfig.java
@@ -87,6 +88,8 @@ src/main/java/com/mjusugangsincheonghelper/
 └── system/
     ├── controller/
     │   └── SystemConfigController.java
+    ├── definition/
+    │   └── SettingDefinition.java             # 동적 시스템 설정 정의 enum
     ├── dto/
     │   ├── SystemConfigResponse.java
     │   └── SystemConfigUpdateRequest.java

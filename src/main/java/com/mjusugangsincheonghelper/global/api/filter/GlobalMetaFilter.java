@@ -10,22 +10,30 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class GlobalMetaFilter extends OncePerRequestFilter {
 
 	private final ClientInfoExtractor clientInfoExtractor;
 	private final InstanceIdProvider instanceIdProvider;
-	private final SystemConfigService systemConfigService;
+	private final long slowMs;
+	private final long verySlowMs;
+
+	public GlobalMetaFilter(
+			ClientInfoExtractor clientInfoExtractor,
+			InstanceIdProvider instanceIdProvider,
+			@org.springframework.beans.factory.annotation.Value("${app.performance.slow-ms:1000}") long slowMs,
+			@org.springframework.beans.factory.annotation.Value("${app.performance.very-slow-ms:5000}") long verySlowMs) {
+		this.clientInfoExtractor = clientInfoExtractor;
+		this.instanceIdProvider = instanceIdProvider;
+		this.slowMs = slowMs;
+		this.verySlowMs = verySlowMs;
+	}
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -66,10 +74,9 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 	}
 
 	private void logSlowRequest(String method, String path, long durationMs) {
-		SettingDefinition.PerformanceThresholds thresholds = SettingDefinition.PERFORMANCE_THRESHOLDS.getFrom(systemConfigService);
-		if (durationMs > thresholds.verySlowMs()) {
+		if (durationMs > verySlowMs) {
 			log.error("Very slow request: {} {} took {}ms", method, path, durationMs);
-		} else if (durationMs > thresholds.slowMs()) {
+		} else if (durationMs > slowMs) {
 			log.warn("Slow request: {} {} took {}ms", method, path, durationMs);
 		}
 	}

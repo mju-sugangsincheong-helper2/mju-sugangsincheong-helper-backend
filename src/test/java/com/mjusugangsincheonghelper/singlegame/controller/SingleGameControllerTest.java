@@ -16,7 +16,6 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.RankingEntry;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
 import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,9 +58,6 @@ class SingleGameControllerTest {
 	private SingleGameService singleGameService;
 
 	@MockitoBean
-	private SystemConfigService systemConfigService;
-
-	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;
 
 	@MockitoBean
@@ -69,8 +65,6 @@ class SingleGameControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		given(systemConfigService.getRaw(anyString())).willReturn("true");
-
 		Authentication authentication = mock(Authentication.class);
 		given(authentication.getPrincipal()).willReturn(1L);
 

@@ -10,26 +10,28 @@ import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
 
 @Component
 public class TokenProvider {
 
 	private final SecretKey key;
-	private final SystemConfigService systemConfigService;
+	private final long accessTokenExpiryMs;
+	private final long refreshTokenExpiryMs;
+	private final long mergeTicketExpiryMs;
 
 	public TokenProvider(
 			@Value("${app.jwt.secret}") String secret,
-			SystemConfigService systemConfigService) {
+			@Value("${app.jwt.access-token-expiry-ms:3600000}") long accessTokenExpiryMs,
+			@Value("${app.jwt.refresh-token-expiry-ms:604800000}") long refreshTokenExpiryMs,
+			@Value("${app.jwt.merge-ticket-expiry-ms:300000}") long mergeTicketExpiryMs) {
 		this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-		this.systemConfigService = systemConfigService;
+		this.accessTokenExpiryMs = accessTokenExpiryMs;
+		this.refreshTokenExpiryMs = refreshTokenExpiryMs;
+		this.mergeTicketExpiryMs = mergeTicketExpiryMs;
 	}
 
 	public String createAccessToken(Long memberId, String role, boolean privacyAgreed) {
 		Instant now = Instant.now();
-		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
-		long accessTokenExpiryMs = config.accessTokenExpiryMs();
 		return Jwts.builder()
 				.subject(String.valueOf(memberId))
 				.claim("role", role)
@@ -46,8 +48,6 @@ public class TokenProvider {
 
 	public String createMergeTicket(Long memberId, String googleSubId) {
 		Instant now = Instant.now();
-		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
-		long mergeTicketExpiryMs = config.mergeTicketExpiryMs();
 		return Jwts.builder()
 				.subject(String.valueOf(memberId))
 				.claim("googleSubId", googleSubId)
@@ -80,13 +80,11 @@ public class TokenProvider {
 	}
 
 	public long getAccessTokenExpiryMs() {
-		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
-		return config.accessTokenExpiryMs();
+		return accessTokenExpiryMs;
 	}
 
 	public long getRefreshTokenExpiryMs() {
-		SettingDefinition.JwtExpiryConfig config = SettingDefinition.JWT_EXPIRY_CONFIG.getFrom(systemConfigService);
-		return config.refreshTokenExpiryMs();
+		return refreshTokenExpiryMs;
 	}
 
 	public record TokenClaims(Long memberId, String role, boolean agreed) {

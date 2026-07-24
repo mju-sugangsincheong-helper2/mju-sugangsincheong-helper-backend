@@ -15,7 +15,6 @@ import com.mjusugangsincheonghelper.global.api.exception.GlobalExceptionHandler;
 import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
-import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -35,7 +34,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
@@ -64,9 +62,6 @@ class ExampleControllerTest {
 	private ExampleService exampleService;
 
 	@MockitoBean
-	private SystemConfigService systemConfigService;
-
-	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;
 
 	@MockitoBean
@@ -74,7 +69,6 @@ class ExampleControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		given(systemConfigService.getRaw(anyString())).willReturn("true");
 	}
 
 	@Nested

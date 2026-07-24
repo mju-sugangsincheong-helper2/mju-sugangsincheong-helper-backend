@@ -60,6 +60,7 @@ app:
   cache:
     default-ttl: 24h
     ttls:
+      system-config: 24h
       room-static-meta: 0s
       user-intents: 24h
       user-room-ids: 24h
@@ -70,6 +71,9 @@ app:
       singlegame-rank: 5m
       singlegame-records: 5m
       singlegame-analysis: 5m
+  singlegame:
+    reaction-time-min-ms: 1
+    reaction-time-max-ms: 60000
   oauth2:
     google:
       client-id: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID}

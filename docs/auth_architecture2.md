@@ -274,7 +274,7 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 ## 7. JWT 토큰 구조
 
 ### 7.1 Access Token (ATK)
-- **용도**: API 호출 시 매번 보안 필터가 요구하는 서명 토큰. 만료 시간은 `system_config`의 `jwt_expiry_config.accessTokenExpiryMs`(기본 1시간).
+- **용도**: API 호출 시 매번 보안 필터가 요구하는 서명 토큰. 만료 시간은 `application.yml`의 `app.jwt.access-token-expiry-ms`(기본 1시간).
 - **Payload**:
   ```json
   {
@@ -287,11 +287,11 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
   ```
 
 ### 7.2 Refresh Token (RTK)
-- **용도**: Access Token 만료 시 재발급을 요청하기 위한 만료 7일짜리 난수 UUID. 만료 시간은 `system_config`의 `jwt_expiry_config.refreshTokenExpiryMs`(기본 7일).
+- **용도**: Access Token 만료 시 재발급을 요청하기 위한 만료 7일짜리 난수 UUID. 만료 시간은 `application.yml`의 `app.jwt.refresh-token-expiry-ms`(기본 7일).
 - **특징**: 데이터가 없는 무작위 문자열이며 DB `member_device` 테이블의 `refresh_token` 컬럼과 매핑하여 유효성을 검증합니다.
 
 ### 7.3 Merge Ticket
-- **용도**: 게스트 상태에서 소셜 로그인 계정으로 데이터를 병합하기 위해 발급하는 일회성 서명 토큰. 만료 시간은 `system_config`의 `jwt_expiry_config.mergeTicketExpiryMs`(기본 5분).
+- **용도**: 게스트 상태에서 소셜 로그인 계정으로 데이터를 병합하기 위해 발급하는 일회성 서명 토큰. 만료 시간은 `application.yml`의 `app.jwt.merge-ticket-expiry-ms`(기본 5분).
 - **Payload**:
   ```json
   {

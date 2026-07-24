@@ -24,18 +24,15 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-	private final com.mjusugangsincheonghelper.system.service.SystemConfigService systemConfigService;
+	private final boolean exposeErrorDetails;
 
-	public GlobalExceptionHandler(com.mjusugangsincheonghelper.system.service.SystemConfigService systemConfigService) {
-		this.systemConfigService = systemConfigService;
+	public GlobalExceptionHandler(
+			@org.springframework.beans.factory.annotation.Value("${app.expose-error-details:false}") boolean exposeErrorDetails) {
+		this.exposeErrorDetails = exposeErrorDetails;
 	}
 
 	private boolean isExposeErrorDetails() {
-		try {
-			return com.mjusugangsincheonghelper.system.definition.SettingDefinition.EXPOSE_ERROR_DETAILS.getFrom(systemConfigService);
-		} catch (Exception e) {
-			return false;
-		}
+		return exposeErrorDetails;
 	}
 
 	@ExceptionHandler(BaseException.class)
