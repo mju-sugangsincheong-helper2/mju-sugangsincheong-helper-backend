@@ -27,4 +27,12 @@ public class GlobalSchedulingConfig {
 		scheduler.setThreadNamePrefix("pgmq-worker-");
 		return scheduler;
 	}
+
+	@Bean("multigameScheduler")
+	public TaskScheduler multigameScheduler() {
+		ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+		scheduler.setPoolSize(4);
+		scheduler.setThreadNamePrefix("multigame-scheduler-");
+		return scheduler;
+	}
 }

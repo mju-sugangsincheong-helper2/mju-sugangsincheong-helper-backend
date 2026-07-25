@@ -49,7 +49,17 @@ public enum ErrorCode {
 	PGMQ_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_001", "Failed to send message to queue."),
 	PGMQ_QUEUE_NOT_FOUND(HttpStatus.NOT_FOUND, "PGMQ_002", "Queue not found."),
 	PGMQ_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_003", "Failed to delete message from queue."),
-	PGMQ_ARCHIVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_004", "Failed to archive message.");
+	PGMQ_ARCHIVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_004", "Failed to archive message."),
+
+	MULTIGAME_RESERVATION_NOT_FOUND(HttpStatus.NOT_FOUND, "MULTIGAME_001", "Reservation not found."),
+	MULTIGAME_RESERVATION_DUPLICATE(HttpStatus.CONFLICT, "MULTIGAME_002", "Duplicate reservation."),
+	MULTIGAME_RESERVATION_INVALID_TIME(HttpStatus.BAD_REQUEST, "MULTIGAME_003", "Reservation time is out of valid range."),
+	MULTIGAME_GAME_NOT_FOUND(HttpStatus.NOT_FOUND, "MULTIGAME_004", "Game session not found."),
+	MULTIGAME_GAME_INVALID_STATE(HttpStatus.CONFLICT, "MULTIGAME_005", "Game is not in a valid state for this operation."),
+	MULTIGAME_GAME_CANCELLED(HttpStatus.GONE, "MULTIGAME_006", "Game has been cancelled."),
+	MULTIGAME_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "MULTIGAME_007", "Game result not found."),
+	MULTIGAME_LUA_SCRIPT_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_008", "Failed to execute game logic."),
+	MULTIGAME_ADVISORY_LOCK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_009", "Failed to acquire distributed lock.");
 
 	private final HttpStatus status;
 	private final String code;
