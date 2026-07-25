@@ -3,6 +3,8 @@ package com.mjusugangsincheonghelper.auth.oauth;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
+import com.mjusugangsincheonghelper.auth.merge.MergeTicketService;
+import com.mjusugangsincheonghelper.auth.session.token.TokenProvider;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
@@ -43,6 +45,8 @@ public class GoogleOAuthService {
 
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
+	private final MergeTicketService mergeTicketService;
+	private final TokenProvider tokenProvider;
 	private final JsonMapper jsonMapper;
 
 	@Value("${app.oauth2.google.client-id}")
@@ -58,7 +62,7 @@ public class GoogleOAuthService {
 	private volatile long keyCacheExpiresAt = 0;
 
 	@Transactional
-	public OAuthAuthenticationResult authenticate(String code) {
+	public OAuthAuthenticationResult authenticate(String code, Long guestMemberId) {
 		String idToken = exchangeCodeForIdToken(code);
 		Claims claims = verifyAndParseIdToken(idToken);
 
@@ -67,10 +71,10 @@ public class GoogleOAuthService {
 		String googleSubId = claims.getSubject();
 		ParsedName parsedName = parseName(claims.get("name", String.class));
 
-		return authenticateOrCreateMember(googleSubId, parsedName);
+		return authenticateOrCreateMember(googleSubId, parsedName, guestMemberId);
 	}
 
-	private OAuthAuthenticationResult authenticateOrCreateMember(String googleSubId, ParsedName parsedName) {
+	private OAuthAuthenticationResult authenticateOrCreateMember(String googleSubId, ParsedName parsedName, Long guestMemberId) {
 		Optional<MemberAuth> existingAuth = memberAuthRepository.findByAuthKeyAndAuthType(googleSubId, AuthType.GOOGLE);
 		if (existingAuth.isPresent()) {
 			var member = memberRepository.findById(existingAuth.get().getMemberId())
@@ -80,10 +84,13 @@ public class GoogleOAuthService {
 			member.promoteToMember(parsedName.name(), parsedName.position(), parsedName.department());
 			memberRepository.save(member);
 
-			return OAuthAuthenticationResult.builder()
-					.identity(AuthenticatedIdentity.builder().memberId(member.getId()).build())
-					.newUser(false)
-					.build();
+			if (guestMemberId != null) {
+				String mergeTicket = mergeTicketService.createTicket(guestMemberId, googleSubId);
+				return OAuthAuthenticationResult.mergeRequired(mergeTicket, googleSubId);
+			}
+
+			return OAuthAuthenticationResult.success(
+					AuthenticatedIdentity.builder().memberId(member.getId()).build(), false);
 		}
 
 		Member member = Member.builder()
@@ -102,10 +109,8 @@ public class GoogleOAuthService {
 		memberAuth.updateLastLoginAt();
 		memberAuthRepository.save(memberAuth);
 
-		return OAuthAuthenticationResult.builder()
-				.identity(AuthenticatedIdentity.builder().memberId(member.getId()).build())
-				.newUser(true)
-				.build();
+		return OAuthAuthenticationResult.success(
+				AuthenticatedIdentity.builder().memberId(member.getId()).build(), true);
 	}
 
 	private String exchangeCodeForIdToken(String code) {

@@ -374,14 +374,17 @@ POST /api/{version}/auth/guest
 POST /api/{version}/auth/token
  └→ GoogleOAuthController.tokenExchange()
      ├→ OAuthStateService.consumeState(state) (Redis 5분 TTL 검증 및 소비)
-     ├→ GoogleOAuthService.authenticate(code)
+     ├→ extractGuestMemberId(accessToken)  (GUEST role이면 memberId 추출)
+     ├→ GoogleOAuthService.authenticate(code, guestMemberId)
      │   ├→ exchangeCodeForIdToken(code) (Google token 엔드포인트 호출)
      │   ├→ verifyAndParseIdToken(idToken) (JWKS 캐시 1시간 TTL로 서명 검증, Claims 파싱)
      │   ├→ validateMjuDomain(claims) (hd == "mju.ac.kr")
      │   ├→ parseName(claims.name)  ("이름/직책/학과" 형식 파싱)
-     │   └→ authenticateOrCreateMember(googleSubId, parsedName)
+     │   └→ authenticateOrCreateMember(googleSubId, parsedName, guestMemberId)
      │       ├→ 기존 회원이면: lastLoginAt 갱신 + member.promoteToMember(name, position, department)
+     │       │   └→ guestMemberId가 있으면: MergeTicket 생성 후 mergeRequired 결과 반환
      │       └→ 신규 회원이면: Member(MEMBER) + MemberAuth(GOOGLE) 생성
+     ├→ mergeRequired이면: 409 응답 + mergeTicket 반환
      └→ SessionService.createSession(identity, null, null, httpResponse)  (OAuth는 device/fcmToken 미사용)
 ```
 
@@ -397,6 +400,9 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, fcmToken, device}
          ├→ DeviceSessionService.switchMember(guestId, targetId)  (디바이스 소유권 이전)
          └→ guest Member 레코드 삭제
      └→ SessionService.createSession(identity, device, fcmToken, response)
+
+참고: mergeTicket은 POST /auth/token에서 게스트가 기존 Google 계정으로 로그인 시도 시
+      409(AUTH_005) 응답과 함께 서버에서 생성되어 반환됨
 ```
 
 ### 9.4 토큰 재발급

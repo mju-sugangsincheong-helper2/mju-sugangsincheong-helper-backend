@@ -6,6 +6,7 @@ import com.mjusugangsincheonghelper.auth.oauth.dto.OAuthTokenRequest;
 import com.mjusugangsincheonghelper.auth.oauth.dto.OAuthTokenResponse;
 import com.mjusugangsincheonghelper.auth.session.SessionResult;
 import com.mjusugangsincheonghelper.auth.session.SessionService;
+import com.mjusugangsincheonghelper.auth.session.token.TokenProvider;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
@@ -19,6 +20,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @Tag(name = "OAuth", description = "Google OAuth 인증 API")
 @RestController
 @RequiredArgsConstructor
@@ -37,6 +40,7 @@ public class GoogleOAuthController {
 	private final OAuthStateService oAuthStateService;
 	private final GoogleOAuthService googleOAuthService;
 	private final SessionService sessionService;
+	private final TokenProvider tokenProvider;
 
 	@Value("${app.auth.token-in-response:false}")
 	private boolean tokenInResponse;
@@ -103,11 +107,16 @@ public class GoogleOAuthController {
 	@PostMapping(value = "/token", version = "1+")
 	@Operation(
 			summary = "토큰 교환",
-			description = "Google authorization code를 전달받아 Google 인증을 처리하고 JWT를 발급합니다.",
+			description = "Google authorization code를 전달받아 Google 인증을 처리하고 JWT를 발급합니다. "
+					+ "게스트 상태에서 기존 Google 계정으로 로그인 시 409(AUTH_005)와 mergeTicket을 반환합니다.",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
 							description = "토큰 교환 성공"
+					),
+					@ApiResponse(
+							responseCode = "409",
+							description = "게스트 데이터 병합 필요 (mergeTicket 포함)"
 					)
 			}
 	)
@@ -115,6 +124,7 @@ public class GoogleOAuthController {
 			ErrorCode.AUTH_GOOGLE_AUTH_FAILED,
 			ErrorCode.AUTH_NOT_MJU_DOMAIN,
 			ErrorCode.AUTH_MEMBER_NOT_FOUND,
+			ErrorCode.AUTH_MERGE_REQUIRED,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<OAuthTokenResponse>> tokenExchange(
@@ -124,13 +134,42 @@ public class GoogleOAuthController {
 			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
 		}
 
-		OAuthAuthenticationResult authResult = googleOAuthService.authenticate(request.getCode());
+		Long guestMemberId = extractGuestMemberId(request.getAccessToken());
+
+		OAuthAuthenticationResult authResult = googleOAuthService.authenticate(request.getCode(), guestMemberId);
+
+		if (authResult.isMergeRequired()) {
+			OAuthTokenResponse response = OAuthTokenResponse.builder()
+					.status("MERGE_REQUIRED")
+					.newUser(false)
+					.mergeTicket(authResult.getMergeTicket())
+					.build();
+			return ResponseEntity
+					.status(HttpStatus.CONFLICT)
+					.body(SingleSuccessResponseEnvelope.of(response));
+		}
+
 		SessionResult session = sessionService.createSession(authResult.getIdentity(), null, null, httpResponse);
 		OAuthTokenResponse response = buildOAuthTokenResponse(session, authResult.isNewUser());
 
 		return ResponseEntity
 				.status(HttpStatus.OK)
 				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	private Long extractGuestMemberId(String accessToken) {
+		if (accessToken == null || accessToken.isBlank()) {
+			return null;
+		}
+		try {
+			TokenProvider.TokenClaims claims = tokenProvider.parseAccessToken(accessToken);
+			if ("GUEST".equals(claims.role())) {
+				return claims.memberId();
+			}
+		} catch (Exception e) {
+			log.debug("Invalid access token for guest detection: {}", e.getMessage());
+		}
+		return null;
 	}
 
 	private OAuthTokenResponse buildOAuthTokenResponse(SessionResult session, boolean newUser) {

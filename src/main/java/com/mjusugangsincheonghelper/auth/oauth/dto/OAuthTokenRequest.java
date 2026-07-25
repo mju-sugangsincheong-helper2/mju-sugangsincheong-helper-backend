@@ -17,4 +17,6 @@ public class OAuthTokenRequest {
 
 	@NotBlank(message = "state는 필수입니다.")
 	private String state;
+
+	private String accessToken;
 }

@@ -31,15 +31,6 @@ public class OAuthTokenResponse {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private final String refreshToken;
 
-    public static OAuthTokenResponse existingMember(Long memberId, String role, String name, String position, String department) {
-        return OAuthTokenResponse.builder()
-                .status("SUCCESS")
-                .newUser(false)
-                .memberId(memberId)
-                .role(role)
-                .name(name)
-                .position(position)
-                .department(department)
-                .build();
-    }
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private final String mergeTicket;
 }
