@@ -14,6 +14,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Profile("!dev")
 public class MultigameLifecycleScheduler {
 
 	private static final int SUBJECT_COUNT = 6;
@@ -230,7 +232,7 @@ public class MultigameLifecycleScheduler {
 	}
 
 	private void initializeGame(String t, int participantCount) {
-		int capacity = participantCount / 2;
+		int capacity = Math.max(1, participantCount / 2);
 		int initialLimit = Math.max(1, (int) Math.floor(participantCount * 0.2));
 
 		Map<String, String> seats = new HashMap<>();

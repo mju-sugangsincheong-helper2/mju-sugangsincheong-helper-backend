@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Multigame Session", description = "멀티게임 세션 API")
+@Tag(name = "Multigame", description = "멀티게임 API")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/{version}/multigame")

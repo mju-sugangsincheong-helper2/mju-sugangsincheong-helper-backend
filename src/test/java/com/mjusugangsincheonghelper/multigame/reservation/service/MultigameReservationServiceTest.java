@@ -3,7 +3,6 @@ package com.mjusugangsincheonghelper.multigame.reservation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,14 +13,16 @@ import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.multigame.reservation.dto.MultigameReservationCreateRequest;
 import com.mjusugangsincheonghelper.multigame.reservation.dto.MultigameReservationResponse;
+import com.mjusugangsincheonghelper.multigame.session.service.DevGameInitializer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -32,10 +33,15 @@ class MultigameReservationServiceTest {
 	@Mock
 	private MultigameReservationRepository reservationRepository;
 
-	@InjectMocks
 	private MultigameReservationService reservationService;
 
 	private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+	@BeforeEach
+	void setUp() {
+		// 운영 환경 시뮬레이션: DevGameInitializer 없음
+		reservationService = new MultigameReservationService(reservationRepository, Optional.empty());
+	}
 
 	@Nested
 	@DisplayName("create 메서드는")

@@ -1,28 +1,48 @@
 #!/bin/bash
 
-# 파일 디스크립터 제한 상향 (고동시성 연결 대응)
-ulimit -n 65535 2>/dev/null
+# 최대 부하 테스트 (large 단계만 실행)
+# 사용법: ./max_run.sh [도메인]
+# 예시:
+#   ./max_run.sh              # 전체 도메인 large 테스트
+#   ./max_run.sh multigame    # multigame large 테스트만
 
-# VU_MAX 기본값 설정 (100,000 VU)
+DOMAIN=${1:-"all"}
 VU_MAX=${VU_MAX:-4000}
 
 echo "================================================================="
 echo " Starting MAX load test with VU_MAX = $VU_MAX"
-echo " (OS File Descriptor limit set to max)"
+echo " Domain: $DOMAIN"
 echo "================================================================="
 
 mkdir -p k6/report
 
-# 과부하 테스트에 적합한 주요 스파이크/스트레스 테스트만 실행 (엔듀어런스 제외)
-for f in k6/script/singlegame/spike-test.js k6/script/exchange/polling-storm.js; do
-  echo "-----------------------------------------------------------------"
-  echo " Running: $(basename "$f")"
-  echo "-----------------------------------------------------------------"
-  
-  k6 run "$f" \
-    -e BASE_URL=http://localhost:8080 \
-    -e VU_MAX=$VU_MAX \
-    --out json="k6/report/max_$(basename "$f" .js).json"
+SCRIPTS=()
+
+if [ "$DOMAIN" = "all" ] || [ "$DOMAIN" = "singlegame" ]; then
+  SCRIPTS+=("k6/script/singlegame/large-test.js")
+fi
+
+if [ "$DOMAIN" = "all" ] || [ "$DOMAIN" = "exchange" ]; then
+  SCRIPTS+=("k6/script/exchange/large-test.js")
+fi
+
+if [ "$DOMAIN" = "all" ] || [ "$DOMAIN" = "multigame" ]; then
+  SCRIPTS+=("k6/script/multigame/large-test.js")
+fi
+
+for script in "${SCRIPTS[@]}"; do
+  if [ -f "$script" ]; then
+    echo "-----------------------------------------------------------------"
+    echo " Running: $script"
+    echo "-----------------------------------------------------------------"
+    
+    k6 run "$script" \
+      -e BASE_URL=http://localhost:8080 \
+      -e VU_MAX=$VU_MAX \
+      --out json="k6/report/max_$(basename "$script" .js).json"
+  else
+    echo "Warning: $script not found, skipping..."
+  fi
 done
 
 echo "================================================================="

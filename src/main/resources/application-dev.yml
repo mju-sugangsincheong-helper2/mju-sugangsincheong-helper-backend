@@ -71,6 +71,8 @@ app:
       singlegame-rank: 5m
       singlegame-records: 5m
       singlegame-analysis: 5m
+      multigame-department-participation: 5m
+      multigame-department-success-rate: 5m
   singlegame:
     reaction-time-min-ms: 1
     reaction-time-max-ms: 60000

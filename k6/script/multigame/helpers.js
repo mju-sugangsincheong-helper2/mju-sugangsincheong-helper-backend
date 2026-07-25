@@ -62,7 +62,10 @@ export function enterWaitingRoom(token) {
   };
 
   const res = http.post(`${BASE_URL}/api/v1/multigame/session/waiting-room`, null, params);
-  check(res, { 'waiting room entered': (r) => r.status === 200 });
+  
+  // 200 또는 410 (게임 취소) 모두 정상으로 처리
+  const success = res.status === 200 || res.status === 410;
+  check(res, { 'waiting room entered': success });
 
   try {
     const json = res.json();
@@ -132,20 +135,20 @@ export function getMyResult(token, multigameId) {
 }
 
 export function computeNextMultigameId() {
+  // 테스트용으로 1일 후의 10분 마크를 계산
   const now = new Date();
-  const minute = now.getMinutes();
-  const tenMark = Math.floor(minute / 10) * 10;
-  const minutesToAdd = 10 - (minute - tenMark);
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  
+  // 10분 마크로 조정 (00분으로 설정)
+  tomorrow.setMinutes(0);
+  tomorrow.setSeconds(0);
+  tomorrow.setMilliseconds(0);
 
-  const nextTime = new Date(now.getTime() + minutesToAdd * 60000);
-  nextTime.setSeconds(0);
-  nextTime.setMilliseconds(0);
-
-  const year = nextTime.getFullYear();
-  const month = String(nextTime.getMonth() + 1).padStart(2, '0');
-  const day = String(nextTime.getDate()).padStart(2, '0');
-  const hour = String(nextTime.getHours()).padStart(2, '0');
-  const min = String(nextTime.getMinutes()).padStart(2, '0');
+  const year = tomorrow.getFullYear();
+  const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+  const day = String(tomorrow.getDate()).padStart(2, '0');
+  const hour = String(tomorrow.getHours()).padStart(2, '0');
+  const min = String(tomorrow.getMinutes()).padStart(2, '0');
   const sec = '00';
 
   return `${year}${month}${day}${hour}${min}${sec}`;

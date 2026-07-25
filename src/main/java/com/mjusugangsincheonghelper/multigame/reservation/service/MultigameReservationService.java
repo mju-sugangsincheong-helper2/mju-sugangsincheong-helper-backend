@@ -7,9 +7,11 @@ import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.multigame.common.GameTimeCalculator;
 import com.mjusugangsincheonghelper.multigame.reservation.dto.MultigameReservationCreateRequest;
 import com.mjusugangsincheonghelper.multigame.reservation.dto.MultigameReservationResponse;
+import com.mjusugangsincheonghelper.multigame.session.service.DevGameInitializer;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,10 @@ public class MultigameReservationService {
 	private static final long MAX_DAYS_BEFORE_GAME = 7;
 
 	private final MultigameReservationRepository reservationRepository;
+	
+	// ===== 운영 환경: null (빈 Optional) =====
+	// ===== 개발 환경: DevGameInitializer 빈 주입 =====
+	private final Optional<DevGameInitializer> devGameInitializer;
 
 	@Transactional
 	public MultigameReservationResponse create(Long memberId, MultigameReservationCreateRequest request) {
@@ -52,6 +58,16 @@ public class MultigameReservationService {
 				.build();
 
 		MultigameReservationEntity saved = reservationRepository.save(entity);
+
+		// ===== 개발 환경 전용 로직 =====
+		// dev 프로필에서만 DevGameInitializer 빈이 존재하므로,
+		// 예약 생성 시 즉시 WAITING 상태로 초기화하여 테스트 가능하게 함
+		// 운영 환경에서는 LifecycleScheduler가 T-5m에 자동으로 초기화
+		devGameInitializer.ifPresent(initializer -> {
+			initializer.initializeGame(multigameId, 1);
+			log.info("[DEV] 예약 생성 시 게임 자동 초기화: multigameId={}", multigameId);
+		});
+
 		return MultigameReservationResponse.from(saved);
 	}
 
