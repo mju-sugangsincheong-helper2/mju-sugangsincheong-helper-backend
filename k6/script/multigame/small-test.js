@@ -22,38 +22,26 @@ export const options = {
   },
 };
 
-let hasReserved = false;
-let pollCount = 0;
-const MAX_POLLS = 10;
-
 export default function () {
   const token = guestLogin();
   if (!token) return;
 
   const multigameId = computeNextMultigameId();
+  createReservation(token, multigameId);
+  sleep(0.5);
+  getMyReservations(token);
+  sleep(0.5);
 
-  if (!hasReserved) {
-    createReservation(token, multigameId);
-    sleep(0.5);
-    getMyReservations(token);
-    sleep(0.5);
-    hasReserved = true;
-  }
+  const waitingRoomResult = enterWaitingRoom(token);
 
-  if (pollCount < MAX_POLLS) {
-    const waitingRoomResult = enterWaitingRoom(token);
+  if (waitingRoomResult && waitingRoomResult.state === 'PROGRESS') {
+    const subjectId = getRandomSubjectId();
+    const gameResult = requestGame(token, subjectId);
 
-    if (waitingRoomResult && waitingRoomResult.state === 'PROGRESS') {
-      const subjectId = getRandomSubjectId();
-      const gameResult = requestGame(token, subjectId);
-
-      if (gameResult && (gameResult.status === 'SUCCESS' || gameResult.status === 'FAIL_SOLDOUT')) {
-        sleep(0.5);
-        getMyResult(token, multigameId);
-      }
+    if (gameResult && (gameResult.status === 'SUCCESS' || gameResult.status === 'FAIL_SOLDOUT')) {
+      sleep(0.5);
+      getMyResult(token, multigameId);
     }
-
-    pollCount++;
   }
 
   sleep(2);

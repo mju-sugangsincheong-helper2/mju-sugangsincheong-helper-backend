@@ -22,45 +22,26 @@ export const options = {
   },
 };
 
-let hasReserved = false;
-let pollCount = 0;
-const MAX_POLLS = 10;
-
 export default function () {
   const token = guestLogin();
   if (!token) return;
 
   const multigameId = computeNextMultigameId();
+  createReservation(token, multigameId);
+  sleep(0.5);
+  getMyReservations(token);
+  sleep(0.5);
 
-  if (!hasReserved) {
-    // 예약 생성
-    createReservation(token, multigameId);
-    sleep(0.5);
+  const waitingRoomResult = enterWaitingRoom(token);
 
-    // 내 예약 조회
-    getMyReservations(token);
-    sleep(0.5);
+  if (waitingRoomResult && waitingRoomResult.state === 'PROGRESS') {
+    const subjectId = getRandomSubjectId();
+    const gameResult = requestGame(token, subjectId);
 
-    hasReserved = true;
-  }
-
-  if (pollCount < MAX_POLLS) {
-    // 대기방 입장 (heartbeat)
-    const waitingRoomResult = enterWaitingRoom(token);
-
-    if (waitingRoomResult && waitingRoomResult.state === 'PROGRESS') {
-      // 게임 요청
-      const subjectId = getRandomSubjectId();
-      const gameResult = requestGame(token, subjectId);
-
-      if (gameResult && (gameResult.status === 'SUCCESS' || gameResult.status === 'FAIL_SOLDOUT')) {
-        sleep(0.5);
-        // 결과 조회
-        getMyResult(token, multigameId);
-      }
+    if (gameResult && (gameResult.status === 'SUCCESS' || gameResult.status === 'FAIL_SOLDOUT')) {
+      sleep(0.5);
+      getMyResult(token, multigameId);
     }
-
-    pollCount++;
   }
 
   sleep(2);

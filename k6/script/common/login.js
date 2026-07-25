@@ -19,6 +19,16 @@ export function testLogin(name) {
   return extractToken(res);
 }
 
+export function createTestMember() {
+  const payload = JSON.stringify({ role: 'MEMBER' });
+  const res = http.post(`${BASE_URL}/api/v1/auth/test-accounts`, payload, {
+    tags: { name: 'CreateTestMember' },
+    headers: { 'Content-Type': 'application/json' },
+  });
+  check(res, { 'test member created': (r) => r.status === 200 });
+  return extractToken(res);
+}
+
 function extractToken(res) {
   try {
     const json = res.json();

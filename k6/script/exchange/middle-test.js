@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { guestLogin } from '../common/login.js';
+import { createTestMember } from '../common/login.js';
 
 export const options = {
   stages: [
@@ -15,7 +15,7 @@ export const options = {
 };
 
 export default function () {
-  const token = guestLogin();
+  const token = createTestMember();
   if (!token) return;
 
   const params = {
