@@ -84,7 +84,7 @@ public class MultigameReservationController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<List<MultigameReservationResponse>>> getAllReservations(
 			@Parameter(description = "멀티게임 ID (14자리, 선택적 필터)", example = "20260630120000")
 			@RequestParam(required = false) String multigameId) {
-		List<MultigameReservationResponse> response = (multigameId != null)
+		List<MultigameReservationResponse> response = (multigameId != null && !multigameId.isBlank())
 				? reservationService.getReservationsByMultigameId(multigameId)
 				: reservationService.getAllReservations();
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));

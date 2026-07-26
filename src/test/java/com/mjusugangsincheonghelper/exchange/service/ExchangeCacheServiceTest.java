@@ -43,6 +43,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ExchangeCacheService 단위 테스트")
+@SuppressWarnings("unchecked")
 class ExchangeCacheServiceTest {
 
 	@Mock

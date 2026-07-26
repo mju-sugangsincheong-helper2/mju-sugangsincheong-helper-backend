@@ -2,8 +2,6 @@ package com.mjusugangsincheonghelper.multigame.session.service;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -12,6 +10,9 @@ import com.mjusugangsincheonghelper.database.entity.MultigameResultEntity;
 import com.mjusugangsincheonghelper.database.repository.MultigameResultDetailRepository;
 import com.mjusugangsincheonghelper.database.repository.MultigameResultRepository;
 import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
+import com.mjusugangsincheonghelper.multigame.session.domain.GameState;
+import com.mjusugangsincheonghelper.multigame.session.domain.HeartbeatLedger;
+import com.mjusugangsincheonghelper.multigame.session.domain.MultigameStateEngine;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,12 +23,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.HashOperations;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.test.util.ReflectionTestUtils;
+
+import static org.mockito.Mockito.lenient;
+import java.util.function.Consumer;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("MultigameFinalizeService 테스트")
@@ -35,9 +37,6 @@ class MultigameFinalizeServiceTest {
 
 	@Mock
 	private StringRedisTemplate stringRedisTemplate;
-
-	@Mock
-	private ValueOperations<String, String> valueOperations;
 
 	@Mock
 	private HashOperations<String, Object, Object> hashOperations;
@@ -48,12 +47,25 @@ class MultigameFinalizeServiceTest {
 	@Mock
 	private MultigameResultDetailRepository resultDetailRepository;
 
+	@Mock
+	private MultigameStateEngine stateEngine;
+
+	@Mock
+	private HeartbeatLedger heartbeatLedger;
+
+	@Mock
+	private TransactionTemplate transactionTemplate;
+
 	@InjectMocks
 	private MultigameFinalizeService finalizeService;
 
 	@BeforeEach
 	void setUp() {
-		ReflectionTestUtils.setField(finalizeService, "self", finalizeService);
+		lenient().doAnswer(invocation -> {
+			Consumer<TransactionStatus> action = invocation.getArgument(0);
+			action.accept(null);
+			return null;
+		}).when(transactionTemplate).executeWithoutResult(any());
 	}
 
 	@Nested
@@ -66,14 +78,10 @@ class MultigameFinalizeServiceTest {
 			// Given
 			String t = "20260726100000";
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
 			given(stringRedisTemplate.opsForHash()).willReturn(hashOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("ENDED");
+			given(heartbeatLedger.getParticipantSnapshot(t)).willReturn(10);
+			given(stateEngine.getState(t)).willReturn(GameState.ENDED);
 			given(hashOperations.entries(MultigameRedisKeyProvider.history(t))).willReturn(Map.of());
-
-			Cursor<String> cursor = mock(Cursor.class);
-			given(cursor.hasNext()).willReturn(false);
-			doReturn(cursor).when(stringRedisTemplate).scan(any(ScanOptions.class));
 
 			given(resultRepository.findById(t)).willReturn(Optional.empty());
 
@@ -81,7 +89,7 @@ class MultigameFinalizeServiceTest {
 			finalizeService.finalizeGame(t);
 
 			// Then
-			verify(valueOperations).set(MultigameRedisKeyProvider.state(t), "FINALIZE");
+			verify(stateEngine).transitionTo(t, GameState.FINALIZE);
 			verify(resultRepository).save(any(MultigameResultEntity.class));
 		}
 
@@ -91,8 +99,7 @@ class MultigameFinalizeServiceTest {
 			// Given
 			String t = "20260726100000";
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("FINALIZE");
+			given(stateEngine.getState(t)).willReturn(GameState.FINALIZE);
 
 			// When
 			finalizeService.finalizeGame(t);
@@ -107,8 +114,7 @@ class MultigameFinalizeServiceTest {
 			// Given
 			String t = "20260726100000";
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("CANCELLED");
+			given(stateEngine.getState(t)).willReturn(GameState.CANCELLED);
 
 			// When
 			finalizeService.finalizeGame(t);
@@ -123,14 +129,13 @@ class MultigameFinalizeServiceTest {
 			// Given
 			String t = "20260726100000";
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn(null);
+			given(stateEngine.getState(t)).willReturn(null);
 
 			// When
 			finalizeService.finalizeGame(t);
 
 			// Then
-			verify(valueOperations).set(MultigameRedisKeyProvider.state(t), "CANCELLED");
+			verify(stateEngine).cancelGame(t);
 		}
 
 		@Test
@@ -139,14 +144,13 @@ class MultigameFinalizeServiceTest {
 			// Given
 			String t = "20260726100000";
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("WAITING");
+			given(stateEngine.getState(t)).willReturn(GameState.WAITING);
 
 			// When
 			finalizeService.finalizeGame(t);
 
 			// Then
-			verify(valueOperations).set(MultigameRedisKeyProvider.state(t), "CANCELLED");
+			verify(stateEngine).cancelGame(t);
 		}
 
 		@Test
@@ -158,14 +162,10 @@ class MultigameFinalizeServiceTest {
 					"1", "SUCCESS:3:1234567890"
 			);
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
 			given(stringRedisTemplate.opsForHash()).willReturn(hashOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("ENDED");
+			given(heartbeatLedger.getParticipantSnapshot(t)).willReturn(10);
+			given(stateEngine.getState(t)).willReturn(GameState.ENDED);
 			given(hashOperations.entries(MultigameRedisKeyProvider.history(t))).willReturn(history);
-
-			Cursor<String> cursor = mock(Cursor.class);
-			given(cursor.hasNext()).willReturn(false);
-			doReturn(cursor).when(stringRedisTemplate).scan(any(ScanOptions.class));
 
 			given(resultRepository.findById(t)).willReturn(Optional.empty());
 			given(resultDetailRepository.findByStartTimeAndMemberId(t, 1L)).willReturn(Optional.empty());
@@ -193,14 +193,10 @@ class MultigameFinalizeServiceTest {
 					.status("SUCCESS")
 					.build();
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
 			given(stringRedisTemplate.opsForHash()).willReturn(hashOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("ENDED");
+			given(heartbeatLedger.getParticipantSnapshot(t)).willReturn(10);
+			given(stateEngine.getState(t)).willReturn(GameState.ENDED);
 			given(hashOperations.entries(MultigameRedisKeyProvider.history(t))).willReturn(history);
-
-			Cursor<String> cursor = mock(Cursor.class);
-			given(cursor.hasNext()).willReturn(false);
-			doReturn(cursor).when(stringRedisTemplate).scan(any(ScanOptions.class));
 
 			given(resultRepository.findById(t)).willReturn(Optional.empty());
 			given(resultDetailRepository.findByStartTimeAndMemberId(t, 1L)).willReturn(Optional.of(existingEntity));

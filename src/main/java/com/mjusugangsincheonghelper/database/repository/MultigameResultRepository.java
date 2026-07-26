@@ -9,6 +9,8 @@ public interface MultigameResultRepository extends JpaRepository<MultigameResult
 
 	List<MultigameResultEntity> findAllByOrderByStartTimeAsc();
 
+	List<MultigameResultEntity> findAllByOrderByStartTimeDesc();
+
 	@Query("SELECT COUNT(r) FROM MultigameResultEntity r")
 	long countTotalGames();
 

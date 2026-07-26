@@ -160,6 +160,23 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 
 서버 재시작 시에는 Redis에 존재하는 해당 세션(T)와 관련된 키를 스캔하여, 현재 시각 기준계산후 state 를 CANCELLED 로 세팅한다
 
+#### Finalize 실패 시 의도적 데이터 손실 설계
+
+FinalizeJob이 DB Upsert 중 실패하면 해당 게임의 결과는 영구적으로 손실됩니다. 이는 **의도된 설계**입니다.
+
+**설계 근거:**
+1. **게임 세션의 원장은 Redis**: 게임 진행 중 모든 상태와 데이터는 Redis에 저장되며, DB는 영속화를 위한 보조 저장소입니다.
+2. **상태 머신 일관성 우선**: 실패 시 재시도를 허용하면 상태가 `ENDED`에 멈추어 다음 Cron 주기에 재처리되어야 하지만, 이는 복잡성과 레이스 컨디션을 증가시킵니다.
+3. **단일 실행 보장**: 게임은 20초라는 짧은 시간 동안 진행되며, 종료 시점(T+20s)에 한 번만 처리됩니다. 재시도 로직은 다음 게임의 진행에 영향을 줄 수 있습니다.
+4. **예외 최소화**: 의도적 손실을 수용함으로써 재시도 큐, 상태 복구 로직, 추가 Redis 키 등의 복잡성을 제거합니다.
+
+**영향 범위:**
+- 게임 결과(`MULTIGAME_RESULT`, `MULTIGAME_RESULT_DETAIL`)만 손실됩니다.
+- 예약(`MULTIGAME_RESERVATION`)은 별도 도메인으로 영향을 받지 않습니다.
+- 사용자는 해당 게임의 결과를 조회할 수 없게 됩니다.
+
+이러한 설계는 게임 진행 중 실시간성要求和 Redis를 원장으로 사용하는 아키텍처 특성상, 복잡성 증가보다 제한된 손실을 수용하는 것이 전체 시스템 안정성에 기여한다고 판단했습니다.
+
 ### Job 실행 상세
 
 모든 Job은 진입 즉시 **PostgreSQL Advisory Lock**을 획득하며, 실패 시 no‑op 종료합니다. 작업 완료 후 Lock을 해제합니다.
@@ -181,11 +198,13 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 1. Redis에서 상태 읽기
 2. **IF** 키가 없음 → `CANCELLED` 전환
 3. **IF** 상태 == `WAITING`:  
-   a. Redis에서 참가자 수 확인  
-   b. ≥ 2명 → `READY`로 전환  
+   a. Redis에서 heartbeat 기반 참가자 수 확인  
+   b. ≥ 2명 → **참가자 수를 `participant_count` 키에 스냅샷 저장** 후 `READY`로 전환  
    c. < 2명 → `CANCELLED`로 전환
 4. **ELSE IF** 상태 ∈ {`READY`, `CANCELLED`, `FINALIZE`, `ENDED`} → no‑op
 5. **ELSE IF** 상태 ∈ {`PROGRESS`} → `CANCELLED` 전환
+
+> **참고 (참가자 수 스냅샷):** heartbeat는 TTL 6초로 설정되어 있어, ReadyJob(T-10s) 이후 시점에서는 정확한 카운트가 불가능합니다. 따라서 ReadyJob에서 참가자 수를 `multigame:{T}:participant_count::snapshot` 키에 저장하여, 이후 ProgressJob과 FinalizeJob이 이 값을 참조합니다.
 
 #### ProgressJob: 게임 진행
 - **실행 Cron** : `progressCron` (T)
@@ -194,7 +213,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 2. **IF** 키가 없음 → `CANCELLED` 전환
 3. **IF** 상태 == `READY`:  
    a. `PROGRESS`로 전환  
-   b. Supply Engine 등 실시간 진행 로직 수행 (DB 작업 포함)
+   b. ReadyJob에서 저장한 `participant_count` 스냅샷을 읽어 Supply Engine 실행
 4. **ELSE IF** 상태 ∈ {`PROGRESS`, `CANCELLED`, `FINALIZE`} → no‑op
 5. **ELSE IF** 상태 ∈ {`WAITING`, `ENDED`} → `CANCELLED` 전환
 
@@ -298,16 +317,25 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 
 ### Lua 스크립트
 
+> **참고 (반환 형식):** Redis Lua에서 associative array(`{key=value}`)를 반환하면 RESP2 프로토콜에서 numeric index만 포함하고 string key는 무시됩니다. 따라서 positional array를 사용하여 모든 값을 안전하게 반환합니다.
+
 ```lua
 -- 파라미터: KEYS[1]=state_key, KEYS[2]=queue_key, KEYS[3]=seq_key, 
 --           KEYS[4]=limit_key, KEYS[5]=seats_key, KEYS[6]=history_key, 
 --           KEYS[7]=success_members_key
 --           ARGV[1]=member(유저ID), ARGV[2]=subject_id(과목 1~6), ARGV[3]=ts(현재 타임스탬프)
+--
+-- 반환 형식 (Positional Array):
+-- - BLOCKED:        {'BLOCKED', current_state}
+-- - PENDING:        {'PENDING', seq, limit}
+-- - SUCCESS:        {'SUCCESS', subject_id, remaining}
+-- - FAIL_SOLDOUT:   {'FAIL_SOLDOUT', subject_id}
+-- - FAIL_DUPLICATE: {'FAIL_DUPLICATE', subject_id}
 
 -- 1. 상태 검문
 local state = redis.call('GET', KEYS[1])
 if state ~= 'PROGRESS' then 
-    return {status='BLOCKED', current_state=state} 
+    return {'BLOCKED', state} 
 end
 
 -- ==========================================
@@ -324,8 +352,8 @@ end
 -- 3. 진입 허용선 확인 (기존 대기자 & 신규 대기자 공통)
 local limit = tonumber(redis.call('GET', KEYS[4]))
 if tonumber(seq) > limit then 
-    -- 아직 내 차례가 안 왔으면 계속 대기 (FAIL_ALREADY_IN_QUEUE는 추상적 개념; 통합 API에서는 PENDING 반환)
-    return {status='PENDING', seq=seq, limit=limit} 
+    -- 아직 내 차례가 안 왔으면 계속 대기
+    return {'PENDING', seq, limit} 
 end
 
 -- ==========================================
@@ -335,7 +363,8 @@ end
 -- 2-A. 이미 수강신청된 과목을 재등록하는지 검증
 if redis.call('SISMEMBER', KEYS[7], ARGV[1]) == 1 then 
     redis.call('ZREM', KEYS[2], ARGV[1])
-    return {status='FAIL_DUPLICATE'} 
+    redis.call('HSET', KEYS[6], ARGV[1], 'FAIL_DUPLICATE:'..ARGV[2]..':'..ARGV[3])
+    return {'FAIL_DUPLICATE', ARGV[2]} 
 end
 
 -- 2-B. 정원이 가득 찬건지 검증 (좌석 차감)
@@ -346,13 +375,13 @@ if remaining >= 0 then
     redis.call('HSET', KEYS[6], ARGV[1], 'SUCCESS:'..ARGV[2]..':'..ARGV[3])
     redis.call('SADD', KEYS[7], ARGV[1])
     redis.call('ZREM', KEYS[2], ARGV[1])
-    return {status='SUCCESS', subject_id=ARGV[2], remaining=remaining}
+    return {'SUCCESS', ARGV[2], remaining}
 else
     -- 정원 초과 (차감 복구)
     redis.call('HINCRBY', KEYS[5], ARGV[2], 1)
     redis.call('HSET', KEYS[6], ARGV[1], 'FAIL_SOLDOUT:'..ARGV[2]..':'..ARGV[3])
     redis.call('ZREM', KEYS[2], ARGV[1])
-    return {status='FAIL_SOLDOUT', subject_id=ARGV[2]}
+    return {'FAIL_SOLDOUT', ARGV[2]}
 end
 ```
 
@@ -470,14 +499,16 @@ public void executeSupplyEngine(String T, int totalParticipantsN) {
 
 | Key 이름 | Data Type | 설명 | 관련 레이어 | 비고 (TTL 등) |
 | :--- | :--- | :--- | :--- | :--- |
-| `multigame:{T}:state` | String | 게임의 현재 상태 (WAITING, READY, PROGRESS, ENDED, FINALIZE, CANCELLED) | Layer 1 | 게임 세션 동안 유지 |
-| `multigame:{T}:heartbeat:{userId}` | String | 대기방 및 게임 중 유저의 접속 생존 여부 확인 | Layer 2-1 | **TTL 6초** (3초 폴링 대비) |
-| `multigame:{T}:queue` | ZSET | 실시간 신청 대기열 (Score: `seq`, Member: `userId`) | Layer 2-2 | `ZSCORE`로 중복 진입 차단. 완료된 요청은 `ZREM`으로 즉시 제거 |
-| `multigame:{T}:seq` | String | 유저에게 부여할 고유 순번 발급기 (`INCR` 사용) | Layer 2-2 | 절댓값. 게임 종료 후 삭제 권장 |
-| `multigame:{T}:admission_limit` | String | 입장 진입 허용선 (`Supply Engine`이 매초 업데이트) | Layer 2-2, 2-3 | 절댓값 |
-| `multigame:{T}:seats` | Hash | 과목별 남은 정원 (Field: `subject_id`, Value: 잔여 수) | Layer 2-2 | `HINCRBY`로 원자적 차감 수행 |
-| `multigame:{T}:history` | Hash | 유저별 최종 신청 결과 스냅샷 (Field: `userId`, Value: `status:subject_id:ts`) | Layer 2-2 | `FinalizeJob`이 DB Upsert 시 소비 (`FAIL_ALREADY_IN_QUEUE`는 개념적 상태로 기록되지 않음) |
-| `multigame:{T}:success_members` | Set | 성공적으로 신청을 완료한 유저 ID 집합 | Layer 2-2 | 대기열 통과 후 **과목 완료 등록 책임**에서 중복 수강 검증(`SISMEMBER`)에 사용 |
+| `multigame:{T}:state::control` | String | 게임의 현재 상태 (WAITING, READY, PROGRESS, ENDED, FINALIZE, CANCELLED) | Layer 1 | 게임 세션 동안 유지 |
+| `multigame:{T}:heartbeat::{userId}::session` | String | 대기방 및 게임 중 유저의 접속 생존 여부 확인 | Layer 2-1 | **TTL 6초** (3초 폴링 대비) |
+| `multigame:{T}:participant_count::snapshot` | String | ReadyJob 시점의 확정된 참여자 수 스냅샷 | Layer 1 | ReadyJob에서 저장, ProgressJob/FinalizeJob이 참조 |
+| `multigame:{T}:queue::ledger` | ZSET | 실시간 신청 대기열 (Score: `seq`, Member: `userId`) | Layer 2-2 | `ZSCORE`로 중복 진입 차단. 완료된 요청은 `ZREM`으로 즉시 제거 |
+| `multigame:{T}:seq::ledger` | String | 유저에게 부여할 고유 순번 발급기 (`INCR` 사용) | Layer 2-2 | 절댓값. 게임 종료 후 삭제 권장 |
+| `multigame:{T}:admission_limit::control` | String | 입장 진입 허용선 (`Supply Engine`이 매초 업데이트) | Layer 2-2, 2-3 | 절댓값 |
+| `multigame:{T}:seats::ledger` | Hash | 과목별 남은 정원 (Field: `subject_id`, Value: 잔여 수) | Layer 2-2 | `HINCRBY`로 원자적 차감 수행 |
+| `multigame:{T}:history::ledger` | Hash | 유저별 최종 신청 결과 스냅샷 (Field: `userId`, Value: `status:subject_id:ts`) | Layer 2-2 | `FinalizeJob`이 DB Upsert 시 소비 (`FAIL_ALREADY_IN_QUEUE`는 개념적 상태로 기록되지 않음) |
+| `multigame:{T}:success_members::ledger` | Set | 성공적으로 신청을 완료한 유저 ID 집합 | Layer 2-2 | 대기열 통과 후 **과목 완료 등록 책임**에서 중복 수강 검증(`SISMEMBER`)에 사용 |
 
-> **참고 (대기방 참여자 수 카운트 방식):**
-> Layer 2-1 대기방 API의 응답 값인 `participation`은 위 표의 `multigame:{T}:heartbeat:{userId}` 키 패턴을 활용하여 `SCAN` 명령어로 카운트
+> **참고 (참가자 수 카운트 방식):**
+> - Layer 2-1 대기방 API의 응답 값인 `participation`은 `heartbeat` 키 패턴을 활용하여 `SCAN` 명령어로 실시간 카운트합니다.
+> - Supply Engine과 FinalizeJob은 ReadyJob에서 저장한 `participant_count` 스냅샷을 사용합니다. heartbeat는 TTL 6초로 설정되어 있어, ReadyJob(T-10s) 이후 시점에서는 정확한 카운트가 불가능하기 때문입니다.

@@ -2,12 +2,12 @@ package com.mjusugangsincheonghelper.multigame.session.service;
 
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
+import com.mjusugangsincheonghelper.multigame.session.domain.GameState;
+import com.mjusugangsincheonghelper.multigame.session.domain.MultigameStateEngine;
 import com.mjusugangsincheonghelper.multigame.session.dto.GameRequestResponse;
 import com.mjusugangsincheonghelper.multigame.session.dto.WaitingRoomResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -15,17 +15,16 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MultigameSessionService {
 
-	private final StringRedisTemplate stringRedisTemplate;
 	private final WaitingRoomService waitingRoomService;
 	private final GameQueueService gameQueueService;
+	private final MultigameStateEngine stateEngine;
 
 	public WaitingRoomResponse enterWaitingRoom(String t, Long memberId) {
 		waitingRoomService.updateHeartbeat(t, memberId);
 
-		String stateKey = MultigameRedisKeyProvider.state(t);
-		String state = stringRedisTemplate.opsForValue().get(stateKey);
+		GameState state = stateEngine.getState(t);
 
-		if (state == null || "CANCELLED".equals(state)) {
+		if (state == null || state == GameState.CANCELLED) {
 			throw new BaseException(ErrorCode.MULTIGAME_GAME_CANCELLED);
 		}
 
@@ -33,23 +32,22 @@ public class MultigameSessionService {
 
 		return WaitingRoomResponse.builder()
 				.multigameId(t)
-				.state(state)
+				.state(state.name())
 				.participation(participation)
 				.build();
 	}
 
 	public GameRequestResponse requestGame(String t, Long memberId, int subjectId) {
-		String stateKey = MultigameRedisKeyProvider.state(t);
-		String state = stringRedisTemplate.opsForValue().get(stateKey);
+		GameState state = stateEngine.getState(t);
 
-		if (state == null || "CANCELLED".equals(state)) {
+		if (state == null || state == GameState.CANCELLED) {
 			throw new BaseException(ErrorCode.MULTIGAME_GAME_CANCELLED);
 		}
 
-		if (!"PROGRESS".equals(state)) {
+		if (state != GameState.PROGRESS) {
 			return GameRequestResponse.builder()
 					.status("WAITING")
-					.currentState(state)
+					.currentState(state.name())
 					.build();
 		}
 

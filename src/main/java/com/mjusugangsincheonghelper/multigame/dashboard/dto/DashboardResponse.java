@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class DashboardResponse {
 
-	private List<TodayGame> todayGames;
+	private List<RecentGame> recentGames;
 	private List<MyRecentResult> myRecentResults;
 	private OverallStats overallStats;
 
@@ -21,7 +21,7 @@ public class DashboardResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class TodayGame {
+	public static class RecentGame {
 		private String multigameId;
 		private int participantCount;
 		private int capacity;

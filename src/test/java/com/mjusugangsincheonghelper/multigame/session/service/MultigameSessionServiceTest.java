@@ -7,7 +7,8 @@ import static org.mockito.Mockito.verify;
 
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
+import com.mjusugangsincheonghelper.multigame.session.domain.GameState;
+import com.mjusugangsincheonghelper.multigame.session.domain.MultigameStateEngine;
 import com.mjusugangsincheonghelper.multigame.session.dto.GameRequestResponse;
 import com.mjusugangsincheonghelper.multigame.session.dto.WaitingRoomResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -17,24 +18,19 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("MultigameSessionService 테스트")
 class MultigameSessionServiceTest {
 
 	@Mock
-	private StringRedisTemplate stringRedisTemplate;
-
-	@Mock
-	private ValueOperations<String, String> valueOperations;
-
-	@Mock
 	private WaitingRoomService waitingRoomService;
 
 	@Mock
 	private GameQueueService gameQueueService;
+
+	@Mock
+	private MultigameStateEngine stateEngine;
 
 	@InjectMocks
 	private MultigameSessionService sessionService;
@@ -50,8 +46,7 @@ class MultigameSessionServiceTest {
 			String t = "20260726100000";
 			Long memberId = 1L;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("WAITING");
+			given(stateEngine.getState(t)).willReturn(GameState.WAITING);
 			given(waitingRoomService.countParticipants(t)).willReturn(5);
 
 			// When
@@ -71,8 +66,7 @@ class MultigameSessionServiceTest {
 			String t = "20260726100000";
 			Long memberId = 1L;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("READY");
+			given(stateEngine.getState(t)).willReturn(GameState.READY);
 			given(waitingRoomService.countParticipants(t)).willReturn(10);
 
 			// When
@@ -89,8 +83,7 @@ class MultigameSessionServiceTest {
 			String t = "20260726100000";
 			Long memberId = 1L;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("PROGRESS");
+			given(stateEngine.getState(t)).willReturn(GameState.PROGRESS);
 			given(waitingRoomService.countParticipants(t)).willReturn(15);
 
 			// When
@@ -107,8 +100,7 @@ class MultigameSessionServiceTest {
 			String t = "20260726100000";
 			Long memberId = 1L;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn(null);
+			given(stateEngine.getState(t)).willReturn(null);
 
 			// When & Then
 			assertThatThrownBy(() -> sessionService.enterWaitingRoom(t, memberId))
@@ -124,8 +116,7 @@ class MultigameSessionServiceTest {
 			String t = "20260726100000";
 			Long memberId = 1L;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("CANCELLED");
+			given(stateEngine.getState(t)).willReturn(GameState.CANCELLED);
 
 			// When & Then
 			assertThatThrownBy(() -> sessionService.enterWaitingRoom(t, memberId))
@@ -153,8 +144,7 @@ class MultigameSessionServiceTest {
 					.remaining(2)
 					.build();
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("PROGRESS");
+			given(stateEngine.getState(t)).willReturn(GameState.PROGRESS);
 			given(gameQueueService.processRequest(t, memberId, subjectId)).willReturn(expectedResponse);
 
 			// When
@@ -173,8 +163,7 @@ class MultigameSessionServiceTest {
 			Long memberId = 1L;
 			int subjectId = 3;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("WAITING");
+			given(stateEngine.getState(t)).willReturn(GameState.WAITING);
 
 			// When
 			GameRequestResponse response = sessionService.requestGame(t, memberId, subjectId);
@@ -192,8 +181,7 @@ class MultigameSessionServiceTest {
 			Long memberId = 1L;
 			int subjectId = 3;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("READY");
+			given(stateEngine.getState(t)).willReturn(GameState.READY);
 
 			// When
 			GameRequestResponse response = sessionService.requestGame(t, memberId, subjectId);
@@ -211,8 +199,7 @@ class MultigameSessionServiceTest {
 			Long memberId = 1L;
 			int subjectId = 3;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn(null);
+			given(stateEngine.getState(t)).willReturn(null);
 
 			// When & Then
 			assertThatThrownBy(() -> sessionService.requestGame(t, memberId, subjectId))
@@ -229,8 +216,7 @@ class MultigameSessionServiceTest {
 			Long memberId = 1L;
 			int subjectId = 3;
 
-			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(valueOperations.get(MultigameRedisKeyProvider.state(t))).willReturn("CANCELLED");
+			given(stateEngine.getState(t)).willReturn(GameState.CANCELLED);
 
 			// When & Then
 			assertThatThrownBy(() -> sessionService.requestGame(t, memberId, subjectId))

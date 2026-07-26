@@ -7,7 +7,7 @@ import com.mjusugangsincheonghelper.database.repository.MultigameResultRepositor
 import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse;
 import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse.MyRecentResult;
 import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse.OverallStats;
-import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse.TodayGame;
+import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse.RecentGame;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -25,20 +25,20 @@ public class MultigameDashboardService {
 	private final MultigameResultDetailRepository resultDetailRepository;
 
 	public DashboardResponse getDashboard(Long memberId) {
-		List<TodayGame> todayGames = getTodayGames();
+		List<RecentGame> recentGames = getRecentGames();
 		List<MyRecentResult> myRecentResults = getMyRecentResults(memberId);
 		OverallStats overallStats = getOverallStats();
 
 		return DashboardResponse.builder()
-				.todayGames(todayGames)
+				.recentGames(recentGames)
 				.myRecentResults(myRecentResults)
 				.overallStats(overallStats)
 				.build();
 	}
 
-	private List<TodayGame> getTodayGames() {
-		return resultRepository.findAllByOrderByStartTimeAsc().stream()
-				.map(result -> TodayGame.builder()
+	private List<RecentGame> getRecentGames() {
+		return resultRepository.findAllByOrderByStartTimeDesc().stream()
+				.map(result -> RecentGame.builder()
 						.multigameId(result.getStartTime())
 						.participantCount(result.getParticipantCount())
 						.capacity(result.getCapacity())

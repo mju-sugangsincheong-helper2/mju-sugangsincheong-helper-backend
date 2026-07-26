@@ -13,7 +13,6 @@ import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.multigame.reservation.dto.MultigameReservationCreateRequest;
 import com.mjusugangsincheonghelper.multigame.reservation.dto.MultigameReservationResponse;
-import com.mjusugangsincheonghelper.multigame.session.service.DevGameInitializer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;

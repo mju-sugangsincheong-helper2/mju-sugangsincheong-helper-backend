@@ -1,8 +1,8 @@
 package com.mjusugangsincheonghelper.multigame.session.service;
 
 import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
-import java.util.HashMap;
-import java.util.Map;
+import com.mjusugangsincheonghelper.multigame.session.domain.GameState;
+import com.mjusugangsincheonghelper.multigame.session.domain.MultigameStateEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -21,9 +21,9 @@ import org.springframework.stereotype.Component;
 @Profile("dev")
 public class DevGameInitializer {
 
-	private static final int SUBJECT_COUNT = 6;
-
 	private final StringRedisTemplate stringRedisTemplate;
+	private final MultigameStateEngine stateEngine;
+	private final MultigameFinalizeService finalizeService;
 
 	/**
 	 * 게임을 WAITING 상태로 초기화
@@ -32,43 +32,36 @@ public class DevGameInitializer {
 	 * @param participantCount 예상 참여자 수
 	 */
 	public void initializeGame(String multigameId, int participantCount) {
-		int capacity = Math.max(1, participantCount / 2);
-		int initialLimit = Math.max(1, (int) Math.floor(participantCount * 0.2));
-
-		Map<String, String> seats = new HashMap<>();
-		for (int i = 1; i <= SUBJECT_COUNT; i++) {
-			seats.put(String.valueOf(i), String.valueOf(capacity));
-		}
-
-		stringRedisTemplate.opsForValue().set(MultigameRedisKeyProvider.state(multigameId), "WAITING");
-		stringRedisTemplate.opsForValue().set(MultigameRedisKeyProvider.seq(multigameId), "0");
-		stringRedisTemplate.opsForValue().set(MultigameRedisKeyProvider.admissionLimit(multigameId), String.valueOf(initialLimit));
-		stringRedisTemplate.opsForHash().putAll(MultigameRedisKeyProvider.seats(multigameId), seats);
-
-		log.info("[DEV] 게임 초기화 완료: multigameId={}, participants={}, capacity={}, initialLimit={}",
-				multigameId, participantCount, capacity, initialLimit);
+		MultigameRedisKeyProvider.initializeGameSession(stringRedisTemplate, stateEngine, multigameId, participantCount);
+		log.info("[DEV] 게임 초기화 완료: multigameId={}, participants={}", multigameId, participantCount);
 	}
 
 	/**
 	 * 게임 상태를 수동으로 전이 (테스트용)
+	 * 문서의 상태 머신을 기반으로 유효한 전이만 허용합니다.
 	 */
-	public void transitionState(String multigameId, String targetState) {
-		String stateKey = MultigameRedisKeyProvider.state(multigameId);
-		String currentState = stringRedisTemplate.opsForValue().get(stateKey);
-
-		if (currentState == null) {
-			log.warn("[DEV] 게임을 찾을 수 없음: multigameId={}", multigameId);
+	public void transitionState(String multigameId, String targetStateStr) {
+		GameState targetState = GameState.fromString(targetStateStr);
+		if (targetState == null) {
+			log.warn("[DEV] 유효하지 않은 상태: targetState={}", targetStateStr);
 			return;
 		}
 
-		stringRedisTemplate.opsForValue().set(stateKey, targetState);
-		log.info("[DEV] 상태 전이: multigameId={}, {} -> {}", multigameId, currentState, targetState);
+		if (targetState == GameState.FINALIZE) {
+			finalizeService.finalizeGame(multigameId);
+		} else {
+			boolean success = stateEngine.transitionTo(multigameId, targetState);
+			if (!success) {
+				log.warn("[DEV] 상태 전이 실패: multigameId={}, targetState={}", multigameId, targetStateStr);
+			}
+		}
 	}
 
 	/**
 	 * 현재 게임 상태 조회
 	 */
 	public String getState(String multigameId) {
-		return stringRedisTemplate.opsForValue().get(MultigameRedisKeyProvider.state(multigameId));
+		GameState state = stateEngine.getState(multigameId);
+		return state != null ? state.name() : null;
 	}
 }

@@ -11,6 +11,10 @@ export function guestLogin() {
   return extractToken(res);
 }
 
+export function adminLogin() {
+  return testLogin('TEST_ADMIN');
+}
+
 export function testLogin(name) {
   const res = http.post(`${BASE_URL}/api/v1/auth/test-login?name=${name}`, null, {
     tags: { name: 'TestLogin' },

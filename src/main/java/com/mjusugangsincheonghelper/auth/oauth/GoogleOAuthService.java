@@ -4,7 +4,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.merge.MergeTicketService;
-import com.mjusugangsincheonghelper.auth.session.token.TokenProvider;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth;
@@ -46,7 +45,6 @@ public class GoogleOAuthService {
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
 	private final MergeTicketService mergeTicketService;
-	private final TokenProvider tokenProvider;
 	private final JsonMapper jsonMapper;
 
 	@Value("${app.oauth2.google.client-id}")

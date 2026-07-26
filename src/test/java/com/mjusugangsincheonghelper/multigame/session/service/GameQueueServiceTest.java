@@ -2,12 +2,7 @@ package com.mjusugangsincheonghelper.multigame.session.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
 
-import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.multigame.session.dto.GameRequestResponse;
 import java.util.List;
@@ -104,7 +99,7 @@ class GameQueueServiceTest {
 		@DisplayName("FAIL_DUPLICATE 상태를 올바르게 매핑한다")
 		void it_maps_fail_duplicate_status() throws Exception {
 			// Given
-			List<Object> result = List.of("FAIL_DUPLICATE");
+			List<Object> result = List.of("FAIL_DUPLICATE", 2L);
 
 			// When
 			java.lang.reflect.Method method = GameQueueService.class.getDeclaredMethod("mapResult", List.class);
@@ -113,6 +108,7 @@ class GameQueueServiceTest {
 
 			// Then
 			assertThat(response.getStatus()).isEqualTo("FAIL_DUPLICATE");
+			assertThat(response.getSubjectId()).isEqualTo(2);
 		}
 
 		@Test

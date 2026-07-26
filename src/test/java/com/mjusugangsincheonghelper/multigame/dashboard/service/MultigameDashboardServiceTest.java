@@ -57,7 +57,7 @@ class MultigameDashboardServiceTest {
 
 		Page<MultigameResultDetailEntity> detailPage = new PageImpl<>(List.of(myDetail));
 
-		given(resultRepository.findAllByOrderByStartTimeAsc()).willReturn(List.of(todayGame));
+		given(resultRepository.findAllByOrderByStartTimeDesc()).willReturn(List.of(todayGame));
 		given(resultDetailRepository.findByMemberIdOrderByCreatedAtDesc(any(), any(Pageable.class)))
 				.willReturn(detailPage);
 		given(resultRepository.findById("20260725120000")).willReturn(Optional.of(todayGame));
@@ -69,9 +69,9 @@ class MultigameDashboardServiceTest {
 		DashboardResponse dashboard = dashboardService.getDashboard(memberId);
 
 		// then
-		assertThat(dashboard.getTodayGames()).hasSize(1);
-		assertThat(dashboard.getTodayGames().get(0).getMultigameId()).isEqualTo("20260725120000");
-		assertThat(dashboard.getTodayGames().get(0).getParticipantCount()).isEqualTo(100);
+		assertThat(dashboard.getRecentGames()).hasSize(1);
+		assertThat(dashboard.getRecentGames().get(0).getMultigameId()).isEqualTo("20260725120000");
+		assertThat(dashboard.getRecentGames().get(0).getParticipantCount()).isEqualTo(100);
 
 		assertThat(dashboard.getMyRecentResults()).hasSize(1);
 		assertThat(dashboard.getMyRecentResults().get(0).getSubjectId()).isEqualTo(3);
@@ -83,12 +83,12 @@ class MultigameDashboardServiceTest {
 	}
 
 	@Test
-	@DisplayName("오늘 게임이 없으면 빈 목록을 반환한다")
-	void getDashboard_returns_empty_todayGames_when_no_games() {
+	@DisplayName("게임이 없으면 빈 목록을 반환한다")
+	void getDashboard_returns_empty_recentGames_when_no_games() {
 		// given
 		Long memberId = 1L;
 
-		given(resultRepository.findAllByOrderByStartTimeAsc()).willReturn(List.of());
+		given(resultRepository.findAllByOrderByStartTimeDesc()).willReturn(List.of());
 		given(resultDetailRepository.findByMemberIdOrderByCreatedAtDesc(any(), any(Pageable.class)))
 				.willReturn(Page.empty());
 		given(resultRepository.countTotalGames()).willReturn(0L);
@@ -99,7 +99,7 @@ class MultigameDashboardServiceTest {
 		DashboardResponse dashboard = dashboardService.getDashboard(memberId);
 
 		// then
-		assertThat(dashboard.getTodayGames()).isEmpty();
+		assertThat(dashboard.getRecentGames()).isEmpty();
 		assertThat(dashboard.getMyRecentResults()).isEmpty();
 		assertThat(dashboard.getOverallStats().getTotalGames()).isEqualTo(0L);
 	}

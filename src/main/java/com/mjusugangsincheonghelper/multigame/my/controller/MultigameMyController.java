@@ -9,7 +9,6 @@ import com.mjusugangsincheonghelper.multigame.my.service.MultigameMyHistoryServi
 import com.mjusugangsincheonghelper.multigame.stats.dto.MyStatsResponse;
 import com.mjusugangsincheonghelper.multigame.stats.service.MultigameMyStatsService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

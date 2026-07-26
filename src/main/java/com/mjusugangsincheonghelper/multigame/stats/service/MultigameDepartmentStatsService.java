@@ -26,8 +26,12 @@ public class MultigameDepartmentStatsService {
 	private final MultigameResultDetailRepository resultDetailRepository;
 	private final MemberRepository memberRepository;
 
-	@Cacheable(cacheNames = "multigame-department-participation", key = "'all'")
-	public DepartmentParticipationStatsResponse getParticipationStats(Long memberId) {
+	/**
+	 * 학과별 참여 횟수 순위 조회 (rankings만 캐시)
+	 * myDepartment는 사용자별로 다르므로 캐시하지 않고 매번 계산합니다.
+	 */
+	@Cacheable(cacheNames = "multigame-department-participation", key = "'rankings'")
+	public List<DepartmentRanking> getParticipationRankings() {
 		List<Object[]> statsRaw = resultDetailRepository.findDepartmentParticipationStats();
 
 		List<DepartmentRanking> rankings = new ArrayList<>();
@@ -39,6 +43,20 @@ public class MultigameDepartmentStatsService {
 					.participationCount(((Number) row[1]).longValue())
 					.build());
 		}
+		return rankings;
+	}
+
+	/**
+	 * 학과별 참여 횟수 통계 전체 조회 (캐시 없이)
+	 * myDepartment 계산을 위해 사용됩니다.
+	 */
+	public List<Object[]> getParticipationStatsRaw() {
+		return resultDetailRepository.findDepartmentParticipationStats();
+	}
+
+	public DepartmentParticipationStatsResponse getParticipationStats(Long memberId) {
+		List<DepartmentRanking> rankings = getParticipationRankings();
+		List<Object[]> statsRaw = getParticipationStatsRaw();
 
 		MyDepartmentInfo myDepartment = getMyParticipationInfo(memberId, statsRaw);
 
@@ -48,8 +66,12 @@ public class MultigameDepartmentStatsService {
 				.build();
 	}
 
-	@Cacheable(cacheNames = "multigame-department-success-rate", key = "'all'")
-	public DepartmentSuccessRateStatsResponse getSuccessRateStats(Long memberId) {
+	/**
+	 * 학과별 성공률 순위 조회 (rankings만 캐시)
+	 * myDepartment는 사용자별로 다르므로 캐시하지 않고 매번 계산합니다.
+	 */
+	@Cacheable(cacheNames = "multigame-department-success-rate", key = "'rankings'")
+	public List<DepartmentSuccessRateStatsResponse.DepartmentRanking> getSuccessRateRankings() {
 		List<Object[]> statsRaw = resultDetailRepository.findDepartmentSuccessRateStats();
 
 		List<DepartmentSuccessRateStatsResponse.DepartmentRanking> rankings = new ArrayList<>();
@@ -66,6 +88,20 @@ public class MultigameDepartmentStatsService {
 					.successRate(successRate)
 					.build());
 		}
+		return rankings;
+	}
+
+	/**
+	 * 학과별 성공률 통계 전체 조회 (캐시 없이)
+	 * myDepartment 계산을 위해 사용됩니다.
+	 */
+	public List<Object[]> getSuccessRateStatsRaw() {
+		return resultDetailRepository.findDepartmentSuccessRateStats();
+	}
+
+	public DepartmentSuccessRateStatsResponse getSuccessRateStats(Long memberId) {
+		List<DepartmentSuccessRateStatsResponse.DepartmentRanking> rankings = getSuccessRateRankings();
+		List<Object[]> statsRaw = getSuccessRateStatsRaw();
 
 		DepartmentSuccessRateStatsResponse.MyDepartmentInfo myDepartment = getMySuccessRateInfo(memberId, statsRaw);
 

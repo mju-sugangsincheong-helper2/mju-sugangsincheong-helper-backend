@@ -1,69 +1,45 @@
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 
+// ============================================================
+// Reservation API
+// ============================================================
+
 export function createReservation(token, multigameId) {
-  const params = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    tags: { name: 'POST_reservations' },
-  };
-
-  const payload = JSON.stringify({ multigameId });
-  const res = http.post(`${BASE_URL}/api/v1/multigame/reservations`, payload, params);
-
+  const res = http.post(
+    `${BASE_URL}/api/v1/multigame/reservations`,
+    JSON.stringify({ multigameId }),
+    {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      tags: { name: 'POST_reservations' },
+    }
+  );
   check(res, {
     'reservation created': (r) => r.status === 200 || r.status === 201 || r.status === 409,
   });
-
   return res;
 }
 
 export function getMyReservations(token) {
-  const params = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
+  const res = http.get(`${BASE_URL}/api/v1/multigame/reservations/my`, {
+    headers: { Authorization: `Bearer ${token}` },
     tags: { name: 'GET_reservations_my' },
-  };
-
-  const res = http.get(`${BASE_URL}/api/v1/multigame/reservations/my`, params);
+  });
   check(res, { 'my reservations fetched': (r) => r.status === 200 });
   return res;
 }
 
-export function getAllReservations(token, multigameId = null) {
-  const params = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    tags: { name: 'GET_reservations' },
-  };
-
-  let url = `${BASE_URL}/api/v1/multigame/reservations`;
-  if (multigameId) {
-    url += `?multigameId=${multigameId}`;
-  }
-
-  const res = http.get(url, params);
-  check(res, { 'all reservations fetched': (r) => r.status === 200 });
-  return res;
-}
+// ============================================================
+// Session API (대기방 + 게임 신청)
+// ============================================================
 
 export function enterWaitingRoom(token) {
-  const params = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    tags: { name: 'POST_waiting_room' },
-  };
-
-  const res = http.post(`${BASE_URL}/api/v1/multigame/session/waiting-room`, null, params);
-  
-  // 200 또는 410 (게임 취소) 모두 정상으로 처리
+  const res = http.get(`${BASE_URL}/api/v1/multigame/session/waiting-room`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'GET_waiting_room' },
+  });
   const success = res.status === 200 || res.status === 410;
   check(res, { 'waiting room entered': success });
 
@@ -80,19 +56,14 @@ export function enterWaitingRoom(token) {
 }
 
 export function requestGame(token, subjectId) {
-  const params = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    tags: { name: 'POST_game_request' },
-  };
-
   const res = http.post(
     `${BASE_URL}/api/v1/multigame/session/request?subjectId=${subjectId}`,
     null,
-    params
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      tags: { name: 'POST_game_request' },
+    }
   );
-
   check(res, { 'game request sent': (r) => r.status === 200 });
 
   try {
@@ -108,61 +79,174 @@ export function requestGame(token, subjectId) {
   }
 }
 
-export function getGameResult(token, multigameId) {
-  const params = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    tags: { name: 'GET_results' },
-  };
+// ============================================================
+// Lifecycle Control API (dev 환경 전용)
+// ============================================================
 
-  const res = http.get(`${BASE_URL}/api/v1/multigame/results/${multigameId}`, params);
+/**
+ * 게임 상태 수동 전이 (dev 환경 전용)
+ * ADMIN 권한이 필요하며, dev 프로파일에서만 동작합니다.
+ */
+export function transitionGameState(adminToken, multigameId, targetState) {
+  const res = http.post(
+    `${BASE_URL}/api/v1/multigame/lifecycle/transition/${multigameId}?targetState=${targetState}`,
+    null,
+    {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      tags: { name: 'POST_lifecycle_transition' },
+    }
+  );
+  check(res, { 'state transitioned': (r) => r.status === 200 });
+  return res;
+}
+
+/**
+ * 게임 상태 조회 (dev 환경 전용)
+ */
+export function getGameState(adminToken, multigameId) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/lifecycle/state/${multigameId}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    tags: { name: 'GET_lifecycle_state' },
+  });
+  check(res, { 'game state fetched': (r) => r.status === 200 });
+
+  try {
+    const json = res.json();
+    return json?.data;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ============================================================
+// Result API
+// ============================================================
+
+export function getGameResult(token, multigameId) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/results/${multigameId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'GET_results' },
+  });
   check(res, { 'game result fetched': (r) => r.status === 200 || r.status === 404 });
   return res;
 }
 
 export function getMyResult(token, multigameId) {
-  const params = {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
+  const res = http.get(`${BASE_URL}/api/v1/multigame/results/my?multigameId=${multigameId}`, {
+    headers: { Authorization: `Bearer ${token}` },
     tags: { name: 'GET_results_my' },
-  };
-
-  const res = http.get(`${BASE_URL}/api/v1/multigame/results/my?multigameId=${multigameId}`, params);
+  });
   check(res, { 'my result fetched': (r) => r.status === 200 || r.status === 404 });
   return res;
 }
 
-export function computeNextMultigameId() {
-  // 테스트용으로 1일 후의 10분 마크를 계산
-  const now = new Date();
-  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  
-  // 10분 마크로 조정 (00분으로 설정)
-  tomorrow.setMinutes(0);
-  tomorrow.setSeconds(0);
-  tomorrow.setMilliseconds(0);
+// ============================================================
+// My History & Stats API
+// ============================================================
 
-  const year = tomorrow.getFullYear();
-  const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
-  const day = String(tomorrow.getDate()).padStart(2, '0');
-  const hour = String(tomorrow.getHours()).padStart(2, '0');
-  const min = String(tomorrow.getMinutes()).padStart(2, '0');
-  const sec = '00';
-
-  return `${year}${month}${day}${hour}${min}${sec}`;
+export function getMyHistory(token, page = 0, size = 10) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/my/history?page=${page}&size=${size}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'GET_my_history' },
+  });
+  check(res, { 'my history fetched': (r) => r.status === 200 });
+  return res;
 }
 
-export function computeMultigameIdForDate(date) {
+export function getMyStats(token) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/my/stats`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'GET_my_stats' },
+  });
+  check(res, { 'my stats fetched': (r) => r.status === 200 });
+  return res;
+}
+
+// ============================================================
+// Dashboard & Stats API
+// ============================================================
+
+export function getDashboard(token) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/dashboard`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'GET_dashboard' },
+  });
+  check(res, { 'dashboard fetched': (r) => r.status === 200 });
+  return res;
+}
+
+export function getDepartmentParticipationStats(token) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/stats/department/participation`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'GET_dept_participation' },
+  });
+  check(res, { 'dept participation fetched': (r) => r.status === 200 });
+  return res;
+}
+
+export function getDepartmentSuccessRateStats(token) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/stats/department/success-rate`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'GET_dept_success_rate' },
+  });
+  check(res, { 'dept success rate fetched': (r) => r.status === 200 });
+  return res;
+}
+
+// ============================================================
+// Utility
+// ============================================================
+
+/**
+ * 예약 가능한 게임 ID 계산 (현재 시각 + 10분 이후의 다음 10분 마크)
+ * 예약은 게임 시작 10분 전까지 생성 가능하므로,
+ * 최소 10분 이후의 10분 마크를 반환합니다.
+ */
+export function computeReservableMultigameId() {
+  const now = new Date();
+  // 최소 10분 이후이므로, 현재 + 10분에서 다음 10분 마크를 계산
+  now.setMinutes(now.getMinutes() + 10);
+  const minutes = now.getMinutes();
+  const tenMark = Math.ceil(minutes / 10) * 10;
+  if (tenMark > minutes) {
+    now.setMinutes(tenMark);
+  } else {
+    now.setMinutes(tenMark + 10);
+  }
+  now.setSeconds(0);
+  now.setMilliseconds(0);
+
+  return formatMultigameId(now);
+}
+
+/**
+ * 서버의 computeActiveGameT()와 동일한 로직으로 현재 액티브 게임의 T를 계산.
+ * minute % 10 >= 5: 다음 10분 마크 (ceiling) — [T-5m, T) 구간
+ * minute % 10 < 5:  현재 10분 마크 (floor)   — [T, T+5m) 구간
+ */
+export function computeActiveMultigameId() {
+  const now = new Date();
+  const minutes = now.getMinutes();
+  const tenMark = Math.floor(minutes / 10) * 10;
+
+  if (minutes % 10 >= 5) {
+    now.setMinutes(tenMark + 10);
+  } else {
+    now.setMinutes(tenMark);
+  }
+  now.setSeconds(0);
+  now.setMilliseconds(0);
+
+  return formatMultigameId(now);
+}
+
+function formatMultigameId(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   const hour = String(date.getHours()).padStart(2, '0');
   const min = String(date.getMinutes()).padStart(2, '0');
-  const sec = '00';
-
-  return `${year}${month}${day}${hour}${min}${sec}`;
+  return `${year}${month}${day}${hour}${min}00`;
 }
 
 export function getRandomSubjectId() {

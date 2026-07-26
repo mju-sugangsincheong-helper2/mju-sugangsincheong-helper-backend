@@ -5,18 +5,17 @@ import com.mjusugangsincheonghelper.database.entity.MultigameResultEntity;
 import com.mjusugangsincheonghelper.database.repository.MultigameResultDetailRepository;
 import com.mjusugangsincheonghelper.database.repository.MultigameResultRepository;
 import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
+import com.mjusugangsincheonghelper.multigame.session.domain.GameState;
+import com.mjusugangsincheonghelper.multigame.session.domain.HeartbeatLedger;
+import com.mjusugangsincheonghelper.multigame.session.domain.MultigameStateEngine;
 import java.time.Instant;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -26,37 +25,35 @@ public class MultigameFinalizeService {
 	private final StringRedisTemplate stringRedisTemplate;
 	private final MultigameResultRepository resultRepository;
 	private final MultigameResultDetailRepository resultDetailRepository;
-
-	@Lazy
-	@Autowired
-	private MultigameFinalizeService self;
+	private final MultigameStateEngine stateEngine;
+	private final HeartbeatLedger heartbeatLedger;
+	private final TransactionTemplate transactionTemplate;
 
 	public void finalizeGame(String t) {
-		String stateKey = MultigameRedisKeyProvider.state(t);
-		String state = stringRedisTemplate.opsForValue().get(stateKey);
+		GameState state = stateEngine.getState(t);
 
 		if (state == null) {
-			stringRedisTemplate.opsForValue().set(stateKey, "CANCELLED");
+			stateEngine.cancelGame(t);
 			return;
 		}
 
 		switch (state) {
-			case "ENDED" -> {
-				self.upsertResultsInNewTransaction(t);
-				stringRedisTemplate.opsForValue().set(stateKey, "FINALIZE");
+			case ENDED -> {
+				upsertResultsInNewTransaction(t);
+				stateEngine.transitionTo(t, GameState.FINALIZE);
 				log.info("FinalizeJob: game {} -> FINALIZE", t);
 			}
-			case "FINALIZE", "CANCELLED" -> {
+			case FINALIZE, CANCELLED -> {
 			}
 			default -> {
-				stringRedisTemplate.opsForValue().set(stateKey, "CANCELLED");
+				stateEngine.cancelGame(t);
 			}
 		}
 	}
 
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void upsertResultsInNewTransaction(String t) {
-		upsertResults(t);
+		transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+		transactionTemplate.executeWithoutResult(status -> upsertResults(t));
 	}
 
 	private void upsertResults(String t) {
@@ -84,7 +81,7 @@ public class MultigameFinalizeService {
 					);
 		}
 
-		int participantCount = countHeartbeats(t);
+		int participantCount = heartbeatLedger.getParticipantSnapshot(t);
 		int capacity = Math.max(1, participantCount / 2);
 
 		resultRepository.findById(t)
@@ -99,25 +96,5 @@ public class MultigameFinalizeService {
 										.build()
 						)
 				);
-	}
-
-	private int countHeartbeats(String t) {
-		String pattern = MultigameRedisKeyProvider.heartbeatPattern(t);
-		ScanOptions scanOptions = ScanOptions.scanOptions()
-				.match(pattern)
-				.count(100)
-				.build();
-
-		try (Cursor<String> cursor = stringRedisTemplate.scan(scanOptions)) {
-			int count = 0;
-			while (cursor.hasNext()) {
-				cursor.next();
-				count++;
-			}
-			return count;
-		} catch (Exception e) {
-			log.error("Failed to count heartbeats for t={}", t, e);
-			return 0;
-		}
 	}
 }
