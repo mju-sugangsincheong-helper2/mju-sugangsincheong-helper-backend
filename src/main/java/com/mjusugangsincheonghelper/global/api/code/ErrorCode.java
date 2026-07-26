@@ -59,7 +59,10 @@ public enum ErrorCode {
 	MULTIGAME_GAME_CANCELLED(HttpStatus.GONE, "MULTIGAME_006", "Game has been cancelled."),
 	MULTIGAME_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "MULTIGAME_007", "Game result not found."),
 	MULTIGAME_LUA_SCRIPT_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_008", "Failed to execute game logic."),
-	MULTIGAME_ADVISORY_LOCK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_009", "Failed to acquire distributed lock.");
+	MULTIGAME_ADVISORY_LOCK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_009", "Failed to acquire distributed lock."),
+
+	NOTIFICATION_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "NOTIFICATION_001", "Failed to send notification via FCM."),
+	NOTIFICATION_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION_002", "FCM token not found.");
 
 	private final HttpStatus status;
 	private final String code;

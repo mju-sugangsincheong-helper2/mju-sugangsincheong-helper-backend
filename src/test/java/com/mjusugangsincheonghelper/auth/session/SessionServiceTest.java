@@ -82,8 +82,7 @@ class SessionServiceTest {
 			given(tokenProvider.createRefreshToken()).willReturn("refresh-token");
 			given(tokenProvider.getRefreshTokenExpiryMs()).willReturn(604800000L);
 
-			SessionResult result = sessionService.createSession(identity, DeviceInfo.builder().build(),
-					"fcm-token", response);
+			SessionResult result = sessionService.createSession(identity, DeviceInfo.builder().build(), response);
 
 			assertThat(result.getMemberId()).isEqualTo(1L);
 			assertThat(result.getRole()).isEqualTo("GUEST");
@@ -91,7 +90,7 @@ class SessionServiceTest {
 			assertThat(result.getRefreshToken()).isEqualTo("refresh-token");
 
 			verify(tokenDeliveryStrategy).deliver("access-token", "refresh-token", response);
-			verify(deviceSessionService).upsert(eq(1L), eq("refresh-token"), eq("fcm-token"), any(), eq(604800000L));
+			verify(deviceSessionService).upsert(eq(1L), eq("refresh-token"), any(), eq(604800000L));
 		}
 	}
 

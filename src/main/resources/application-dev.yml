@@ -83,6 +83,14 @@ app:
       redirect-uri: http://localhost:8080/auth-test.html
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
+  firebase:
+    admin:
+      project-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PROJECT_ID:}
+      client-email: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_EMAIL:}
+      private-key: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY:}
+      type: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_TYPE:service_account}
+      private-key-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY_ID:}
+      client-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_ID:}
 
 management:
   endpoints:

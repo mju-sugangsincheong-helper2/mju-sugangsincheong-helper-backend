@@ -40,7 +40,8 @@ public class GlobalSecurityConfig {
 			"/swagger-ui/**",
 			"/v3/api-docs/**",
 			"/actuator/**",
-			"/*.html"
+			"/*.html",
+			"/*.js"
 	};
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;

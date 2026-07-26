@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.account.controller;
 
+import com.mjusugangsincheonghelper.account.dto.AccountDeviceResponse;
 import com.mjusugangsincheonghelper.account.dto.AccountMeResponse;
 import com.mjusugangsincheonghelper.account.service.AccountService;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
@@ -9,7 +10,10 @@ import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnv
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -56,6 +60,34 @@ public class AccountController {
 				.body(SingleSuccessResponseEnvelope.of(response));
 	}
 
+	@GetMapping(value = "/me/devices", version = "1+")
+	@Operation(
+			summary = "Account devices",
+			description = "로그인된 기기 목록 조회 API",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_SECURITY_UNAUTHORIZED_ACCESS,
+			ErrorCode.AUTH_MEMBER_NOT_FOUND,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<List<AccountDeviceResponse>>> getMyDevices(
+			HttpServletRequest request) {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Long memberId = (Long) authentication.getPrincipal();
+		String currentRefreshToken = extractRefreshToken(request);
+
+		List<AccountDeviceResponse> response = accountService.getDevices(memberId, currentRefreshToken);
+		return ResponseEntity
+				.status(HttpStatus.OK)
+				.body(SingleSuccessResponseEnvelope.of(response));
+	}
+
 	@DeleteMapping(value = "/me", version = "1+")
 	@Operation(
 			summary = "Account withdraw",
@@ -80,5 +112,20 @@ public class AccountController {
 		return ResponseEntity
 				.status(HttpStatus.OK)
 				.body(SingleSuccessResponseEnvelope.empty());
+	}
+
+	private String extractRefreshToken(HttpServletRequest request) {
+		String refreshTokenHeader = request.getHeader("X-Refresh-Token");
+		if (refreshTokenHeader != null && !refreshTokenHeader.isBlank()) {
+			return refreshTokenHeader;
+		}
+		if (request.getCookies() != null) {
+			for (Cookie cookie : request.getCookies()) {
+				if ("refresh_token".equals(cookie.getName())) {
+					return cookie.getValue();
+				}
+			}
+		}
+		return null;
 	}
 }

@@ -1,0 +1,82 @@
+package com.mjusugangsincheonghelper.notification.controller;
+
+import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
+import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
+import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
+import com.mjusugangsincheonghelper.notification.dto.NotificationTokenDeleteRequest;
+import com.mjusugangsincheonghelper.notification.dto.NotificationTokenRegisterRequest;
+import com.mjusugangsincheonghelper.notification.dto.NotificationTokenResponse;
+import com.mjusugangsincheonghelper.notification.service.NotificationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@Tag(name = "Notification", description = "알림 및 FCM 토큰 관리 API")
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/{version}/notification")
+public class NotificationController {
+
+	private final NotificationService notificationService;
+
+	@PreAuthorize("hasRole('GUEST')")
+	@PostMapping(value = "/token", version = "1+")
+	@Operation(
+			summary = "Register or Update FCM Token",
+			description = "현재 사용자의 FCM 토큰을 등록하거나 갱신합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "FCM 토큰 등록/갱신 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_SECURITY_UNAUTHORIZED_ACCESS,
+			ErrorCode.GLOBAL_VALIDATION_ERROR,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<NotificationTokenResponse>> registerToken(
+			@Valid @RequestBody NotificationTokenRegisterRequest request) {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Long memberId = (Long) authentication.getPrincipal();
+		NotificationTokenResponse response = notificationService.registerToken(memberId, request);
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@PreAuthorize("hasRole('GUEST')")
+	@DeleteMapping(value = "/token", version = "1+")
+	@Operation(
+			summary = "Delete FCM Token",
+			description = "현재 사용자의 기기에 등록된 FCM 토큰을 삭제/제거합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "FCM 토큰 삭제 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_SECURITY_UNAUTHORIZED_ACCESS,
+			ErrorCode.GLOBAL_VALIDATION_ERROR,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<Void>> deleteToken(
+			@Valid @RequestBody NotificationTokenDeleteRequest request) {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		Long memberId = (Long) authentication.getPrincipal();
+		notificationService.deleteToken(memberId, request);
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.empty());
+	}
+}

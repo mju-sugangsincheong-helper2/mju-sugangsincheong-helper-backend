@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.account.service;
 
+import com.mjusugangsincheonghelper.account.dto.AccountDeviceResponse;
 import com.mjusugangsincheonghelper.account.dto.AccountMeResponse;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
@@ -31,6 +32,16 @@ public class AccountService {
 				.map(agreement -> agreement.isStatus())
 				.orElse(false);
 		return AccountMeResponse.from(member, privacyPolicyAgreed);
+	}
+
+	public List<AccountDeviceResponse> getDevices(Long memberId, String currentRefreshToken) {
+		Member member = memberRepository.findById(memberId)
+				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
+
+		List<MemberDevice> devices = memberDeviceRepository.findByMemberId(member.getId());
+		return devices.stream()
+				.map(device -> AccountDeviceResponse.from(device, currentRefreshToken))
+				.toList();
 	}
 
 	@Transactional

@@ -11,5 +11,11 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 
 	List<MemberDevice> findByMemberId(Long memberId);
 
+	Optional<MemberDevice> findByFid(String fid);
+
+	Optional<MemberDevice> findFirstByMemberIdOrderByLastAccessedAtDesc(Long memberId);
+
+	List<MemberDevice> findByMemberIdAndFid(Long memberId, String fid);
+
 	void deleteByRefreshToken(String refreshToken);
 }

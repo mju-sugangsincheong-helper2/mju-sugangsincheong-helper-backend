@@ -109,7 +109,7 @@ class SingleGameFeedbackEngineTest {
 		@DisplayName("강력한 뒷심 조건(firstHalf - secondHalf >= 100)일 때 STRONG_FINISHER를 반환한다")
 		void it_returns_strong_finisher() {
 			// N=6: 1~3 avg = 1000, 4~6 avg = 800 -> diff = 200 >= 100 -> STRONG_FINISHER
-			SingleGameFeedbackEngine.FeedbackResult result = result = feedbackEngine.determineFeedback(
+			SingleGameFeedbackEngine.FeedbackResult result = feedbackEngine.determineFeedback(
 					50.0, 50.0, 50.0, 50.0, 50.0, 6, List.of(1000, 1000, 1000, 800, 800, 800), 900.0, 100.0);
 
 			assertThat(result.code()).isEqualTo("STRONG_FINISHER");

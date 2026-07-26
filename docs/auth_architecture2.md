@@ -156,13 +156,14 @@ com.mjusugangsincheonghelper/
 │
 ├── account/                                  # [회원 리소스 패키지]
 │   ├── controller/
-│   │   ├── AccountController.java            #   - GET/DELETE /api/{version}/accounts/me (@PreAuthorize hasRole('GUEST'))
+│   │   ├── AccountController.java            #   - GET/DELETE /api/{version}/accounts/me, GET .../accounts/me/devices (@PreAuthorize hasRole('GUEST'))
 │   │   └── AccountAgreementController.java   #   - POST /api/{version}/auth/privacy/agree
 │   ├── service/
-│   │   ├── AccountService.java               #   - 프로필 조회 및 회원 탈퇴 서비스
+│   │   ├── AccountService.java               #   - 프로필 조회, 로그인 기기 목록 조회 및 회원 탈퇴 서비스
 │   │   └── AccountAgreementService.java      #   - 동의 감사 기록 + isAgreed 조회
 │   └── dto/
 │       ├── AccountMeResponse.java            #   - 내 정보 응답 (isPrivacyPolicyAgreed 포함)
+│       ├── AccountDeviceResponse.java        #   - 로그인된 기기 목록 응답 (FCM 알림 여부, 현재 접속 기기 여부 포함)
 │       └── PrivacyAgreementResponse.java     #   - 동의 응답
 │
 └── auth/                                     # [인증 & 세션 패키지]

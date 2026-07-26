@@ -409,7 +409,7 @@
         // 내 정보 조회
         async function getMyInfo() {
             try {
-                const result = await apiCall('GET', '/api/v1/members/me');
+                const result = await apiCall('GET', '/api/v1/accounts/me');
                 showApiResult('myInfoResult', result);
             } catch (error) {
                 showApiResult('myInfoResult', { error: error.message });
