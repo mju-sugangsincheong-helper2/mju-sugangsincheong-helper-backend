@@ -142,12 +142,12 @@ CREATE TRIGGER trg_auto_create_partition
     FOR EACH ROW EXECUTE FUNCTION auto_create_partition();
 ```
 
-#### 2. single_game
+#### 2. single_game & multigame
 
 ```sql
 CREATE TABLE IF NOT EXISTS single_game (
-    id            SERIAL       PRIMARY KEY,
-    member_id     INT          NOT NULL REFERENCES member(id),
+    id            BIGSERIAL    PRIMARY KEY,
+    member_id     BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     t_total       INT          NOT NULL,
     t_enter_main  INT          NOT NULL,
     is_completed  BOOLEAN      NOT NULL,
@@ -160,12 +160,38 @@ CREATE INDEX idx_game_ranking ON single_game (total_courses, is_completed, t_tot
 CREATE INDEX idx_game_member ON single_game (member_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS single_game_detail (
-    game_id        INT  NOT NULL REFERENCES single_game(id) ON DELETE CASCADE,
-    sequence       INT  NOT NULL,
-    t_click_course INT  NOT NULL,
-    t_click_yes    INT  NOT NULL,
-    t_click_ok     INT  NOT NULL,
+    game_id        BIGINT NOT NULL REFERENCES single_game(id) ON DELETE CASCADE,
+    sequence       INT    NOT NULL,
+    t_click_course INT    NOT NULL,
+    t_click_yes    INT    NOT NULL,
+    t_click_ok     INT    NOT NULL,
     PRIMARY KEY (game_id, sequence)
+);
+
+CREATE TABLE IF NOT EXISTS multigame_reservation (
+    id          BIGSERIAL   PRIMARY KEY,
+    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    start_time  VARCHAR(14) NOT NULL,
+    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    CONSTRAINT  uk_multigame_reservation_start_time_member_id UNIQUE (start_time, member_id)
+);
+
+CREATE TABLE IF NOT EXISTS multigame_result (
+    start_time        VARCHAR(14) PRIMARY KEY,
+    participant_count INT         NOT NULL,
+    capacity          INT         NOT NULL,
+    created_at        TIMESTAMP   NOT NULL DEFAULT now(),
+    finalized_at      TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS multigame_result_detail (
+    id          BIGSERIAL   PRIMARY KEY,
+    start_time  VARCHAR(14) NOT NULL,
+    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    subject_id  INT         NOT NULL,
+    status      VARCHAR(20) NOT NULL,
+    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    CONSTRAINT  uk_multigame_result_detail_start_time_member_id UNIQUE (start_time, member_id)
 );
 ```
 

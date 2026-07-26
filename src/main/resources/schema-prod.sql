@@ -1,5 +1,5 @@
 -- 운영 환경 전체 DDL
--- 모든 테이블 + course 파티셔닝 + 분석용 뷰 4개
+-- 모든 테이블 + course/exchange 파티셔닝 + 멀티게임 테이블 + 분석용 뷰 4개
 
 -- ============================================================
 -- 0. 확장 기능
@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS pgmq;
 -- 1. member
 -- ============================================================
 CREATE TABLE IF NOT EXISTS member (
-    id          SERIAL       PRIMARY KEY,
+    id          BIGSERIAL    PRIMARY KEY,
     role        VARCHAR(20)  NOT NULL,
     position    VARCHAR(50),
     department  VARCHAR(50),
@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS member (
 -- 2. member_auth
 -- ============================================================
 CREATE TABLE IF NOT EXISTS member_auth (
-    id            SERIAL       PRIMARY KEY,
-    member_id     INT          NOT NULL UNIQUE,
+    id            BIGSERIAL    PRIMARY KEY,
+    member_id     BIGINT       NOT NULL UNIQUE REFERENCES member(id) ON DELETE CASCADE,
     auth_type     VARCHAR(20)  NOT NULL,
     auth_key      VARCHAR(255) NOT NULL UNIQUE,
     last_login_at TIMESTAMP,
@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS member_auth (
 -- 3. member_device
 -- ============================================================
 CREATE TABLE IF NOT EXISTS member_device (
-    id                      SERIAL       PRIMARY KEY,
-    member_id               INT          NOT NULL,
+    id                      BIGSERIAL    PRIMARY KEY,
+    member_id               BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     refresh_token           VARCHAR(512) NOT NULL UNIQUE,
     fcm_token               VARCHAR(512),
     platformjs_name         VARCHAR(100),
@@ -59,9 +59,9 @@ CREATE TABLE IF NOT EXISTS member_device (
 -- 4. member_agreements
 -- ============================================================
 CREATE TABLE IF NOT EXISTS member_agreements (
-    member_id   INT       PRIMARY KEY,
-    status      BOOLEAN   NOT NULL DEFAULT FALSE,
-    agreed_at   TIMESTAMP
+    member_id   BIGINT   PRIMARY KEY REFERENCES member(id) ON DELETE CASCADE,
+    status      BOOLEAN  NOT NULL DEFAULT FALSE,
+    agreed_at   BIGINT
 );
 
 -- ============================================================
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS system_config (
 -- 6. examples
 -- ============================================================
 CREATE TABLE IF NOT EXISTS examples (
-    id          SERIAL       PRIMARY KEY,
+    id          BIGSERIAL    PRIMARY KEY,
     title       VARCHAR(200) NOT NULL,
     content     TEXT,
     active      BOOLEAN      NOT NULL DEFAULT TRUE,
@@ -153,8 +153,8 @@ CREATE TRIGGER trg_auto_create_partition
 -- 8. single_game
 -- ============================================================
 CREATE TABLE IF NOT EXISTS single_game (
-    id            SERIAL       PRIMARY KEY,
-    member_id     INT          NOT NULL REFERENCES member(id),
+    id            BIGSERIAL    PRIMARY KEY,
+    member_id     BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     t_total       INT          NOT NULL,
     t_enter_main  INT          NOT NULL,
     is_completed  BOOLEAN      NOT NULL,
@@ -170,16 +170,51 @@ CREATE INDEX IF NOT EXISTS idx_game_member ON single_game (member_id, created_at
 -- 9. single_game_detail
 -- ============================================================
 CREATE TABLE IF NOT EXISTS single_game_detail (
-    game_id        INT  NOT NULL REFERENCES single_game(id) ON DELETE CASCADE,
-    sequence       INT  NOT NULL,
-    t_click_course INT  NOT NULL,
-    t_click_yes    INT  NOT NULL,
-    t_click_ok     INT  NOT NULL,
+    game_id        BIGINT NOT NULL REFERENCES single_game(id) ON DELETE CASCADE,
+    sequence       INT    NOT NULL,
+    t_click_course INT    NOT NULL,
+    t_click_yes    INT    NOT NULL,
+    t_click_ok     INT    NOT NULL,
     PRIMARY KEY (game_id, sequence)
 );
 
 -- ============================================================
--- 10. 뷰
+-- 10. multigame_reservation
+-- ============================================================
+CREATE TABLE IF NOT EXISTS multigame_reservation (
+    id          BIGSERIAL   PRIMARY KEY,
+    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    start_time  VARCHAR(14) NOT NULL,
+    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    CONSTRAINT  uk_multigame_reservation_start_time_member_id UNIQUE (start_time, member_id)
+);
+
+-- ============================================================
+-- 11. multigame_result
+-- ============================================================
+CREATE TABLE IF NOT EXISTS multigame_result (
+    start_time        VARCHAR(14) PRIMARY KEY,
+    participant_count INT         NOT NULL,
+    capacity          INT         NOT NULL,
+    created_at        TIMESTAMP   NOT NULL DEFAULT now(),
+    finalized_at      TIMESTAMP
+);
+
+-- ============================================================
+-- 12. multigame_result_detail
+-- ============================================================
+CREATE TABLE IF NOT EXISTS multigame_result_detail (
+    id          BIGSERIAL   PRIMARY KEY,
+    start_time  VARCHAR(14) NOT NULL,
+    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    subject_id  INT         NOT NULL,
+    status      VARCHAR(20) NOT NULL,
+    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    CONSTRAINT  uk_multigame_result_detail_start_time_member_id UNIQUE (start_time, member_id)
+);
+
+-- ============================================================
+-- 13. 뷰
 -- ============================================================
 CREATE OR REPLACE VIEW v_sequence_percentile_stats AS
 WITH ranked AS (
@@ -282,12 +317,12 @@ LEFT JOIN v_sequence_percentile_stats vps
     ON vps.total_courses = sg.total_courses AND vps.sequence = sgd.sequence;
 
 -- ============================================================
--- 11. exchange_intent (파티셔닝)
+-- 14. exchange_intent (파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_intent (
     term            VARCHAR(10) NOT NULL,
     id              BIGINT      NOT NULL,
-    member_id       BIGINT      NOT NULL REFERENCES member(id),
+    member_id       BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     give_course_no  VARCHAR(20) NOT NULL,
     want_course_no  VARCHAR(20) NOT NULL,
     is_deleted      BOOLEAN     NOT NULL DEFAULT FALSE,
@@ -309,7 +344,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uidx_active_intent
     WHERE is_deleted = FALSE;
 
 -- ============================================================
--- 12. exchange_room (파티셔닝)
+-- 15. exchange_room (파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room (
     term        VARCHAR(10) NOT NULL,
@@ -323,19 +358,19 @@ CREATE TABLE IF NOT EXISTS exchange_room (
 ) PARTITION BY LIST (term);
 
 -- ============================================================
--- 13. exchange_room_intent (파티셔닝)
+-- 16. exchange_room_intent (파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room_intent (
     term        VARCHAR(10) NOT NULL,
     room_id     BIGINT      NOT NULL,
     intent_id   BIGINT      NOT NULL,
-    member_id   BIGINT      NOT NULL REFERENCES member(id),
+    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     is_deleted  BOOLEAN     NOT NULL DEFAULT FALSE,
     is_on       BOOLEAN     NOT NULL DEFAULT TRUE,
     joined_at   TIMESTAMP   NOT NULL DEFAULT now(),
     PRIMARY KEY (term, room_id, intent_id),
-    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id),
-    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id)
+    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id) ON DELETE CASCADE,
+    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id) ON DELETE CASCADE
 ) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_room_intent_member
@@ -346,45 +381,44 @@ CREATE INDEX IF NOT EXISTS idx_room_intent_reverse
     ON exchange_room_intent(intent_id, room_id);
 
 -- ============================================================
--- 14. exchange_room_message (파티셔닝)
+-- 17. exchange_room_message (파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room_message (
     term        VARCHAR(10) NOT NULL,
     id          BIGINT      NOT NULL,
     room_id     BIGINT      NOT NULL,
-    member_id   BIGINT      NOT NULL REFERENCES member(id),
+    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     intent_id   BIGINT      NOT NULL,
     content     TEXT        NOT NULL,
     created_at  TIMESTAMP   NOT NULL DEFAULT now(),
     PRIMARY KEY (term, id),
-    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id),
-    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id)
+    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id) ON DELETE CASCADE,
+    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id) ON DELETE CASCADE
 ) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_message_room_id_pagination
     ON exchange_room_message(room_id, id DESC);
 
 -- ============================================================
--- 15. exchange_room_read_status (파티셔닝)
+-- 18. exchange_room_read_status (파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room_read_status (
     term                  VARCHAR(10) NOT NULL,
     room_id               BIGINT      NOT NULL,
-    member_id             BIGINT      NOT NULL REFERENCES member(id),
+    member_id             BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     intent_id             BIGINT      NOT NULL,
-    last_read_message_id  BIGINT      NOT NULL,
+    last_read_message_id  BIGINT      NOT NULL DEFAULT 0,
     last_read_at          TIMESTAMP   NOT NULL DEFAULT now(),
     PRIMARY KEY (term, room_id, member_id),
-    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id),
-    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id),
-    FOREIGN KEY (term, last_read_message_id) REFERENCES exchange_room_message(term, id)
+    FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id) ON DELETE CASCADE,
+    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id) ON DELETE CASCADE
 ) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_read_status_member
     ON exchange_room_read_status(member_id, room_id);
 
 -- ============================================================
--- 16. exchange 파티션 자동 생성
+-- 19. exchange 파티션 자동 생성
 -- ============================================================
 DO $$
 DECLARE
@@ -407,3 +441,4 @@ BEGIN
         END LOOP;
     END LOOP;
 END $$;
+
