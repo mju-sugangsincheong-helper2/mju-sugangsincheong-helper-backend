@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.DynamicUpdate;
 import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -14,6 +15,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
+@DynamicUpdate
 @Table(name = "multigame_result")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

@@ -5,7 +5,7 @@
 
 1. **예약 (Reservation)**
    - **책임:** 클라이언트의 예약 요청을 받아 단순히 DB에 쌓기만(CRUD) 합니다.
-   - **상태 무관성:** 예약은 게임 상태(State)와 전혀 관련이 없습니다. 예약 가능 시간(-3d ~ -5m)과 같은 제약은 게임의 상태를 따르는 것이 아니라, 단순히 시간을 검증하는 비즈니스 규칙에 불과합니다.
+   - **상태 무관성:** 예약은 게임 상태(State)와 전혀 관련이 없습니다. 예약 가능 시간(7일 ~ 10분 전)과 같은 제약은 게임의 상태를 따르는 것이 아니라, 단순히 시간을 검증하는 비즈니스 규칙에 불과합니다.
    - **분리 원칙:** 예약 단계에서는 오직 DB에 INSERT로 데이터를 쌓아둘 뿐이며, 이 데이터를 다른 곳에서 언제 어떻게 소비하는지는 관여하지 않습니다.
 
 1. **게임중 (Game)**
@@ -37,7 +37,7 @@ erDiagram
         bigint id PK
         bigint member_id FK
         char(14) start_time "T (10분 단위 게임 시작 시각)"
-        timestamp created_at "예약 생성 시각 (-3d ~ -5m 제약 검증용)"
+        timestamp created_at "예약 생성 시각 (7일 ~ 10분 전 제약 검증용)"
     }
 
     MULTIGAME_RESULT {
@@ -45,6 +45,7 @@ erDiagram
         int participant_count "최종 참여자 수"
         int capacity "과목별 정원 (참여자 수 / 2)"
         timestamp finalized_at "게임 종료 영속화 시각"
+        timestamp created_at "게임 결과 레코드 생성 시각"
     }
 
     MULTIGAME_RESULT_DETAIL {
@@ -74,7 +75,7 @@ erDiagram
    - `MULTIGAME_RESULT`의 `start_time`을 외래키로 참조합니다.
    - `start_time`(T), `member_id`를 복합 유니크 키로 사용하여 멱등성을 보장합니다. (유저는 게임 당 단 1개의 과목만 최종 신청 결과로 가짐)
    - 유저가 게임 중 신청한 `subject_id`(1~6)와 성공/실패 여부(`status`)를 기록합니다.
-   - `status`는 `SUCCESS`, `FAIL_SOLDOUT`, `FAIL_DUPLICATE`만 기록됩니다. **`FAIL_ALREADY_IN_QUEUE`는 대기열 진입 전 차단된 상태이므로 DB에 기록하지 않습니다.**
+   - `status`는 `SUCCESS`, `FAIL_SOLDOUT`, `FAIL_DUPLICATE`만 기록됩니다. **`FAIL_ALREADY_IN_QUEUE`는 API 분리 시 필요했을 개념적 상태로, 실제 DB에 기록되지 않습니다.**
 
 
 ## Layer 1: 게임중 Lifecycle (State Machine)
@@ -241,7 +242,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 
     ```json
     {
-      "startTime": "20260630120000",
+      "multigameId": "20260630120000",
       "state": "WAITING",
       "participation": 23
     }
@@ -254,6 +255,22 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 요청 api 는 클라이언트가 폴링용과 신청용을 구분하지 않고, 그냥 똑같은 요청을 계속 쏴서 알아서 대기하고 알아서 완료되는 방식
 
 대기열을 기다렸는데 중복 등록(이미 해당 과목 성공했음) 뜨는 것은 명지대 로직을 그대로 따른 로직임 즉 의도적인 로직임
+
+### FAIL_ALREADY_IN_QUEUE: 추상적 개념과 명시적 구현
+
+`FAIL_ALREADY_IN_QUEUE`는 이 도메인의 **추상적 개념**입니다. API 분리 여부와 관계없이 개념 자체는 존재합니다.
+
+중요한 것은 **명시적 구현**으로의 이행 여부입니다.
+- 신청 API와 폴링 API가 **분리**된 설계였다면, 이 개념은 실제 응답 상태로 **명시적 구현**까지 이어집니다.
+- 하지만 두 API를 **1개로 통일**하는 방식을 선택했으므로, 이 개념은 **명시적 구현에 이르지 못하고 추상적 개념에 머물게** 되었습니다.
+
+그럼에도 이 용어는 도메인의 의도와 경계를 설명하는 데 여전히 유용하므로 문서 전반에서 유지합니다. `FAIL_ALREADY_IN_QUEUE`가 언급되더라도 "통합 API에서는 구현되지 않은, 도메인 설명을 위한 개념적 용어"로 이해하면 됩니다.
+
+통합된 API의 동작:
+- 유저가 이미 큐에 존재하면(`ZSCORE`가 nil이 아님) → 기존 `seq`(순번)를 그대로 유지, 차단하지 않음
+- 큐에 없으면 → 새 `seq` 발급 후 대기열 등록
+- 이후 `seq`가 `limit` 이하인지 확인하여 입장 허용 여부 결정
+
 ### 데이터 특성 명확화 (절댓값 vs 상댓값)
 본 시스템에서는 데이터의 성격을 명확히 구분하여 관리합니다.
 - **절댓값 (Absolute):** 기준점으로부터 누적되어 변하지 않는 고유한 값
@@ -273,7 +290,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 | 단계            | 명령어                        | 설명                                       |
 | ------------- | -------------------------- | ---------------------------------------- |
 | 1. 상태 검문      | `GET`                      | `state`가 `PROGRESS`가 아니면 즉시 차단 (큐 진입 불가) |
-| 2. 대기열 진입 차단 | `ZSCORE` | 큐에 동일 유저의 요청이 이미 존재하면 즉시 차단 (`FAIL_ALREADY_IN_QUEUE`) |
+| 2. 대기열 진입 차단 | `ZSCORE` | 큐에 동일 유저가 이미 존재하면, 신규 등록 대신 기존 `seq` 유지 (`FAIL_ALREADY_IN_QUEUE`는 추상적 개념; 통합 API에서는 차단 대신 순번 재사용) |
 | 3. 대기열 등록     | `ZSCORE` → `INCR` + `ZADD` | 중복이 아니면 기존 `seq`(절댓값) 유지, 없으면 신규 발급      |
 | 4. 진입 허용선 확인  | `GET`                      | `seq <= limit`(절댓값 비교)인지 확인              |
 | 5. 좌석 차감      | `HINCRBY`                  | 과목별 정원 원자적 차감                            |
@@ -307,7 +324,7 @@ end
 -- 3. 진입 허용선 확인 (기존 대기자 & 신규 대기자 공통)
 local limit = tonumber(redis.call('GET', KEYS[4]))
 if tonumber(seq) > limit then 
-    -- 아직 내 차례가 안 왔으면 계속 대기 (FAIL_ALREADY_IN_QUEUE 절대 반환 금지)
+    -- 아직 내 차례가 안 왔으면 계속 대기 (FAIL_ALREADY_IN_QUEUE는 추상적 개념; 통합 API에서는 PENDING 반환)
     return {status='PENDING', seq=seq, limit=limit} 
 end
 
@@ -459,7 +476,7 @@ public void executeSupplyEngine(String T, int totalParticipantsN) {
 | `multigame:{T}:seq` | String | 유저에게 부여할 고유 순번 발급기 (`INCR` 사용) | Layer 2-2 | 절댓값. 게임 종료 후 삭제 권장 |
 | `multigame:{T}:admission_limit` | String | 입장 진입 허용선 (`Supply Engine`이 매초 업데이트) | Layer 2-2, 2-3 | 절댓값 |
 | `multigame:{T}:seats` | Hash | 과목별 남은 정원 (Field: `subject_id`, Value: 잔여 수) | Layer 2-2 | `HINCRBY`로 원자적 차감 수행 |
-| `multigame:{T}:history` | Hash | 유저별 최종 신청 결과 스냅샷 (Field: `userId`, Value: `status:subject_id:ts`) | Layer 2-2 | `FinalizeJob`이 DB Upsert 시 소비 (`FAIL_ALREADY_IN_QUEUE`는 기록되지 않음) |
+| `multigame:{T}:history` | Hash | 유저별 최종 신청 결과 스냅샷 (Field: `userId`, Value: `status:subject_id:ts`) | Layer 2-2 | `FinalizeJob`이 DB Upsert 시 소비 (`FAIL_ALREADY_IN_QUEUE`는 개념적 상태로 기록되지 않음) |
 | `multigame:{T}:success_members` | Set | 성공적으로 신청을 완료한 유저 ID 집합 | Layer 2-2 | 대기열 통과 후 **과목 완료 등록 책임**에서 중복 수강 검증(`SISMEMBER`)에 사용 |
 
 > **참고 (대기방 참여자 수 카운트 방식):**

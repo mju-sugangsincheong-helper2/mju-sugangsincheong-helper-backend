@@ -76,8 +76,9 @@ public class MultigameReservationService {
         // 예약 생성 시 즉시 WAITING 상태로 초기화하여 테스트 가능하게 함
         // 운영 환경에서는 LifecycleScheduler가 T-5m에 자동으로 초기화
         devGameInitializer.ifPresent(initializer -> {
-            initializer.initializeGame(multigameId, 1);
-            log.info("[DEV] 예약 생성 시 게임 자동 초기화: multigameId={}", multigameId);
+            int participantCount = reservationRepository.findByStartTime(multigameId).size();
+            initializer.initializeGame(multigameId, participantCount);
+            log.info("[DEV] 예약 생성 시 게임 자동 초기화: multigameId={}, participantCount={}", multigameId, participantCount);
         });
 
         return MultigameReservationResponse.from(saved);

@@ -2,18 +2,18 @@ package com.mjusugangsincheonghelper.multigame.session.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import com.mjusugangsincheonghelper.database.entity.MultigameReservationEntity;
 import com.mjusugangsincheonghelper.database.repository.MultigameReservationRepository;
 import com.mjusugangsincheonghelper.global.config.AdvisoryLockService;
 import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -21,7 +21,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -49,6 +51,15 @@ class MultigameLifecycleSchedulerTest {
 
 	@Mock
 	private HashOperations<String, Object, Object> hashOperations;
+
+	@SuppressWarnings("unchecked")
+	private Cursor<String> cursorOf(String... keys) {
+		Iterator<String> it = List.of(keys).iterator();
+		Cursor<String> cursor = mock(Cursor.class);
+		lenient().when(cursor.hasNext()).thenAnswer(invocation -> it.hasNext());
+		lenient().when(cursor.next()).thenAnswer(invocation -> it.next());
+		return cursor;
+	}
 
 	@Nested
 	@DisplayName("initializeGame 메서드는")
@@ -138,13 +149,12 @@ class MultigameLifecycleSchedulerTest {
 		void it_returns_heartbeat_count() throws Exception {
 			// Given
 			String t = "20260726100000";
-			Set<String> keys = Set.of(
+			Cursor<String> cursor = cursorOf(
 					MultigameRedisKeyProvider.heartbeat(t, 1L),
 					MultigameRedisKeyProvider.heartbeat(t, 2L),
 					MultigameRedisKeyProvider.heartbeat(t, 3L)
 			);
-
-			given(stringRedisTemplate.keys(MultigameRedisKeyProvider.heartbeatPattern(t))).willReturn(keys);
+			doReturn(cursor).when(stringRedisTemplate).scan(any(ScanOptions.class));
 
 			MultigameLifecycleScheduler scheduler = createScheduler();
 
@@ -163,7 +173,7 @@ class MultigameLifecycleSchedulerTest {
 		void it_returns_zero_when_no_heartbeats() throws Exception {
 			// Given
 			String t = "20260726100000";
-			given(stringRedisTemplate.keys(MultigameRedisKeyProvider.heartbeatPattern(t))).willReturn(Set.of());
+			doReturn(cursorOf()).when(stringRedisTemplate).scan(any(ScanOptions.class));
 
 			MultigameLifecycleScheduler scheduler = createScheduler();
 
@@ -178,11 +188,11 @@ class MultigameLifecycleSchedulerTest {
 		}
 
 		@Test
-		@DisplayName("keys가 null이면 0을 반환한다")
-		void it_returns_zero_when_keys_is_null() throws Exception {
+		@DisplayName("scan 예외 발생 시 0을 반환한다")
+		void it_returns_zero_when_scan_throws_exception() throws Exception {
 			// Given
 			String t = "20260726100000";
-			given(stringRedisTemplate.keys(MultigameRedisKeyProvider.heartbeatPattern(t))).willReturn(null);
+			given(stringRedisTemplate.scan(any(ScanOptions.class))).willThrow(new RuntimeException("Redis error"));
 
 			MultigameLifecycleScheduler scheduler = createScheduler();
 

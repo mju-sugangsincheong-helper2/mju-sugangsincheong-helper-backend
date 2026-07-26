@@ -57,7 +57,7 @@ class MultigameDashboardServiceTest {
 
 		Page<MultigameResultDetailEntity> detailPage = new PageImpl<>(List.of(myDetail));
 
-		given(resultRepository.findByDate(any())).willReturn(List.of(todayGame));
+		given(resultRepository.findAllByOrderByStartTimeAsc()).willReturn(List.of(todayGame));
 		given(resultDetailRepository.findByMemberIdOrderByCreatedAtDesc(any(), any(Pageable.class)))
 				.willReturn(detailPage);
 		given(resultRepository.findById("20260725120000")).willReturn(Optional.of(todayGame));
@@ -88,7 +88,7 @@ class MultigameDashboardServiceTest {
 		// given
 		Long memberId = 1L;
 
-		given(resultRepository.findByDate(any())).willReturn(List.of());
+		given(resultRepository.findAllByOrderByStartTimeAsc()).willReturn(List.of());
 		given(resultDetailRepository.findByMemberIdOrderByCreatedAtDesc(any(), any(Pageable.class)))
 				.willReturn(Page.empty());
 		given(resultRepository.countTotalGames()).willReturn(0L);

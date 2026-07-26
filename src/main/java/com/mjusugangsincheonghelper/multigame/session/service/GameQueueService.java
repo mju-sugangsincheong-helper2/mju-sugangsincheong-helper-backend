@@ -77,6 +77,9 @@ public class GameQueueService {
 			case "FAIL_DUPLICATE" -> GameRequestResponse.builder()
 					.status("FAIL_DUPLICATE")
 					.build();
+			case "FAIL_ALREADY_IN_QUEUE" -> GameRequestResponse.builder()
+					.status("FAIL_ALREADY_IN_QUEUE")
+					.build();
 			default -> throw new BaseException(ErrorCode.MULTIGAME_LUA_SCRIPT_ERROR);
 		};
 	}

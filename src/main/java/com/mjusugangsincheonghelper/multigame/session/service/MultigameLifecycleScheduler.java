@@ -10,11 +10,12 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
@@ -23,7 +24,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Profile("!dev")
+@Profile("prod")
 public class MultigameLifecycleScheduler {
 
 	private static final int SUBJECT_COUNT = 6;
@@ -41,6 +42,7 @@ public class MultigameLifecycleScheduler {
 	@Qualifier("multigameScheduler")
 	private final TaskScheduler multigameScheduler;
 
+
 	@PostConstruct
 	public void init() {
 		multigameScheduler.schedule(this::waitingJob, new CronTrigger(WAITING_CRON));
@@ -51,30 +53,48 @@ public class MultigameLifecycleScheduler {
 	}
 
 	private void recoverOnStartup() {
-		Set<String> stateKeys = stringRedisTemplate.keys("multigame::*::state::control");
-		if (stateKeys == null || stateKeys.isEmpty()) return;
-
 		LocalDateTime now = LocalDateTime.now();
-		String currentT = GameTimeCalculator.computeCurrentT(now);
 
-		for (String key : stateKeys) {
-			String t = key.replace("multigame::", "").replace("::state::control", "");
-			String state = stringRedisTemplate.opsForValue().get(key);
+		ScanOptions scanOptions = ScanOptions.scanOptions()
+				.match("multigame::*::state::control")
+				.count(100)
+				.build();
 
-			if (state == null) continue;
+		try (Cursor<String> cursor = stringRedisTemplate.scan(scanOptions)) {
+			while (cursor.hasNext()) {
+				String key = cursor.next();
+				String state = stringRedisTemplate.opsForValue().get(key);
+				if (state == null) continue;
 
-			if (t.compareTo(currentT) < 0
-					|| "WAITING".equals(state)
-					|| "READY".equals(state)
-					|| "PROGRESS".equals(state)
-					|| "ENDED".equals(state)) {
-				stringRedisTemplate.opsForValue().set(key, "CANCELLED");
-				log.warn("Server restart recovery: game {} state {} -> CANCELLED", t, state);
+				String t = key.replace("multigame::", "").replace("::state::control", "");
+
+				// Terminal states are fine as-is
+				if ("FINALIZE".equals(state) || "CANCELLED".equals(state)) continue;
+
+				LocalDateTime gameTime = GameTimeCalculator.parseT(t);
+
+				// Game window: [T-5m, T+5m)
+				// If the window has ended (now >= T+5m), cancel non-terminal states
+				if (now.isAfter(gameTime.plusMinutes(5))) {
+					stringRedisTemplate.opsForValue().set(key, "CANCELLED");
+					log.warn("Server restart recovery: past game {} state {} -> CANCELLED", t, state);
+					continue;
+				}
+
+				// Games within the current window:
+				// - WAITING / READY: preserved (scheduler cron will handle them)
+				// - PROGRESS / ENDED: cancelled (active process died with old instance)
+				if ("PROGRESS".equals(state) || "ENDED".equals(state)) {
+					stringRedisTemplate.opsForValue().set(key, "CANCELLED");
+					log.warn("Server restart recovery: active game {} state {} -> CANCELLED", t, state);
+				}
 			}
+		} catch (Exception e) {
+			log.error("Server restart recovery: error scanning state keys", e);
 		}
 	}
 
-	private void waitingJob() {
+	void waitingJob() {
 		String t = GameTimeCalculator.computeNextT(LocalDateTime.now());
 		String stateKey = MultigameRedisKeyProvider.state(t);
 
@@ -112,7 +132,7 @@ public class MultigameLifecycleScheduler {
 		}
 	}
 
-	private void readyJob() {
+	void readyJob() {
 		String t = GameTimeCalculator.computeNextT(LocalDateTime.now());
 		String stateKey = MultigameRedisKeyProvider.state(t);
 
@@ -156,7 +176,7 @@ public class MultigameLifecycleScheduler {
 		String t = GameTimeCalculator.computeCurrentT(LocalDateTime.now());
 		String stateKey = MultigameRedisKeyProvider.state(t);
 
-		if (!advisoryLockService.tryXactLock("progressJob", t)) return;
+		if (!advisoryLockService.trySessionLock("progressJob", t)) return;
 
 		try {
 			String state = stringRedisTemplate.opsForValue().get(stateKey);
@@ -168,18 +188,10 @@ public class MultigameLifecycleScheduler {
 
 			switch (state) {
 				case "READY" -> {
-					if (!advisoryLockService.trySessionLock("progressJob", t)) {
-						stringRedisTemplate.opsForValue().set(stateKey, "CANCELLED");
-						return;
-					}
-					try {
-						stringRedisTemplate.opsForValue().set(stateKey, "PROGRESS");
-						int participants = countHeartbeats(t);
-						supplyEngineService.execute(t, participants);
-						log.info("ProgressJob: game {} PROGRESS completed", t);
-					} finally {
-						advisoryLockService.releaseSessionLock("progressJob", t);
-					}
+					stringRedisTemplate.opsForValue().set(stateKey, "PROGRESS");
+					int participants = countHeartbeats(t);
+					supplyEngineService.execute(t, participants);
+					log.info("ProgressJob: game {} PROGRESS completed", t);
 				}
 				case "PROGRESS", "CANCELLED", "FINALIZE" -> {
 				}
@@ -192,11 +204,12 @@ public class MultigameLifecycleScheduler {
 				}
 			}
 		} finally {
+			advisoryLockService.releaseSessionLock("progressJob", t);
 			log.debug("ProgressJob: completed for {}", t);
 		}
 	}
 
-	private void endingJob() {
+	void endingJob() {
 		String t = GameTimeCalculator.computeCurrentT(LocalDateTime.now());
 		String stateKey = MultigameRedisKeyProvider.state(t);
 
@@ -247,7 +260,22 @@ public class MultigameLifecycleScheduler {
 	}
 
 	private int countHeartbeats(String t) {
-		Set<String> keys = stringRedisTemplate.keys(MultigameRedisKeyProvider.heartbeatPattern(t));
-		return keys != null ? keys.size() : 0;
+		String pattern = MultigameRedisKeyProvider.heartbeatPattern(t);
+		ScanOptions scanOptions = ScanOptions.scanOptions()
+				.match(pattern)
+				.count(100)
+				.build();
+
+		try (Cursor<String> cursor = stringRedisTemplate.scan(scanOptions)) {
+			int count = 0;
+			while (cursor.hasNext()) {
+				cursor.next();
+				count++;
+			}
+			return count;
+		} catch (Exception e) {
+			log.error("Failed to count heartbeats for t={}", t, e);
+			return 0;
+		}
 	}
 }

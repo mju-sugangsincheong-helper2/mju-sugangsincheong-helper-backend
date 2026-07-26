@@ -7,11 +7,15 @@ import com.mjusugangsincheonghelper.database.repository.MultigameResultRepositor
 import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
 import java.time.Instant;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -23,7 +27,10 @@ public class MultigameFinalizeService {
 	private final MultigameResultRepository resultRepository;
 	private final MultigameResultDetailRepository resultDetailRepository;
 
-	@Transactional
+	@Lazy
+	@Autowired
+	private MultigameFinalizeService self;
+
 	public void finalizeGame(String t) {
 		String stateKey = MultigameRedisKeyProvider.state(t);
 		String state = stringRedisTemplate.opsForValue().get(stateKey);
@@ -35,7 +42,7 @@ public class MultigameFinalizeService {
 
 		switch (state) {
 			case "ENDED" -> {
-				upsertResults(t);
+				self.upsertResultsInNewTransaction(t);
 				stringRedisTemplate.opsForValue().set(stateKey, "FINALIZE");
 				log.info("FinalizeJob: game {} -> FINALIZE", t);
 			}
@@ -45,6 +52,11 @@ public class MultigameFinalizeService {
 				stringRedisTemplate.opsForValue().set(stateKey, "CANCELLED");
 			}
 		}
+	}
+
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void upsertResultsInNewTransaction(String t) {
+		upsertResults(t);
 	}
 
 	private void upsertResults(String t) {
@@ -73,7 +85,7 @@ public class MultigameFinalizeService {
 		}
 
 		int participantCount = countHeartbeats(t);
-		int capacity = participantCount / 2;
+		int capacity = Math.max(1, participantCount / 2);
 
 		resultRepository.findById(t)
 				.ifPresentOrElse(
@@ -90,7 +102,22 @@ public class MultigameFinalizeService {
 	}
 
 	private int countHeartbeats(String t) {
-		Set<String> keys = stringRedisTemplate.keys(MultigameRedisKeyProvider.heartbeatPattern(t));
-		return keys != null ? keys.size() : 0;
+		String pattern = MultigameRedisKeyProvider.heartbeatPattern(t);
+		ScanOptions scanOptions = ScanOptions.scanOptions()
+				.match(pattern)
+				.count(100)
+				.build();
+
+		try (Cursor<String> cursor = stringRedisTemplate.scan(scanOptions)) {
+			int count = 0;
+			while (cursor.hasNext()) {
+				cursor.next();
+				count++;
+			}
+			return count;
+		} catch (Exception e) {
+			log.error("Failed to count heartbeats for t={}", t, e);
+			return 0;
+		}
 	}
 }

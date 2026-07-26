@@ -1,9 +1,10 @@
 package com.mjusugangsincheonghelper.multigame.session.service;
 
 import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +25,21 @@ public class WaitingRoomService {
 
 	public int countParticipants(String t) {
 		String pattern = MultigameRedisKeyProvider.heartbeatPattern(t);
-		Set<String> keys = stringRedisTemplate.keys(pattern);
-		return keys != null ? keys.size() : 0;
+		ScanOptions scanOptions = ScanOptions.scanOptions()
+				.match(pattern)
+				.count(100)
+				.build();
+
+		try (Cursor<String> cursor = stringRedisTemplate.scan(scanOptions)) {
+			int count = 0;
+			while (cursor.hasNext()) {
+				cursor.next();
+				count++;
+			}
+			return count;
+		} catch (Exception e) {
+			log.error("Failed to count heartbeat participants for t={}", t, e);
+			return 0;
+		}
 	}
 }

@@ -8,8 +8,6 @@ import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse;
 import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse.MyRecentResult;
 import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse.OverallStats;
 import com.mjusugangsincheonghelper.multigame.dashboard.dto.DashboardResponse.TodayGame;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -39,12 +37,7 @@ public class MultigameDashboardService {
 	}
 
 	private List<TodayGame> getTodayGames() {
-		String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-		String datePattern = today + "%";
-
-		List<MultigameResultEntity> todayResults = resultRepository.findByDate(datePattern);
-
-		return todayResults.stream()
+		return resultRepository.findAllByOrderByStartTimeAsc().stream()
 				.map(result -> TodayGame.builder()
 						.multigameId(result.getStartTime())
 						.participantCount(result.getParticipantCount())

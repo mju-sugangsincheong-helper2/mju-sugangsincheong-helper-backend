@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -31,7 +32,7 @@ public class MultigameSessionController {
 
 	private final MultigameSessionService sessionService;
 
-	@PostMapping(value = "/session/waiting-room", version = "1+")
+	@GetMapping(value = "/session/waiting-room", version = "1+")
 	@Operation(
 			summary = "Enter waiting room",
 			description = "대기방 입장 및 상태 폴링 API (3초 간격 폴링)",
@@ -45,7 +46,7 @@ public class MultigameSessionController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<WaitingRoomResponse>> enterWaitingRoom() {
 		Long memberId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-		String t = GameTimeCalculator.computeNextT(java.time.LocalDateTime.now());
+		String t = GameTimeCalculator.computeActiveGameT(java.time.LocalDateTime.now());
 		WaitingRoomResponse response = sessionService.enterWaitingRoom(t, memberId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
@@ -67,7 +68,7 @@ public class MultigameSessionController {
 			@Parameter(description = "신청 과목 ID (1~6)", example = "1")
 			@RequestParam @Min(1) @Max(6) int subjectId) {
 		Long memberId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-		String t = GameTimeCalculator.computeNextT(java.time.LocalDateTime.now());
+		String t = GameTimeCalculator.computeActiveGameT(java.time.LocalDateTime.now());
 		GameRequestResponse response = sessionService.requestGame(t, memberId, subjectId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
