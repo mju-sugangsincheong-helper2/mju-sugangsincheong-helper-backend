@@ -694,7 +694,7 @@ public class JpaAuditingConfig {
 ```sql
 -- system_config 테이블
     config_key   VARCHAR(100) PRIMARY KEY,    -- 설정 키 (ex: "current_term")
-    config_value TEXT NOT NULL,               -- 설정 값 (ex: "202510")
+    config_value TEXT NOT NULL,               -- 설정 값 (ex: "202620")
 config_type  VARCHAR(20) NOT NULL,        -- STRING, JSON, BOOLEAN
 description  TEXT,                        -- 설정 설명
 created_at   TIMESTAMP WITH TIME ZONE,
@@ -715,7 +715,7 @@ updated_at   TIMESTAMP WITH TIME ZONE
 
 | 키 | 기본값 | 타입 | 설명 |
 |----|--------|------|------|
-| `current_term` | `"202510"` | STRING | 현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기) |
+| `current_term` | `"202620"` | STRING | 현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기) |
 | `notices` | `"[]"` | JSON | 공지사항 목록 |
 | `announcement` | `""` | STRING | 상단 배너 공지 텍스트 |
 
@@ -725,7 +725,7 @@ updated_at   TIMESTAMP WITH TIME ZONE
 
 ```java
 public enum SettingDefinition {
-    CURRENT_TERM("current_term", ConfigType.STRING, "현재 학기 설정", "202510",
+    CURRENT_TERM("current_term", ConfigType.STRING, "현재 학기 설정", "202620",
             raw -> new TermCode(raw),
             raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$")),
     NOTICES("notices", ConfigType.JSON, "공지사항 목록", "[]", ...),

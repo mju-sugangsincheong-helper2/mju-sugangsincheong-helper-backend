@@ -19,7 +19,7 @@
 
 ##### **[핵심 원리]**
 1. **Term(학기) 중심 설계:** 
-   모든 데이터베이스 PK와 Redis Key는 `term`(예: `202610` - 26년도 1학기)을 기준으로 설계됩니다. `PARTITION BY LIST(term)`을 적용하여 학기별로 테이블을 물리적으로 분리하여 대용량 트래픽 상황에서도 높은 조회 성능을 보장합니다.
+   모든 데이터베이스 PK와 Redis Key는 `term`(예: `202620` - 26년도 1학기)을 기준으로 설계됩니다. `PARTITION BY LIST(term)`을 적용하여 학기별로 테이블을 물리적으로 분리하여 대용량 트래픽 상황에서도 높은 조회 성능을 보장합니다.
 2. **그래프 사이클 탐색 (Graph Cycle Detection):**
    사용자의 '버릴 과목 번호 -> 원하는 과목 번호'는 방향 그래프의 간선(Directed Edge)이 됩니다. (예: `10023 -> 40101`) 시스템은 의사가 등록될 때마다 비동기로 그래프를 탐색하여 `10023 -> 40101 -> 30055 -> 10023`과 같은 닫힌 사이클(Cycle)이 발견되면 해당 간선을 생성한 사용자들을 묶어 채팅방(Room)을 생성합니다.
    - 만약 2개 이상의 사이클이 잡히면 모두 등록하여 사용자의 선택권을 보장합니다.
@@ -97,7 +97,7 @@ erDiagram
     }
 
     EXCHANGE_ROOM {
-        VARCHAR term PK "학기 (예: 202610)"
+        VARCHAR term PK "학기 (예: 202620)"
         BIGINT id PK "방 고유 ID"
         VARCHAR cycle_hash "UNIQUE (Intent 조합 해시)"
         VARCHAR status "방 상태 (ACTIVE, PARTIAL_DELETE, PARTIAL_OFF, ALL_DELETE)"

@@ -83,7 +83,7 @@ class ExchangeServiceTest {
 		@DisplayName("유효한 요청이면 교환 의사를 등록하고 응답을 반환한다")
 		void it_creates_intent_and_returns_response() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
@@ -117,7 +117,7 @@ class ExchangeServiceTest {
 		@DisplayName("giveCourseNo와 wantCourseNo가 같으면 예외를 발생시킨다")
 		void it_throws_exception_when_same_course() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
@@ -139,7 +139,7 @@ class ExchangeServiceTest {
 		@DisplayName("중복된 의도가 있으면 예외를 발생시킨다")
 		void it_throws_exception_when_duplicate() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
@@ -170,7 +170,7 @@ class ExchangeServiceTest {
 		@DisplayName("동시성으로 인해 DB 저장 시 중복 예외가 발생하면 EXCHANGE_DUPLICATE_INTENT 예외를 발생시킨다")
 		void it_throws_duplicate_intent_exception_when_db_unique_violation_occurs() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
@@ -196,7 +196,7 @@ class ExchangeServiceTest {
 		@DisplayName("등록 후 pushFeed, evictIntents, enqueueCycleDetection 후처리가 수행된다")
 		void it_performs_aftercare_after_create() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			IntentCreateRequest request = IntentCreateRequest.builder()
 					.giveCourseNo("10001")
@@ -233,7 +233,7 @@ class ExchangeServiceTest {
 		@DisplayName("자신의 의사를 삭제할 수 있다")
 		void it_deletes_own_intent() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long intentId = 100L;
 
@@ -262,7 +262,7 @@ class ExchangeServiceTest {
 		@DisplayName("존재하지 않는 의도면 예외를 발생시킨다")
 		void it_throws_exception_when_not_found() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long intentId = 999L;
 
@@ -283,7 +283,7 @@ class ExchangeServiceTest {
 		@DisplayName("다른 사용자의 의도면 예외를 발생시킨다")
 		void it_throws_exception_when_not_owner() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long ownerId = 1L;
 			Long requesterId = 2L;
 			Long intentId = 100L;
@@ -312,7 +312,7 @@ class ExchangeServiceTest {
 		@DisplayName("이미 삭제된 의도면 예외를 발생시킨다")
 		void it_throws_exception_when_already_deleted() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long intentId = 100L;
 
@@ -341,7 +341,7 @@ class ExchangeServiceTest {
 		@DisplayName("의사 철회 시 연관된 RoomIntent에 markDeleted가 호출된다")
 		void it_cascades_mark_deleted_to_room_intents() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long intentId = 100L;
 			Long roomId = 200L;
@@ -389,7 +389,7 @@ class ExchangeServiceTest {
 		@DisplayName("2인 방에서 1명 이탈 시 방 상태가 ALL_DELETE로 전이된다")
 		void it_transitions_to_all_delete_when_2_person_room_loses_member() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long intentIdA = 100L;
@@ -432,7 +432,7 @@ class ExchangeServiceTest {
 		@DisplayName("3인 방에서 1명 이탈 시 방 상태가 PARTIAL_DELETE로 전이된다")
 		void it_transitions_to_partial_delete_when_3_person_room_loses_member() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long memberIdC = 3L;
@@ -478,7 +478,7 @@ class ExchangeServiceTest {
 		@DisplayName("ALL_DELETE 전이 시 이탈 안내 시스템 메시지가 저장된다")
 		void it_saves_system_message_on_all_delete() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long intentIdA = 100L;
@@ -516,7 +516,7 @@ class ExchangeServiceTest {
 		@DisplayName("삭제 후 본인 intents:cache와 영향받은 참여자 전원의 rooms:cache가 Evict된다")
 		void it_evicts_caches_after_delete() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long intentIdA = 100L;
@@ -561,7 +561,7 @@ class ExchangeServiceTest {
 		@DisplayName("사용자의 의도와 방 목록, 최근 피드를 조회하여 반환한다")
 		void it_returns_main_response() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
@@ -613,7 +613,7 @@ class ExchangeServiceTest {
 		@DisplayName("최근 교환 의도 목록을 반환한다")
 		void it_returns_recent_intents() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long lastIntentId = 0L;
 			int limit = 10;
 
@@ -645,7 +645,7 @@ class ExchangeServiceTest {
 		@DisplayName("방 참여자가 아니면 예외를 발생시킨다")
 		void it_throws_exception_when_not_member() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
 
@@ -665,7 +665,7 @@ class ExchangeServiceTest {
 		@DisplayName("유효한 방 참여자면 메시지 내역을 반환하고 읽음 처리한다")
 		void it_returns_messages_and_updates_read_status() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
 
@@ -712,7 +712,7 @@ class ExchangeServiceTest {
 		@DisplayName("방 멤버가 아니면 예외를 발생시킨다")
 		void it_throws_exception_when_not_member() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
 			MessageSendRequest request = MessageSendRequest.builder().content("Hello").build();
@@ -733,7 +733,7 @@ class ExchangeServiceTest {
 		@DisplayName("방 멤버이지만 활성화된 의도가 없으면 예외를 발생시킨다")
 		void it_throws_exception_when_intent_already_deleted() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
 			MessageSendRequest request = MessageSendRequest.builder().content("Hello").build();
@@ -763,7 +763,7 @@ class ExchangeServiceTest {
 		@DisplayName("유효한 방 멤버이면 메시지를 전송하고 방 목록 캐시를 만료시킨다")
 		void it_sends_message() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
 			MessageSendRequest request = MessageSendRequest.builder().content("Hello").build();
@@ -812,7 +812,7 @@ class ExchangeServiceTest {
 		@DisplayName("방 멤버가 아니면 예외를 발생시킨다")
 		void it_throws_exception_when_not_member() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
 			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
@@ -833,7 +833,7 @@ class ExchangeServiceTest {
 		@DisplayName("방 멤버이면 상태를 토글하고 캐시를 만료시킨다")
 		void it_toggles_room_status() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
 			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
@@ -873,7 +873,7 @@ class ExchangeServiceTest {
 		@DisplayName("토글 OFF 시 삭제된 카드가 없고 일부가 OFF이면 방 상태가 PARTIAL_OFF로 전이된다")
 		void it_transitions_to_partial_off_on_toggle_off() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long roomId = 100L;
@@ -904,7 +904,7 @@ class ExchangeServiceTest {
 		@DisplayName("토글 ON 복귀 시 삭제된 카드도 없고 모두 ON이면 방 상태가 ACTIVE로 전이된다")
 		void it_transitions_to_active_on_toggle_on() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long roomId = 100L;

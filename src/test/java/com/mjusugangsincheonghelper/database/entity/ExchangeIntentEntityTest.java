@@ -18,7 +18,7 @@ class ExchangeIntentEntityTest {
 		void it_sets_isDeleted_to_true() {
 			// Given
 			ExchangeIntentEntity entity = ExchangeIntentEntity.builder()
-					.term("202510")
+					.term("202620")
 					.memberId(1L)
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
@@ -44,7 +44,7 @@ class ExchangeIntentEntityTest {
 		void it_sets_isDeleted_to_false_by_default() {
 			// Given & When
 			ExchangeIntentEntity entity = ExchangeIntentEntity.builder()
-					.term("202510")
+					.term("202620")
 					.memberId(1L)
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")

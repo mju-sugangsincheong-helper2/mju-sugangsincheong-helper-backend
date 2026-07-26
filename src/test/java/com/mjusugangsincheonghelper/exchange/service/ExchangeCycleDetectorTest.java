@@ -68,7 +68,7 @@ class ExchangeCycleDetectorTest {
 		@DisplayName("사이클이 감지되면 방 생성을 요청한다")
 		void it_creates_room_when_cycle_is_detected() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long triggerIntentId = 1L;
 
 			// 사이클: 1 -> 2 -> 3 -> 1
@@ -107,7 +107,7 @@ class ExchangeCycleDetectorTest {
 		@DisplayName("2자 간 직관적 사이클을 탐색하여 방 생성을 요청한다")
 		void it_detects_2_person_cycle() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long triggerIntentId = 1L;
 
 			// 사이클: A(101 -> 102), B(102 -> 101)
@@ -141,7 +141,7 @@ class ExchangeCycleDetectorTest {
 		@DisplayName("트리거된 Intent가 이미 존재하지 않으면 매칭 처리를 건너뛴다")
 		void it_skips_when_trigger_intent_not_found() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long triggerIntentId = 1L;
 
 			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
@@ -159,7 +159,7 @@ class ExchangeCycleDetectorTest {
 		@DisplayName("트리거된 Intent가 이미 삭제 상태이면 매칭 처리를 건너뛴다")
 		void it_skips_when_trigger_intent_is_deleted() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long triggerIntentId = 1L;
 
 			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
@@ -183,7 +183,7 @@ class ExchangeCycleDetectorTest {
 		@DisplayName("사이클이 존재하지 않으면 방 생성을 건너뛴다")
 		void it_skips_when_no_cycle_detected() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long triggerIntentId = 1L;
 
 			// 경로만 존재하고 닫힌 루프가 없음: 1 -> 2 -> 3
@@ -214,7 +214,7 @@ class ExchangeCycleDetectorTest {
 		@DisplayName("동일한 사이클 해시의 방이 존재하면 방 생성을 요청하지 않는다")
 		void it_skips_when_room_already_exists() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long triggerIntentId = 1L;
 
 			ExchangeIntentEntity intent1 = ExchangeIntentEntity.builder()

@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS course (
 ) PARTITION BY LIST (term);
 
 -- 파티션은 매 학기 수동 추가
--- CREATE TABLE course_202510 PARTITION OF course FOR VALUES IN ('202510');
+-- CREATE TABLE course_202620 PARTITION OF course FOR VALUES IN ('202620');
 ```
 
 ##### 파티션 자동 생성 트리거 (선택)

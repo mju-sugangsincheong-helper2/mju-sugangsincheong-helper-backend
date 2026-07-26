@@ -86,7 +86,7 @@ class CourseServiceTest {
 			CourseSectionImportResponse response = courseService.importSections(items);
 
 			assertThat(response.getImportedCount()).isEqualTo(2);
-			assertThat(response.getTerms()).containsExactly("202610", "202615");
+			assertThat(response.getTerms()).containsExactly("202620", "202615");
 		}
 	}
 

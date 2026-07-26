@@ -64,7 +64,7 @@ class ExchangeRoomCreationServiceTest {
 		@DisplayName("유효한 사이클 정보로 방을 성공적으로 생성한다")
 		void it_creates_room_successfully() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String cycleHash = "hash123";
 
 			ExchangeIntentEntity intent1 = ExchangeIntentEntity.builder()
@@ -146,7 +146,7 @@ class ExchangeRoomCreationServiceTest {
 		@DisplayName("사이클 구성원 중 삭제된 의사가 있는 경우 방 생성을 건너뛴다")
 		void it_skips_creation_when_intent_is_deleted() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String cycleHash = "hash123";
 
 			ExchangeIntentEntity intent1 = ExchangeIntentEntity.builder()
@@ -175,7 +175,7 @@ class ExchangeRoomCreationServiceTest {
 		@DisplayName("동일한 cycleHash를 가진 방이 이미 존재하면 방 생성을 건너뛴다")
 		void it_skips_creation_when_room_already_exists() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String cycleHash = "hash123";
 
 			ExchangeIntentEntity intent1 = ExchangeIntentEntity.builder()
@@ -205,7 +205,7 @@ class ExchangeRoomCreationServiceTest {
 		@DisplayName("방 생성 시 시스템 웰컴 메시지가 올바른 내용으로 저장된다")
 		void it_creates_welcome_message_with_correct_content() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String cycleHash = "hash123";
 
 			ExchangeIntentEntity intent1 = ExchangeIntentEntity.builder()

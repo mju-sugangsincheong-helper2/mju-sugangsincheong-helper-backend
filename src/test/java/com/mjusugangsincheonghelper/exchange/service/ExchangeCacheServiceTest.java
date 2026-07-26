@@ -89,7 +89,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("캐시가 존재하면 캐시된 피드 리스트를 반환한다")
 		void it_returns_cached_feed() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String key = "exchange::" + term + ":feed:cache";
 			FeedCacheDto dto = FeedCacheDto.builder().intentId(1L).build();
 
@@ -108,7 +108,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("캐시가 비어있으면 DB에서 조회하여 피드를 재빌드하고 반환한다")
 		void it_rebuilds_feed_from_db_on_cache_miss() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String key = "exchange::" + term + ":feed:cache";
 
 			given(listOperations.range(key, 0, -1)).willReturn(Collections.emptyList());
@@ -141,7 +141,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("인덱스 조건에 맞게 최근 피드 슬라이스를 페이징 처리하여 반환한다")
 		void it_returns_feed_slice() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String key = "exchange::" + term + ":feed:cache";
 
 			FeedCacheDto dto1 = FeedCacheDto.builder().intentId(10L).build();
@@ -171,7 +171,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("피드를 캐시에 추가하고 크기를 제한하며 TTL을 설정한다")
 		void it_pushes_feed_and_trims() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String key = "exchange::" + term + ":feed:cache";
 			FeedCacheDto dto = FeedCacheDto.builder().intentId(1L).build();
 
@@ -195,7 +195,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("캐시를 즉시 삭제하고 2초 후 2차 이중 무효화를 스케줄링한다")
 		void it_deletes_cache_and_schedules_double_evict() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			String key = "exchange::" + term + ":feed:cache";
 
 			doAnswer(invocation -> {
@@ -220,7 +220,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("유저의 의사 캐시가 존재하면 캐시를 반환한다")
 		void it_returns_cached_intents() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			String key = "exchange::" + term + ":member:" + memberId + ":intents:cache";
 			IntentCacheDto dto = IntentCacheDto.builder().intentId(5L).build();
@@ -245,7 +245,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("유저의 방 캐시가 존재하면 캐시를 반환하고, 없으면 DB에서 조인 조회하여 재빌드한다")
 		void it_returns_cached_rooms_or_rebuilds_from_db() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			String key = "exchange::" + term + ":member:" + memberId + ":rooms:cache";
 
@@ -296,7 +296,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("캐시를 즉시 삭제하고 2초 후 2차 이중 무효화를 스케줄링한다")
 		void it_deletes_cache_and_schedules_double_evict() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			String key = "exchange::" + term + ":member:" + memberId + ":intents:cache";
 
@@ -322,7 +322,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("캐시를 즉시 삭제하고 2초 후 2차 이중 무효화를 스케줄링한다")
 		void it_deletes_cache_and_schedules_double_evict() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			String key = "exchange::" + term + ":member:" + memberId + ":rooms:cache";
 
@@ -348,7 +348,7 @@ class ExchangeCacheServiceTest {
 		@DisplayName("캐시가 비어있으면 DB에서 조회하여 재빌드한다")
 		void it_rebuilds_intents_from_db_on_cache_miss() {
 			// Given
-			String term = "202510";
+			String term = "202620";
 			Long memberId = 1L;
 			String key = "exchange::" + term + ":member:" + memberId + ":intents:cache";
 

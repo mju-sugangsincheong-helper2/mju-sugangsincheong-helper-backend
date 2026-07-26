@@ -192,7 +192,7 @@ public SingleGameService(
 
 | 설정 키 | 타입 | 기본값 | 설명 | 파싱 타입 |
 |---------|------|--------|------|-----------|
-| `current_term` | STRING | `"202510"` | 현재 학기 (YYYY+학기코드) | `TermCode` |
+| `current_term` | STRING | `"202620"` | 현재 학기 (YYYY+학기코드) | `TermCode` |
 | `notices` | JSON | `[]` | 공지사항 목록 | `JsonNode` |
 | `announcement` | STRING | `""` | 상단 배너 공지 | `String` |
 
@@ -206,7 +206,7 @@ public enum SettingDefinition {
         "current_term",
         ConfigType.STRING,
         "현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기)",
-        "202510",
+        "202620",
         raw -> new TermCode(raw),
         raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$")
     ),

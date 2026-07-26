@@ -15,7 +15,7 @@ public enum SettingDefinition {
 			"current_term",
 			ConfigType.STRING,
 			"현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기)",
-			"202510",
+			"202620",
 			raw -> new TermCode(raw),
 			raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$")
 	),

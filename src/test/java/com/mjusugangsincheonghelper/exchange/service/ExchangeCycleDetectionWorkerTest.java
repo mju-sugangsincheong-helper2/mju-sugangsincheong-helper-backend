@@ -84,14 +84,14 @@ class ExchangeCycleDetectionWorkerTest {
 			PgmqMessageDto messageDto = PgmqMessageDto.builder()
 					.msgId(123L)
 					.readCt(1)
-					.message("{\"term\":\"202510\",\"intentId\":10}")
+					.message("{\"term\":\"202620\",\"intentId\":10}")
 					.build();
 
 			given(pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, 30, 1))
 					.willReturn(List.of(messageDto));
 
 			CycleDetectionMessage message = CycleDetectionMessage.builder()
-					.term("202510")
+					.term("202620")
 					.intentId(10L)
 					.memberId(1L)
 					.giveCourseNo("10001")
@@ -106,7 +106,7 @@ class ExchangeCycleDetectionWorkerTest {
 
 			// Then
 			verify(cycleDetector).detectCyclesAndCreateRooms(
-					"202510", 10L, 1L, "10001", "10002"
+					"202620", 10L, 1L, "10001", "10002"
 			);
 			verify(pgmqService).delete(ExchangeCycleDetector.QUEUE_NAME, 123L);
 		}
@@ -141,7 +141,7 @@ class ExchangeCycleDetectionWorkerTest {
 			PgmqMessageDto messageDto = PgmqMessageDto.builder()
 					.msgId(123L)
 					.readCt(6)
-					.message("{\"term\":\"202510\",\"intentId\":10}")
+					.message("{\"term\":\"202620\",\"intentId\":10}")
 					.build();
 
 			given(pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, 30, 1))
