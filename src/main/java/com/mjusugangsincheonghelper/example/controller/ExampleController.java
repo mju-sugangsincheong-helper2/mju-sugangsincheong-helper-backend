@@ -54,7 +54,7 @@ public class ExampleController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<ExampleResponse>> hello(
 			@Parameter(description = "인사할 이름", example = "world")
-			@RequestParam(defaultValue = "world") String name) {
+			@RequestParam(name = "name", defaultValue = "world") String name) {
 		ExampleResponse response = exampleService.hello(name);
 		return ResponseEntity
 				.status(HttpStatus.OK)
@@ -124,7 +124,7 @@ public class ExampleController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<ExampleDetailResponse>> detail(
 			@Parameter(description = "예제 ID", example = "1")
-			@PathVariable Long id) {
+			@PathVariable("id") Long id) {
 		ExampleDetailResponse response = exampleService.findById(id);
 		return ResponseEntity
 				.status(HttpStatus.OK)
@@ -148,9 +148,9 @@ public class ExampleController {
 	})
 	public ResponseEntity<PagedSuccessResponseEnvelope<ExamplePageItem>> page(
 			@Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
-			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(name = "page", defaultValue = "0") int page,
 			@Parameter(description = "페이지 크기", example = "10")
-			@RequestParam(defaultValue = "10") int size) {
+			@RequestParam(name = "size", defaultValue = "10") int size) {
 		Page<ExamplePageItem> response = exampleService.list(page, size);
 		return ResponseEntity
 				.status(HttpStatus.OK)
@@ -175,7 +175,7 @@ public class ExampleController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<ExampleDetailResponse>> update(
 			@Parameter(description = "예제 ID", example = "1")
-			@PathVariable Long id,
+			@PathVariable("id") Long id,
 			@Valid @RequestBody ExampleUpdateRequest request) {
 		ExampleDetailResponse response = exampleService.update(id, request);
 		return ResponseEntity
@@ -200,7 +200,7 @@ public class ExampleController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<Void>> delete(
 			@Parameter(description = "예제 ID", example = "1")
-			@PathVariable Long id) {
+			@PathVariable("id") Long id) {
 		exampleService.delete(id);
 		return ResponseEntity
 				.status(HttpStatus.OK)

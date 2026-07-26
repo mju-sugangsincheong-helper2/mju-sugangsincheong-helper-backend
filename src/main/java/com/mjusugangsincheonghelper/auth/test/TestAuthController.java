@@ -81,7 +81,7 @@ public class TestAuthController {
 	)
 	@Transactional
 	public ResponseEntity<SingleSuccessResponseEnvelope<TestLoginResponse>> testLogin(
-			@RequestParam String name,
+			@RequestParam("name") String name,
 			HttpServletResponse response) {
 		String testKey = "test_" + name;
 

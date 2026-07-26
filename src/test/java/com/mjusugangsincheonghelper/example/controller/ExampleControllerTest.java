@@ -46,8 +46,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import org.springframework.test.context.ActiveProfiles;
+
 @WebMvcTest(ExampleController.class)
 @AutoConfigureMockMvc(addFilters = false)
+@ActiveProfiles("test")
 @Import({GlobalExceptionHandler.class, GlobalMetaFilter.class, ClientInfoExtractor.class})
 @WithMockUser
 @DisplayName("ExampleController 슬라이스 테스트")

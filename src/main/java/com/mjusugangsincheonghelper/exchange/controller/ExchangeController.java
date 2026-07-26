@@ -82,7 +82,7 @@ public class ExchangeController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<IntentDeleteResponse>> deleteIntent(
 			@Parameter(description = "교환 의도 ID", example = "10524")
-			@PathVariable Long intentId) {
+			@PathVariable("intentId") Long intentId) {
 		Long memberId = getCurrentMemberId();
 		IntentDeleteResponse response = exchangeService.deleteIntent(memberId, intentId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
@@ -118,9 +118,9 @@ public class ExchangeController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<RecentIntentsResponse>> getRecentIntents(
 			@Parameter(description = "마지막으로 확인한 의도 ID (미전달 시 최신부터)", example = "0")
-			@RequestParam(required = false, defaultValue = "0") Long lastIntentId,
+			@RequestParam(name = "lastIntentId", required = false, defaultValue = "0") Long lastIntentId,
 			@Parameter(description = "조회할 개수", example = "10")
-			@RequestParam(defaultValue = "10") int limit) {
+			@RequestParam(name = "limit", defaultValue = "10") int limit) {
 		RecentIntentsResponse response = exchangeService.getRecentIntents(lastIntentId, limit);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
@@ -139,11 +139,11 @@ public class ExchangeController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<MessageResponse>> getMessages(
 			@Parameter(description = "채팅방 ID", example = "402")
-			@PathVariable Long roomId,
+			@PathVariable("roomId") Long roomId,
 			@Parameter(description = "마지막으로 확인한 메시지 ID (미전달 시 최신부터)", example = "999999999")
-			@RequestParam(required = false, defaultValue = "999999999") Long lastMessageId,
+			@RequestParam(name = "lastMessageId", required = false, defaultValue = "999999999") Long lastMessageId,
 			@Parameter(description = "조회할 개수", example = "20")
-			@RequestParam(defaultValue = "20") int size) {
+			@RequestParam(name = "size", defaultValue = "20") int size) {
 		Long memberId = getCurrentMemberId();
 		MessageResponse response = exchangeService.getMessages(memberId, roomId, lastMessageId, size);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
@@ -165,7 +165,7 @@ public class ExchangeController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<MessageSendResponse>> sendMessage(
 			@Parameter(description = "채팅방 ID", example = "402")
-			@PathVariable Long roomId,
+			@PathVariable("roomId") Long roomId,
 			@Valid @RequestBody MessageSendRequest request) {
 		Long memberId = getCurrentMemberId();
 		MessageSendResponse response = exchangeService.sendMessage(memberId, roomId, request);
@@ -187,7 +187,7 @@ public class ExchangeController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<RoomToggleResponse>> toggleRoom(
 			@Parameter(description = "채팅방 ID", example = "402")
-			@PathVariable Long roomId,
+			@PathVariable("roomId") Long roomId,
 			@RequestBody RoomToggleRequest request) {
 		Long memberId = getCurrentMemberId();
 		RoomToggleResponse response = exchangeService.toggleRoom(memberId, roomId, request);

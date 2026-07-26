@@ -22,6 +22,21 @@ class SystemConfigServiceTest {
 	@Autowired
 	private com.mjusugangsincheonghelper.database.repository.SystemConfigRepository systemConfigRepository;
 
+	@Autowired
+	private org.springframework.cache.CacheManager cacheManager;
+
+	@org.junit.jupiter.api.BeforeEach
+	void setUp() {
+		if (cacheManager != null) {
+			cacheManager.getCacheNames().forEach(name -> {
+				var cache = cacheManager.getCache(name);
+				if (cache != null) {
+					cache.clear();
+				}
+			});
+		}
+	}
+
 	@Test
 	@DisplayName("getRaw는 DB에서 설정 값을 조회한다")
 	void it_returns_config_value_from_db() {

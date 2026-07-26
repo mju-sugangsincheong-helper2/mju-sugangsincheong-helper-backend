@@ -70,7 +70,7 @@ class SingleGameServiceTest {
 	void setUp() {
 		TransactionSynchronizationManager.initSynchronization();
 		singleGameService = new SingleGameService(
-				singleGameRepository, singleGameDetailRepository, memberRepository, cacheManager, 1, 60000);
+				singleGameRepository, singleGameDetailRepository, memberRepository, cacheManager, new SingleGameFeedbackEngine(), 1, 60000);
 	}
 
 	@AfterEach
@@ -762,7 +762,7 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("N=1일 때 initialSprint는 0이다")
+		@DisplayName("N=1일 때 initialSprint는 null이다")
 		void it_returns_zero_initial_sprint_when_n_is_1() {
 			SingleGameEntity game = SingleGameEntity.builder()
 					.memberId(1L).tTotal(5000).tEnterMain(2000)
@@ -784,7 +784,7 @@ class SingleGameServiceTest {
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L);
 
-			assertThat(response.getSummary().getInitialSprintSpeed()).isEqualTo(0);
+			assertThat(response.getSummary().getInitialSprintSpeed()).isNull();
 		}
 
 		@Test
@@ -818,6 +818,33 @@ class SingleGameServiceTest {
 		}
 
 		@Test
+		@DisplayName("N=1일 때 initialSprintSpeed와 paceDeviation은 null이다")
+		void it_returns_null_sprint_and_pace_when_n_is_1() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(5000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(1)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(1000).tClickYes(500).tClickOk(300).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(1)).willReturn(50L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(1, 5000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(1)).willReturn(List.of());
+			given(singleGameRepository.findAllDetailsByTotalCourses(1)).willReturn(List.of());
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(1, 2000)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getInitialSprintSpeed()).isNull();
+			assertThat(response.getSummary().getPaceDeviation()).isNull();
+		}
+
+		@Test
 		@DisplayName("피드백 코드 GOD_TIER_PHYSICAL이 반환된다")
 		void it_returns_god_tier_physical_feedback() {
 			SingleGameEntity game = SingleGameEntity.builder()
@@ -839,13 +866,206 @@ class SingleGameServiceTest {
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000)).willReturn(List.of(1L));
 			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(List.of());
+
+			// Mock details for 100 players so aimP <= 30 and burstP <= 30
+			List<Object[]> allDetails = new java.util.ArrayList<>();
+			for (long gId = 1L; gId <= 100L; gId++) {
+				int clickCC = (gId == 1L) ? 100 : (int) gId * 50;
+				int clickY = (gId == 1L) ? 50 : (int) gId * 20;
+				int clickOk = (gId == 1L) ? 50 : (int) gId * 20;
+				allDetails.add(new Object[]{gId, 1, clickCC, clickY, clickOk});
+			}
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 200)).willReturn(List.of(1L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L);
 
-			assertThat(response.getSummary().getFeedbackCode()).isNotNull();
-			assertThat(response.getSummary().getFeedbackMessage()).isNotNull();
+			assertThat(response.getSummary().getFeedbackCode()).isEqualTo("GOD_TIER_PHYSICAL");
+			assertThat(response.getSummary().getFeedbackMessage()).contains("압도적이고 완벽한 피지컬");
+		}
+
+		@Test
+		@DisplayName("피드백 코드 PHYSICAL_UPGRADE_NEEDED가 반환된다")
+		void it_returns_physical_upgrade_needed_feedback() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(50000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(5000).tClickYes(2000).tClickOk(2000).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 50000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+
+			List<Object[]> allDetails = new java.util.ArrayList<>();
+			for (long gId = 1L; gId <= 10L; gId++) {
+				int cc = (gId == 1L) ? 5000 : (int) gId * 100;
+				int cy = (gId == 1L) ? 2000 : (int) gId * 50;
+				int cok = (gId == 1L) ? 2000 : (int) gId * 50;
+				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
+			}
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getFeedbackCode()).isEqualTo("PHYSICAL_UPGRADE_NEEDED");
+		}
+
+		@Test
+		@DisplayName("피드백 코드 FAST_BUT_INACCURATE가 반환된다")
+		void it_returns_fast_but_inaccurate_feedback() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(20000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(5000).tClickYes(50).tClickOk(50).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 20000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+
+			List<Object[]> allDetails = new java.util.ArrayList<>();
+			for (long gId = 1L; gId <= 10L; gId++) {
+				int cc = (gId == 1L) ? 5000 : (int) gId * 100;
+				int cy = (gId == 1L) ? 50 : (int) gId * 500;
+				int cok = (gId == 1L) ? 50 : (int) gId * 500;
+				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
+			}
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getFeedbackCode()).isEqualTo("FAST_BUT_INACCURATE");
+		}
+
+		@Test
+		@DisplayName("피드백 코드 PERFECT_ENTRY_START가 반환된다")
+		void it_returns_perfect_entry_start_feedback() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(600).tEnterMain(100)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
+							.tClickCourse(500).tClickYes(50).tClickOk(50).build() // T1 = 600
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 600)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+
+			// Mock 10 players details so player 1 has aimP=40%, burstP=40%, startP=0%
+			List<Object[]> allDetails = new java.util.ArrayList<>();
+			for (long gId = 1L; gId <= 10L; gId++) {
+				int cc = (gId == 1L) ? 500 : (int) gId * 100;
+				int cy = (gId == 1L) ? 50 : (int) gId * 200;
+				int cok = (gId == 1L) ? 50 : (int) gId * 200;
+				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
+			}
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 100)).willReturn(List.of(1L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getFeedbackCode()).isEqualTo("PERFECT_ENTRY_START");
+		}
+
+		@Test
+		@DisplayName("피드백 코드 MACHINE_LIKE_PACE가 반환된다 (N>=3)")
+		void it_returns_machine_like_pace_feedback() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(3000).tEnterMain(1000)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1).tClickCourse(500).tClickYes(250).tClickOk(250).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(2).tClickCourse(500).tClickYes(250).tClickOk(250).build(),
+					SingleGameDetailEntity.builder().gameId(1L).sequence(3).tClickCourse(500).tClickYes(250).tClickOk(250).build()
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 3000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
+
+			List<Object[]> allDetails = new java.util.ArrayList<>();
+			for (long gId = 1L; gId <= 10L; gId++) {
+				for (int seq = 1; seq <= 3; seq++) {
+					int cc = (gId == 1L) ? 500 : (int) gId * 100;
+					int cy = (gId == 1L) ? 250 : (int) gId * 50 + seq * 10; // other players have paceStddev > 0
+					int cok = (gId == 1L) ? 250 : (int) gId * 50;
+					allDetails.add(new Object[]{gId, seq, cc, cy, cok});
+				}
+			}
+			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 1000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getFeedbackCode()).isEqualTo("MACHINE_LIKE_PACE");
+		}
+
+		@Test
+		@DisplayName("N=7 등 홀수 과목 수일 때 정중앙 과목을 제외하고 STRONG_FINISHER가 판정된다")
+		void it_evaluates_strong_finisher_excluding_middle_course_when_n_is_seven() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(1L).tTotal(16000).tEnterMain(1000)
+					.isCompleted(true).totalCourses(7)
+					.build();
+
+			// N=7: 1~3(first half avg = 1000), 4(middle = 1000), 5~7(second half avg = 800)
+			// firstHalfAvg - secondHalfAvg = 1000 - 800 = 200 >= 100 -> STRONG_FINISHER
+			List<SingleGameDetailEntity> details = List.of(
+					SingleGameDetailEntity.builder().gameId(1L).sequence(1).tClickCourse(500).tClickYes(250).tClickOk(250).build(), // 1000
+					SingleGameDetailEntity.builder().gameId(1L).sequence(2).tClickCourse(500).tClickYes(250).tClickOk(250).build(), // 1000
+					SingleGameDetailEntity.builder().gameId(1L).sequence(3).tClickCourse(500).tClickYes(250).tClickOk(250).build(), // 1000
+					SingleGameDetailEntity.builder().gameId(1L).sequence(4).tClickCourse(500).tClickYes(250).tClickOk(250).build(), // 1000 (Middle)
+					SingleGameDetailEntity.builder().gameId(1L).sequence(5).tClickCourse(400).tClickYes(200).tClickOk(200).build(), // 800
+					SingleGameDetailEntity.builder().gameId(1L).sequence(6).tClickCourse(400).tClickYes(200).tClickOk(200).build(), // 800
+					SingleGameDetailEntity.builder().gameId(1L).sequence(7).tClickCourse(400).tClickYes(200).tClickOk(200).build()  // 800
+			);
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
+			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(7)).willReturn(10L);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(7, 16000)).willReturn(List.of(1L));
+			given(singleGameRepository.findSequencePercentileStats(7)).willReturn(List.of());
+
+			// Mock all details for 10 players so aimP=40%, burstP=40%, startP=40%, paceP=90%
+			List<Object[]> allDetails = new java.util.ArrayList<>();
+			for (long gId = 1L; gId <= 10L; gId++) {
+				for (int seq = 1; seq <= 7; seq++) {
+					int cc = (gId == 1L) ? (seq <= 4 ? 500 : 400) : (int) (gId - 1) * 100;
+					int cy = (gId == 1L) ? (seq <= 4 ? 250 : 200) : (int) (gId - 1) * 50;
+					int cok = (gId == 1L) ? (seq <= 4 ? 250 : 200) : (int) (gId - 1) * 50;
+					allDetails.add(new Object[]{gId, seq, cc, cy, cok});
+				}
+			}
+			given(singleGameRepository.findAllDetailsByTotalCourses(7)).willReturn(allDetails);
+			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(7, 1000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L);
+
+			assertThat(response.getSummary().getFeedbackCode()).isEqualTo("STRONG_FINISHER");
 		}
 
 		@Test

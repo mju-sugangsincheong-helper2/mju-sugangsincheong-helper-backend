@@ -75,7 +75,7 @@ public class CourseController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<CourseSectionDeleteResponse>> deleteSections(
 			@Parameter(description = "삭제할 학기 (예: 202515)", example = "202515", required = true)
-			@RequestParam String term) {
+			@RequestParam("term") String term) {
 		CourseSectionDeleteResponse response = courseService.deleteSectionsByTerm(term);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
@@ -97,7 +97,7 @@ public class CourseController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<List<CourseSectionResponse>>> findSections(
 			@Parameter(description = "조회할 학기 (예: 202515), 없으면 current_term 사용", example = "202515")
-			@RequestParam(required = false) String term) {
+			@RequestParam(name = "term", required = false) String term) {
 		String effectiveTerm = (term != null && !term.isBlank()) ? term : systemConfigService.getCurrentTerm();
 		List<CourseSectionResponse> response = courseService.findSections(effectiveTerm);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));

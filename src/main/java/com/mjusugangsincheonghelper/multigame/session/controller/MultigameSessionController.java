@@ -66,7 +66,7 @@ public class MultigameSessionController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<GameRequestResponse>> requestGame(
 			@Parameter(description = "신청 과목 ID (1~6)", example = "1")
-			@RequestParam @Min(1) @Max(6) int subjectId) {
+			@RequestParam("subjectId") @Min(1) @Max(6) int subjectId) {
 		Long memberId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 		String t = GameTimeCalculator.computeActiveGameT(java.time.LocalDateTime.now());
 		GameRequestResponse response = sessionService.requestGame(t, memberId, subjectId);

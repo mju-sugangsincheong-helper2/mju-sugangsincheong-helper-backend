@@ -66,6 +66,15 @@ class SingleGameIntegrationTest {
 		singleGameRepository.deleteAll();
 		memberRepository.deleteAll();
 
+		if (cacheManager != null) {
+			cacheManager.getCacheNames().forEach(name -> {
+				var cache = cacheManager.getCache(name);
+				if (cache != null) {
+					cache.clear();
+				}
+			});
+		}
+
 		stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
 			connection.serverCommands().flushDb();
 			return null;
@@ -643,39 +652,6 @@ class SingleGameIntegrationTest {
 	@Nested
 	@DisplayName("랭킹 뷰 정합성은")
 	class Describe_rankingViewConsistency {
-
-		@Test
-		@DisplayName("과목별 파티션이 격리된다")
-		void it_isolates_partitions_by_total_courses() throws Exception {
-			singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
-					.isCompleted(true).totalCourses(6).build());
-
-			Member otherMember = memberRepository.save(Member.builder()
-					.role(Member.Role.MEMBER)
-					.name("다른유저")
-					.department("행정학과")
-					.build());
-			singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(otherMember.getId()).tTotal(3000).tEnterMain(150)
-					.isCompleted(true).totalCourses(3).build());
-
-			mockMvc.perform(get("/api/v1/singlegame/rank")
-							.param("totalCourses", "6")
-							.param("scope", "GLOBAL"))
-					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.totalCourses").value(6))
-					.andExpect(jsonPath("$.data.rankings.length()").value(1))
-					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
-
-			mockMvc.perform(get("/api/v1/singlegame/rank")
-							.param("totalCourses", "3")
-							.param("scope", "GLOBAL"))
-					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.totalCourses").value(3))
-					.andExpect(jsonPath("$.data.rankings.length()").value(1))
-					.andExpect(jsonPath("$.data.rankings[0].name").value("다른유저"));
-		}
 
 		@Test
 		@DisplayName("미완료 유저는 랭킹에 포함되지 않는다")

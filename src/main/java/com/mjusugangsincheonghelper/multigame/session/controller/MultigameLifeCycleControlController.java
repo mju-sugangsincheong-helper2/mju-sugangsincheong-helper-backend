@@ -42,7 +42,7 @@ public class MultigameLifeCycleControlController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<String>> getState(
 			@Parameter(description = "멀티게임 ID", example = "20260726100000")
-			@PathVariable String multigameId) {
+			@PathVariable("multigameId") String multigameId) {
 		String state = devGameInitializer.getState(multigameId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(state));
 	}
@@ -60,9 +60,9 @@ public class MultigameLifeCycleControlController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<String>> transitionState(
 			@Parameter(description = "멀티게임 ID", example = "20260726100000")
-			@PathVariable String multigameId,
+			@PathVariable("multigameId") String multigameId,
 			@Parameter(description = "목표 상태 (WAITING, READY, PROGRESS, ENDED, FINALIZE, CANCELLED)", example = "READY")
-			@RequestParam String targetState) {
+			@RequestParam("targetState") String targetState) {
 		devGameInitializer.transitionState(multigameId, targetState);
 		String newState = devGameInitializer.getState(multigameId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(newState));

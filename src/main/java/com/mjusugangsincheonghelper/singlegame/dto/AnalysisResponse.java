@@ -34,8 +34,8 @@ public class AnalysisResponse implements Serializable {
 		private double globalPercentile;
 		private int purePhysicalAverage;
 		private int entryPrecision;
-		private int initialSprintSpeed;
-		private double paceDeviation;
+		private Integer initialSprintSpeed;
+		private Double paceDeviation;
 		private String feedbackCode;
 		private String feedbackMessage;
 	}

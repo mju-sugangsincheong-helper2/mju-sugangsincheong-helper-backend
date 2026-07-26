@@ -43,7 +43,7 @@ public class MultigameResultController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<MultigameResultResponse>> getGameResult(
 			@Parameter(description = "멀티게임 ID (14자리)", example = "20260630120000")
-			@PathVariable String multigameId) {
+			@PathVariable("multigameId") String multigameId) {
 		MultigameResultResponse response = resultService.getGameResult(multigameId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
@@ -62,7 +62,7 @@ public class MultigameResultController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<MultigameResultDetailResponse>> getMyResult(
 			@Parameter(description = "멀티게임 ID (14자리)", example = "20260630120000")
-			@RequestParam String multigameId) {
+			@RequestParam("multigameId") String multigameId) {
 		Long memberId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 		MultigameResultDetailResponse response = resultService.getMyResult(multigameId, memberId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));

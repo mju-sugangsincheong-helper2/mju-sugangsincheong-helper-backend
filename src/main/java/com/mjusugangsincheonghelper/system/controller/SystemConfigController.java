@@ -67,7 +67,7 @@ public class SystemConfigController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<SystemConfigResponse>> find(
 			@Parameter(description = "설정 키", example = "current_term")
-			@PathVariable String key) {
+			@PathVariable("key") String key) {
 		SystemConfigResponse response = systemConfigService.find(key);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
@@ -90,7 +90,7 @@ public class SystemConfigController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<SystemConfigResponse>> update(
 			@Parameter(description = "설정 키", example = "current_term")
-			@PathVariable String key,
+			@PathVariable("key") String key,
 			@Valid @RequestBody SystemConfigUpdateRequest request) {
 		SystemConfigResponse response = systemConfigService.update(key, request);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));

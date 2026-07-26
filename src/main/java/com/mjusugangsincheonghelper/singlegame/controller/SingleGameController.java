@@ -79,9 +79,9 @@ public class SingleGameController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<RankingResponse>> getRankings(
 			@Parameter(description = "과목 수 (1, 3, 6, 7, 8)", example = "6", required = true)
-			@RequestParam int totalCourses,
+			@RequestParam("totalCourses") int totalCourses,
 			@Parameter(description = "조회 범위 (GLOBAL or DEPARTMENT)", example = "GLOBAL", required = true)
-			@RequestParam String scope) {
+			@RequestParam("scope") String scope) {
 		Long memberId = getCurrentMemberId();
 		RankingResponse response = singleGameService.getRankings(totalCourses, scope, memberId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
@@ -104,9 +104,9 @@ public class SingleGameController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<Page<MyRecordResponse>>> getMyRecords(
 			@Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
-			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(name = "page", defaultValue = "0") int page,
 			@Parameter(description = "페이지 크기", example = "10")
-			@RequestParam(defaultValue = "10") int size) {
+			@RequestParam(name = "size", defaultValue = "10") int size) {
 		Long memberId = getCurrentMemberId();
 		Page<MyRecordResponse> response = singleGameService.getMyRecords(memberId, page, size);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
@@ -129,7 +129,7 @@ public class SingleGameController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<AnalysisResponse>> getAnalysis(
 			@Parameter(description = "게임 ID", example = "1234", required = true)
-			@PathVariable Long gameId) {
+			@PathVariable("gameId") Long gameId) {
 		AnalysisResponse response = singleGameService.getAnalysis(gameId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
