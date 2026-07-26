@@ -76,7 +76,7 @@ class CourseServiceTest {
 		@DisplayName("여러 term의 데이터를 처리하면 중복 제거된 term 목록을 반환한다")
 		void it_returns_distinct_terms_when_multiple_terms() {
 			CourseSectionImportRequest spring = CourseSectionImportRequest.builder()
-					.curiyear("2026").curismt("10").coursecls("0001").build();
+					.curiyear("2026").curismt("20").coursecls("0001").build();
 			CourseSectionImportRequest summer = CourseSectionImportRequest.builder()
 					.curiyear("2026").curismt("15").coursecls("0002").build();
 
@@ -86,7 +86,7 @@ class CourseServiceTest {
 			CourseSectionImportResponse response = courseService.importSections(items);
 
 			assertThat(response.getImportedCount()).isEqualTo(2);
-			assertThat(response.getTerms()).containsExactly("202620", "202615");
+			assertThat(response.getTerms()).containsExactly("202615", "202620");
 		}
 	}
 

@@ -54,8 +54,7 @@ public class MergeController {
 			@Valid @RequestBody MergeRequest request,
 			HttpServletResponse response) {
 		AuthenticatedIdentity identity = mergeService.merge(request.getMergeTicket());
-		SessionResult session = sessionService.createSession(identity, request.getDevice(),
-				request.getFcmToken(), response);
+		SessionResult session = sessionService.createSession(identity, request.getDevice(), response);
 
 		MergeResponse mergeResponse = buildMergeResponse(session);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(mergeResponse));

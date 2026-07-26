@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.auth.session;
 
-import com.mjusugangsincheonghelper.auth.session.dto.LogoutRequest;
 import com.mjusugangsincheonghelper.auth.session.dto.RefreshResponse;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
@@ -17,7 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -75,15 +73,13 @@ public class SessionController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<Void>> logout(
-			@RequestBody(required = false) LogoutRequest request,
-			HttpServletRequest request_,
+			HttpServletRequest request,
 			HttpServletResponse response) {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		Long memberId = (Long) authentication.getPrincipal();
-		String refreshToken = extractRefreshToken(request_);
-		String fcmToken = request != null ? request.getFcmToken() : null;
+		String refreshToken = extractRefreshToken(request);
 
-		sessionService.destroySession(refreshToken, fcmToken, memberId, response);
+		sessionService.destroySession(refreshToken, memberId, response);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.empty());
 	}
 

@@ -149,7 +149,7 @@ public class GoogleOAuthController {
 					.body(SingleSuccessResponseEnvelope.of(response));
 		}
 
-		SessionResult session = sessionService.createSession(authResult.getIdentity(), null, null, httpResponse);
+		SessionResult session = sessionService.createSession(authResult.getIdentity(), null, httpResponse);
 		OAuthTokenResponse response = buildOAuthTokenResponse(session, authResult.isNewUser());
 
 		return ResponseEntity

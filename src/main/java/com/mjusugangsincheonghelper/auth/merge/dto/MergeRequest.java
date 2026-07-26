@@ -16,6 +16,5 @@ public class MergeRequest {
 
 	@NotBlank
 	private String mergeTicket;
-	private String fcmToken;
 	private DeviceInfo device;
 }

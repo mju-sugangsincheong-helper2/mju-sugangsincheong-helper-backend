@@ -13,6 +13,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class GuestCreateRequest {
 
-	private String fcmToken;
 	private DeviceInfo device;
 }

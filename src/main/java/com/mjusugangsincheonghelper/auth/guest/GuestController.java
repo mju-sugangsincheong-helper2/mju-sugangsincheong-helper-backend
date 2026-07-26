@@ -55,8 +55,7 @@ public class GuestController {
 		GuestCreateRequest safeRequest = request != null ? request : GuestCreateRequest.builder().build();
 
 		AuthenticatedIdentity identity = guestService.authenticate();
-		SessionResult session = sessionService.createSession(identity, safeRequest.getDevice(),
-				safeRequest.getFcmToken(), response);
+		SessionResult session = sessionService.createSession(identity, safeRequest.getDevice(), response);
 
 		GuestResponse guestResponse = buildGuestResponse(session);
 		return ResponseEntity.status(HttpStatus.CREATED)

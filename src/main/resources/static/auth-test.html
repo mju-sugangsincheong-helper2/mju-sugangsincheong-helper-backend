@@ -381,7 +381,6 @@
         async function createGuest() {
             try {
                 const result = await apiCall('POST', '/api/v1/auth/guest', {
-                    fcmToken: 'test-fcm-token-' + Date.now(),
                     device: {
                         name: 'Chrome',
                         version: '120.0',
@@ -461,9 +460,7 @@
         // 로그아웃
         async function logout() {
             try {
-                const result = await apiCall('POST', '/api/v1/auth/logout', {
-                    fcmToken: 'test-fcm-token'
-                });
+                const result = await apiCall('POST', '/api/v1/auth/logout');
                 showApiResult('logoutResult', result);
 
                 // 로그아웃 후 토큰 초기화

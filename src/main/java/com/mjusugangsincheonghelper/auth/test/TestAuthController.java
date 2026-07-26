@@ -105,7 +105,7 @@ public class TestAuthController {
 				.memberId(memberAuth.getMemberId())
 				.build();
 
-		SessionResult session = sessionService.createSession(identity, null, null, response);
+		SessionResult session = sessionService.createSession(identity, null, response);
 
 		TestLoginResponse testLoginResponse = TestLoginResponse.builder()
 				.memberId(session.getMemberId())
@@ -162,7 +162,7 @@ public class TestAuthController {
 				.memberId(member.getId())
 				.build();
 
-		SessionResult session = sessionService.createSession(identity, null, null, response);
+		SessionResult session = sessionService.createSession(identity, null, response);
 
 		TestLoginResponse testLoginResponse = TestLoginResponse.builder()
 				.memberId(session.getMemberId())

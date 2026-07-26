@@ -31,7 +31,7 @@ public class SessionService {
 	private final AccountAgreementService accountAgreementService;
 
 	@Transactional
-	public SessionResult createSession(AuthenticatedIdentity identity, DeviceInfo device, String fcmToken,
+	public SessionResult createSession(AuthenticatedIdentity identity, DeviceInfo device,
 			HttpServletResponse response) {
 		Member member = memberRepository.findById(identity.getMemberId())
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
@@ -40,7 +40,7 @@ public class SessionService {
 		String accessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed);
 		String refreshToken = tokenProvider.createRefreshToken();
 
-		deviceSessionService.upsert(member.getId(), refreshToken, fcmToken, device,
+		deviceSessionService.upsert(member.getId(), refreshToken, device,
 				tokenProvider.getRefreshTokenExpiryMs());
 
 		tokenDeliveryStrategy.deliver(accessToken, refreshToken, response);
@@ -110,8 +110,8 @@ public class SessionService {
 	}
 
 	@Transactional
-	public void destroySession(String refreshToken, String fcmToken, Long memberId, HttpServletResponse response) {
-		deviceSessionService.deleteByFcmToken(memberId, fcmToken);
+	public void destroySession(String refreshToken, Long memberId, HttpServletResponse response) {
+		deviceSessionService.deleteByRefreshToken(refreshToken);
 		tokenDeliveryStrategy.clear(response);
 	}
 }

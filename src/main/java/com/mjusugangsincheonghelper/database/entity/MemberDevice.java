@@ -78,7 +78,7 @@ public class MemberDevice {
 	private Instant updatedAt;
 
 	@Builder
-	public MemberDevice(Long memberId, String refreshToken, String fcmToken,
+	public MemberDevice(Long memberId, String refreshToken,
 			String platformjsName, String platformjsVersion,
 			String platformjsLayout, String platformjsPrerelease,
 			String platformjsOs, String platformjsManufacturer,
@@ -86,7 +86,6 @@ public class MemberDevice {
 			String platformjsUa, Instant expiresAt) {
 		this.memberId = memberId;
 		this.refreshToken = refreshToken;
-		this.fcmToken = fcmToken;
 		this.platformjsName = platformjsName;
 		this.platformjsVersion = platformjsVersion;
 		this.platformjsLayout = platformjsLayout;
@@ -105,14 +104,13 @@ public class MemberDevice {
 		this.lastAccessedAt = Instant.now();
 	}
 
-	public void updateAccessInfo(String refreshToken, String fcmToken,
+	public void updateAccessInfo(String refreshToken,
 			String platformjsName, String platformjsVersion,
 			String platformjsLayout, String platformjsPrerelease,
 			String platformjsOs, String platformjsManufacturer,
 			String platformjsProduct, String platformjsDescription,
 			String platformjsUa) {
 		this.refreshToken = refreshToken;
-		this.fcmToken = fcmToken;
 		this.platformjsName = platformjsName;
 		this.platformjsVersion = platformjsVersion;
 		this.platformjsLayout = platformjsLayout;
