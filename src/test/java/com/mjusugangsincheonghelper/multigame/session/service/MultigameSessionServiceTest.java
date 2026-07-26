@@ -192,6 +192,24 @@ class MultigameSessionServiceTest {
 		}
 
 		@Test
+		@DisplayName("ENDED 상태이면 BLOCKED 응답을 반환한다")
+		void it_returns_blocked_response_when_state_is_ended() {
+			// Given
+			String t = "20260726100000";
+			Long memberId = 1L;
+			int subjectId = 3;
+
+			given(stateEngine.getState(t)).willReturn(GameState.ENDED);
+
+			// When
+			GameRequestResponse response = sessionService.requestGame(t, memberId, subjectId);
+
+			// Then
+			assertThat(response.getStatus()).isEqualTo("BLOCKED");
+			assertThat(response.getCurrentState()).isEqualTo("ENDED");
+		}
+
+		@Test
 		@DisplayName("상태가 null이면 예외를 발생시킨다")
 		void it_throws_exception_when_state_is_null() {
 			// Given

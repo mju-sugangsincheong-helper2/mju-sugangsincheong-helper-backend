@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Component
@@ -14,6 +15,7 @@ public class MultigameStateEngine {
 
 	private final StringRedisTemplate stringRedisTemplate;
 	private final AdvisoryLockService advisoryLockService;
+	private final TransactionTemplate transactionTemplate;
 
 	public GameState getState(String t) {
 		String stateStr = stringRedisTemplate.opsForValue().get(MultigameRedisKeyProvider.state(t));
@@ -47,14 +49,16 @@ public class MultigameStateEngine {
 	}
 
 	public void tryExecuteWithLock(String jobName, String t, Runnable action) {
-		if (!advisoryLockService.tryXactLock(jobName, t)) {
-			return;
-		}
-		try {
-			action.run();
-		} finally {
-			log.debug("{}: completed for {}", jobName, t);
-		}
+		transactionTemplate.executeWithoutResult(status -> {
+			if (!advisoryLockService.tryXactLock(jobName, t)) {
+				return;
+			}
+			try {
+				action.run();
+			} finally {
+				log.debug("{}: completed for {}", jobName, t);
+			}
+		});
 	}
 
 	public void tryExecuteWithSessionLock(String jobName, String t, Runnable action) {

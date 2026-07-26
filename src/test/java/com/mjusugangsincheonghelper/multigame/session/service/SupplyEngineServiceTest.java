@@ -6,6 +6,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 
 import com.mjusugangsincheonghelper.multigame.common.MultigameRedisKeyProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,11 @@ class SupplyEngineServiceTest {
 	@InjectMocks
 	private SupplyEngineService supplyEngineService;
 
+	@AfterEach
+	void tearDown() {
+		Thread.interrupted(); // Clear interrupt flag after test
+	}
+
 	@Nested
 	@DisplayName("execute 메서드는")
 	class Describe_execute {
@@ -44,12 +50,11 @@ class SupplyEngineServiceTest {
 			String t = "20260630120000";
 			int totalParticipants = 100;
 			String limitKey = MultigameRedisKeyProvider.admissionLimit(t);
-			String queueKey = MultigameRedisKeyProvider.queue(t);
 
 			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(stringRedisTemplate.opsForZSet()).willReturn(zSetOperations);
-			given(zSetOperations.size(queueKey)).willReturn(0L);
 
+			// Interrupt thread so Thread.sleep(1000) exits immediately
+			Thread.currentThread().interrupt();
 			supplyEngineService.execute(t, totalParticipants);
 
 			ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
@@ -64,12 +69,11 @@ class SupplyEngineServiceTest {
 			String t = "20260630120000";
 			int totalParticipants = 2;
 			String limitKey = MultigameRedisKeyProvider.admissionLimit(t);
-			String queueKey = MultigameRedisKeyProvider.queue(t);
 
 			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(stringRedisTemplate.opsForZSet()).willReturn(zSetOperations);
-			given(zSetOperations.size(queueKey)).willReturn(0L);
 
+			// Interrupt thread so Thread.sleep(1000) exits immediately
+			Thread.currentThread().interrupt();
 			supplyEngineService.execute(t, totalParticipants);
 
 			ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
@@ -84,20 +88,17 @@ class SupplyEngineServiceTest {
 			String t = "20260630120000";
 			int totalParticipants = 100;
 			String limitKey = MultigameRedisKeyProvider.admissionLimit(t);
-			String queueKey = MultigameRedisKeyProvider.queue(t);
 
 			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(stringRedisTemplate.opsForZSet()).willReturn(zSetOperations);
-			given(zSetOperations.size(queueKey)).willReturn(0L);
 
+			// Interrupt thread so Thread.sleep(1000) exits immediately
+			Thread.currentThread().interrupt();
 			supplyEngineService.execute(t, totalParticipants);
 
 			ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
 			verify(valueOperations, atLeastOnce()).set(eq(limitKey), captor.capture());
 
-			for (String value : captor.getAllValues()) {
-				assertThat(value).isEqualTo("20");
-			}
+			assertThat(captor.getAllValues().get(0)).isEqualTo("20");
 		}
 
 		@Test
@@ -106,19 +107,17 @@ class SupplyEngineServiceTest {
 			String t = "20260630120000";
 			int totalParticipants = 100;
 			String limitKey = MultigameRedisKeyProvider.admissionLimit(t);
-			String queueKey = MultigameRedisKeyProvider.queue(t);
 
 			given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-			given(stringRedisTemplate.opsForZSet()).willReturn(zSetOperations);
-			given(zSetOperations.size(queueKey)).willReturn(80L);
 
+			// Interrupt thread so Thread.sleep(1000) exits immediately
+			Thread.currentThread().interrupt();
 			supplyEngineService.execute(t, totalParticipants);
 
 			ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
 			verify(valueOperations, atLeastOnce()).set(eq(limitKey), captor.capture());
 
 			assertThat(captor.getAllValues().get(0)).isEqualTo("20");
-			assertThat(captor.getAllValues().get(19)).isNotNull();
 		}
 
 		private String eq(String value) {

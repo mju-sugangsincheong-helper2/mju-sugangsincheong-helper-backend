@@ -1,6 +1,7 @@
 package com.mjusugangsincheonghelper.multigame.session.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -24,6 +25,9 @@ class MultigameStateEngineTest {
 
 	@Mock
 	private AdvisoryLockService advisoryLockService;
+
+	@Mock
+	private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
 	@Mock
 	private ValueOperations<String, String> valueOperations;
@@ -64,5 +68,22 @@ class MultigameStateEngineTest {
 		stateEngine.cancelGame(t);
 
 		verify(valueOperations).set(MultigameRedisKeyProvider.state(t), "CANCELLED");
+	}
+
+	@Test
+	@DisplayName("tryExecuteWithLock은 TransactionTemplate 내부에서 Advisory Lock을 시도하고 action을 실행한다")
+	void tryExecuteWithLock_executes_action_within_transaction() {
+		org.mockito.BDDMockito.willAnswer(invocation -> {
+			java.util.function.Consumer<org.springframework.transaction.TransactionStatus> action = invocation.getArgument(0);
+			action.accept(null);
+			return null;
+		}).given(transactionTemplate).executeWithoutResult(any());
+
+		given(advisoryLockService.tryXactLock("job", t)).willReturn(true);
+
+		boolean[] ran = new boolean[]{false};
+		stateEngine.tryExecuteWithLock("job", t, () -> ran[0] = true);
+
+		assertThat(ran[0]).isTrue();
 	}
 }

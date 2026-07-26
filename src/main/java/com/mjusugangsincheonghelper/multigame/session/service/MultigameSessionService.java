@@ -44,6 +44,13 @@ public class MultigameSessionService {
 			throw new BaseException(ErrorCode.MULTIGAME_GAME_CANCELLED);
 		}
 
+		if (state == GameState.ENDED || state == GameState.FINALIZE) {
+			return GameRequestResponse.builder()
+					.status("BLOCKED")
+					.currentState(state.name())
+					.build();
+		}
+
 		if (state != GameState.PROGRESS) {
 			return GameRequestResponse.builder()
 					.status("WAITING")

@@ -144,7 +144,7 @@ public class MultigameLifecycleScheduler {
 		});
 	}
 
-	private void progressJob() {
+	void progressJob() {
 		String t = GameTimeCalculator.computeCurrentT(LocalDateTime.now());
 		stateEngine.tryExecuteWithSessionLock("progressJob", t, () -> {
 			GameState state = stateEngine.getState(t);
