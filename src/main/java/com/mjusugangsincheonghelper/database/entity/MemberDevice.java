@@ -33,8 +33,8 @@ public class MemberDevice {
 	@Column(nullable = false, unique = true, length = 512)
 	private String refreshToken;
 
-	@Column(name = "firebase_installation_id", length = 512)
-	private String fid;
+	@Column(name = "fcm_token", length = 512)
+	private String fcmToken;
 
 	@Column(name = "platformjs_name", length = 100)
 	private String platformjsName;
@@ -127,13 +127,13 @@ public class MemberDevice {
 		this.memberId = newMemberId;
 	}
 
-	public void updateFid(String fid) {
-		this.fid = fid;
+	public void updateFcmToken(String fcmToken) {
+		this.fcmToken = fcmToken;
 		this.lastAccessedAt = Instant.now();
 	}
 
-	public void clearFid() {
-		this.fid = null;
+	public void clearFcmToken() {
+		this.fcmToken = null;
 		this.lastAccessedAt = Instant.now();
 	}
 }

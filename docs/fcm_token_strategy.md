@@ -56,35 +56,6 @@ consumer 패키지에서는 pgmq 이벤트 큐에서 들어온 알림 이벤트�
 9.10.0 firebase admin sdk 추가하자
 
 
----
-
-## 4. 백엔드 구현 및 환경변수 명세 (추가 보완)
-
-### 4.1. 환경 변수 (Environment Variables)
-
-FCM 알림 발송을 위해 아래 환경변수가 백엔드 및 클라이언트에 세팅되어 있어야 합니다.
-
-```bash
-# Firebase Admin SDK (백엔드 필수 6종)
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PROJECT_ID="mju-sugangsincheong-helper"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_EMAIL="firebase-adminsdk-fbsvc@mju-sugangsincheong-helper.iam.gserviceaccount.com"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_TYPE="service_account"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY_ID="d6cfc20ac5bcc264f197e6ddc4e064d85d159865"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_ID="113630787929430672093"
-
-# Firebase Client Web 푸시 (테스트 및 클라이언트 필수)
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_VAPID_KEY="BPvVPUBnjhL7D5W..."
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_API_KEY="AIzaSyDRPBFvXsQ6P..."
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_AUTH_DOMAIN="mju-sugangsincheong-helper.firebaseapp.com"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_PROJECT_ID="mju-sugangsincheong-helper"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_STORAGE_BUCKET="mju-sugangsincheong-helper.firebasestorage.app"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_MESSAGING_SENDER_ID="570409366164"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_APP_ID="1:570409366164:web:ca2f6c38ca25d1661b3a81"
-export MJU_SUGANGSINCHEONG_HELPER_FIREBASE_CLIENT_MEASUREMENT_ID="G-J8XMFFEQKM"
-```
-
----
 
 ### 4.2. Consumer 패키지 구조 및 처리 로직
 

@@ -11,11 +11,11 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 
 	List<MemberDevice> findByMemberId(Long memberId);
 
-	Optional<MemberDevice> findByFid(String fid);
+	Optional<MemberDevice> findByFcmToken(String fcmToken);
 
 	Optional<MemberDevice> findFirstByMemberIdOrderByLastAccessedAtDesc(Long memberId);
 
-	List<MemberDevice> findByMemberIdAndFid(Long memberId, String fid);
+	List<MemberDevice> findByMemberIdAndFcmToken(Long memberId, String fcmToken);
 
 	void deleteByRefreshToken(String refreshToken);
 }

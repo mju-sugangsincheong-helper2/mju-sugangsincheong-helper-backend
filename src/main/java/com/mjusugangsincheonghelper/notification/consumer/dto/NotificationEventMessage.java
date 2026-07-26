@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class NotificationEventMessage {
 
-	private String fid;
+	private String token;
 	private NotificationPayload notification;
 	private Map<String, String> data;
 
