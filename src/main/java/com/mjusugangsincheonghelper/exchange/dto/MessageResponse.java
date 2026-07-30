@@ -15,7 +15,7 @@ public class MessageResponse {
 
 	private Long roomId;
 	private List<MessageItem> messages;
-	private Long nextLastMessageId;
+	private Long nextBeforeMessageId;
 	private boolean hasNext;
 
 	@Getter
@@ -25,6 +25,7 @@ public class MessageResponse {
 	public static class MessageItem {
 		private Long messageId;
 		private Long senderId;
+		private String messageType;
 		private String content;
 		private Instant createdAt;
 	}

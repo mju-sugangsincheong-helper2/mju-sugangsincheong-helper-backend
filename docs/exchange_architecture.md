@@ -7,26 +7,30 @@
 #### 1. 도메인의 목적과 핵심 원리
 
 ##### **[목적]**
-본 시스템의 유일한 목적은 **"과목을 교환하고자 하는 사용자들의 교환 의사(Intent)를 수집하여 사이클(Cycle)을 탐색하고, 교환 가능성이 있는 사용자들을 하나의 채팅방(Room)으로 연결해 주는 것"**입니다.
+
+본 시스템의 유일한 목적은 "과목을 교환하고자 하는 사용자들의 교환 의사(Intent)를 수집하여 사이클(Cycle)을 탐색하고, 교환 가능성이 있는 사용자들을 하나의 채팅방(Room)으로 연결해 주는 것"입니다.
 
 ##### **[주의점 1: 교환 상태 관리의 부재]**
+
 본 시스템은 실제 수강신청 시스템과 연동되어 과목을 교환해 주는 자동화 시스템이 아닙니다. 교환의 최종 실행 여부는 사용자들이 채팅방에서 협의 후 각자 수강신청 시스템에서 직접(예: "지금 제가 취소할 테니 바로 주우세요") 진행해야 합니다.
 따라서 이 도메인에는 일반적인 거래 시스템에 존재하는 **[교환 성공, 교환 실패, 교환 취소, 교환 진행 중, 교환 완료]와 같은 상태(Status) 개념이 존재하지 않습니다.** 별도의 매칭(Match) 테이블이나 상태를 기록하는 컬럼 또한 두지 않는 것이 핵심입니다.
 추가적으로 방을 완전히 나가는 행동은 없으며, 유저가 개별적으로 방을 알림 수신 거부 및 목록 비노출 상태로 전환하는 **OFF(알림 수신 X, 해당 방 진입 및 UI 갱신 X) 처리** 개념만 존재합니다.
 
-##### **[주의점 2: 과목 식별은 과목명이 아닌 '고유 학수/분반 번호(숫자)'로 진행]**
-사용자는 '운영체제(OS)', '알고리즘(ALGO)'과 같은 모호한 문자열이 아닌, 실제 수강신청 책자에 명시된 **고유 번호(예: 학수번호 10023, 분반 02 등 숫자로 이루어진 식별자)**를 직접 입력하여 교환을 진행합니다. 과목명으로 매칭할 경우 교수진, 시간대, 분반이 달라 발생하는 오차를 방지하기 위함입니다. 그래프 탐색 역시 철저하게 이 숫자 식별자를 노드(Node)로 삼아 동작합니다.
+##### **[주의점 2: 과목 식별은 과목명이 아닌 '개설 강좌 식별 코드(coursecls)'로 진행]**
+
+사용자는 '운영체제(OS)', '알고리즘(ALGO)'과 같은 모호한 문자열이 아닌, 개설 강좌 식별 코드(`coursecls`, 예: "0001", "0002" 등 개설 강좌별 고유 식별 코드)를 등록하여 교환을 진행합니다. 과목명으로 매칭할 경우 교수진, 시간대, 분반이 달라 발생하는 오차를 방지하기 위함입니다. 그래프 탐색 역시 철저하게 이 개설 강좌 식별 코드(`coursecls`)를 노드(Node)로 삼아 동작합니다.
 
 ##### **[핵심 원리]**
-1. **Term(학기) 중심 설계:** 
-   모든 데이터베이스 PK와 Redis Key는 `term`(예: `202620` - 26년도 1학기)을 기준으로 설계됩니다. `PARTITION BY LIST(term)`을 적용하여 학기별로 테이블을 물리적으로 분리하여 대용량 트래픽 상황에서도 높은 조회 성능을 보장합니다.
+
+1. **Term(학기) 중심 설계:**
+모든 데이터베이스 PK와 Redis Key는 `term`(예: `202620` - 26년도 1학기)을 기준으로 설계됩니다. `PARTITION BY LIST(term)`을 적용하여 학기별로 테이블을 물리적으로 분리하여 대용량 트래픽 상황에서도 높은 조회 성능을 보장합니다.
 2. **그래프 사이클 탐색 (Graph Cycle Detection):**
-   사용자의 '버릴 과목 번호 -> 원하는 과목 번호'는 방향 그래프의 간선(Directed Edge)이 됩니다. (예: `10023 -> 40101`) 시스템은 의사가 등록될 때마다 비동기로 그래프를 탐색하여 `10023 -> 40101 -> 30055 -> 10023`과 같은 닫힌 사이클(Cycle)이 발견되면 해당 간선을 생성한 사용자들을 묶어 채팅방(Room)을 생성합니다.
-   - 만약 2개 이상의 사이클이 잡히면 모두 등록하여 사용자의 선택권을 보장합니다.
-3. **유연한 Room 유효성 검증 (Soft Delete):**
-   사용자가 교환 의사를 철회하더라도 채팅방(Room) 자체가 폭파되거나 메시지가 삭제되지 않습니다. 단지 해당 유저의 의사(Intent) 및 참여 매핑 정보가 Soft Delete(`is_deleted = true`) 처리될 뿐입니다. 채팅방의 유효성은 **(현재 활성화된 Intent 수 / 전체 Room 참여자 수)**를 바탕으로 동적으로 계산되어 UI에 노출됩니다.
+사용자의 '버릴 개설 강좌 식별 코드(coursecls) -> 원하는 개설 강좌 식별 코드(coursecls)'는 방향 그래프의 간선(Directed Edge)이 됩니다. (예: `0001 -> 0005`) 시스템은 의사가 등록될 때마다 비동기로 그래프를 탐색하여 `0001 -> 0005 -> 0012 -> 0001`과 같은 닫힌 사이클(Cycle)이 발견되면 해당 간선을 생성한 사용자들을 묶어 채팅방(Room)을 생성합니다.
+* 만약 2개 이상의 사이클이 잡히면 모두 등록하여 사용자의 선택권을 보장합니다.
+3. **유연한 Room 유효성 검증 (Soft Delete & 단일 상태 전이):**
+사용자가 교환 의사를 철회하더라도 채팅방(Room) 자체가 폭파되거나 메시지가 삭제되지 않습니다. 단지 해당 유저의 의사(Intent) 및 참여 매핑 정보가 Soft Delete(`is_deleted = true`) 처리될 뿐입니다. 채팅방의 상태는 중복 플래그(`is_active`) 없이 단일 `status` 컬럼(`ACTIVE`, `PARTIAL_OFF`, `PARTIAL_DELETE`, `ALL_DELETE`)으로 통합 관리되며, 상태 변경 시에는 시스템 메시지가 기록됩니다.
 4. **앱 활동성(Liveliness) 강화를 위한 실시간 피드:**
-   앱이 활성화되어 있음을 유저에게 보여주기 위해, 최근 등록된 교환 의사들을 실시간 피드 형태로 노출합니다. 5초 주기의 클라이언트 폴링을 통해 효율적으로 갱신됩니다.
+앱이 활성화되어 있음을 유저에게 보여주기 위해, 최근 등록된 교환 의사들을 실시간 피드 형태로 노출합니다. 5초 주기의 클라이언트 폴링을 통해 효율적으로 갱신됩니다.
 
 ---
 
@@ -66,29 +70,64 @@ sequenceDiagram
     alt 사이클 발견 및 신규 해시 확인
         Detector->>Creation: createRoom() 호출 (트랜잭션 시작)
         Note over Creation, DB: 사이클을 구성하는 각 Intent에 대해<br/>SELECT FOR UPDATE 비관적 락 획득
-        Creation->>DB: EXCHANGE_ROOM 생성 (cycle_hash unique 제약)
+        Creation->>DB: EXCHANGE_ROOM 생성 (status='ACTIVE', cycle_hash unique 제약)
         Creation->>DB: EXCHANGE_ROOM_INTENT 매핑 삽입
         Creation->>DB: EXCHANGE_ROOM_READ_STATUS 초기화
-        Creation->>DB: EXCHANGE_ROOM_MESSAGE 웰컴 메시지 작성
+        Creation->>DB: EXCHANGE_ROOM_MESSAGE 웰컴 시스템 메시지(message_type='SYSTEM') 작성
         Note over Creation, DB: 트랜잭션 Commit 및 Redis 캐시 Evict
         Creation-->>Worker: 방 생성 성공
     end
     Worker->>PGMQ: 메시지 DELETE (처리 완료)
 ```
 
-- **비동기 큐잉:** [ExchangeService](file:///home/shinnk/project/mju-sugangsincheong-helper/mju-sugangsincheong-helper-backend/src/main/java/com/mjusugangsincheonghelper/exchange/service/ExchangeService.java)는 Intent 저장 커밋이 완료된 후, PGMQ(Postgres Message Queue)를 통해 탐색 요청 메시지를 송신합니다.
-- **백그라운드 스케줄링:** [ExchangeCycleDetectionWorker](file:///home/shinnk/project/mju-sugangsincheong-helper/mju-sugangsincheong-helper-backend/src/main/java/com/mjusugangsincheonghelper/exchange/service/ExchangeCycleDetectionWorker.java)는 1초 간격으로 `exchange_cycle_detection` 큐를 읽어, [ExchangeCycleDetector](file:///home/shinnk/project/mju-sugangsincheong-helper/mju-sugangsincheong-helper-backend/src/main/java/com/mjusugangsincheonghelper/exchange/service/ExchangeCycleDetector.java)를 통해 DFS 기반 탐색을 수행합니다.
-- **비관적 락(Pessimistic Lock):** 
-  1. [ExchangeRoomCreationService](file:///home/shinnk/project/mju-sugangsincheong-helper/mju-sugangsincheong-helper-backend/src/main/java/com/mjusugangsincheonghelper/exchange/service/ExchangeRoomCreationService.java)는 사이클에 속한 각 `ExchangeIntentEntity`를 `PESSIMISTIC_WRITE` 락으로 확보해, 탐색 시점과 방 생성 트랜잭션 커밋 사이에 유저가 Intent를 철회하여 매칭 정합성이 깨지는 것을 원천 차단합니다.
-  2. 대화방 상태 갱신(`updateRoomStatusAndState`) 시점에도 `roomRepository.findByIdForUpdate(term, roomId)`를 호출하여 `ExchangeRoomEntity`에 대해 `PESSIMISTIC_WRITE` 락을 획득함으로써, 분산 환경에서 여러 사용자가 동시에 방 토글이나 이탈을 처리할 때 발생할 수 있는 갱신 분실(Lost Update) 및 경합 문제를 완전히 방지합니다.
-- **방 중복 생성 방지:** 사이클을 구성하는 `intent_id`를 정렬 후 SHA-256으로 해싱한 `cycle_hash` 값을 생성하여 `EXCHANGE_ROOM` 테이블의 `UNIQUE` 제약 조건을 통해 동일 사이클로 방이 중복 생성되는 문제를 물리적으로 방지합니다.
+* **비동기 큐잉:** ExchangeService는 Intent 저장 커밋이 완료된 후, PGMQ(Postgres Message Queue)를 통해 탐색 요청 메시지를 송신합니다.
+* **백그라운드 스케줄링:** ExchangeCycleDetectionWorker는 1초 간격으로 `exchange_cycle_detection` 큐를 읽어, ExchangeCycleDetector를 통해 DFS 기반 탐색을 수행합니다.
+* **비관적 락(Pessimistic Lock):**
+1. ExchangeRoomCreationService는 사이클에 속한 각 `ExchangeIntentEntity`를 `PESSIMISTIC_WRITE` 락으로 확보해, 탐색 시점과 방 생성 트랜잭션 커밋 사이에 유저가 Intent를 철회하여 매칭 정합성이 깨지는 것을 원천 차단합니다.
+2. 대화방 상태 갱신(`updateRoomStatusAndState`) 시점에도 `roomRepository.findByIdForUpdate(term, roomId)`를 호출하여 `ExchangeRoomEntity`에 대해 `PESSIMISTIC_WRITE` 락을 획득함으로써, 분산 환경에서 여러 사용자가 동시에 방 토글이나 이탈을 처리할 때 발생할 수 있는 갱신 분실(Lost Update) 및 경합 문제를 완전히 방지합니다.
+* **방 중복 생성 방지:** 사이클을 구성하는 `intent_id`를 정렬 후 SHA-256으로 해싱한 `cycle_hash` 값을 생성하여 `EXCHANGE_ROOM` 테이블의 `UNIQUE` 제약 조건을 통해 동일 사이클로 방이 중복 생성되는 문제를 물리적으로 방지합니다.
 
 ---
 
-#### 3. 데이터베이스 ERD & DDL 명세
+#### 3. 사용자 행동과 데이터베이스/캐시 처리 흐름 및 상태 전이 방식
+
+##### **[처리 흐름]**
+
+* **Intent 등록:** DB 저장 (`is_deleted = FALSE`) -> PGMQ 큐 발행 (`CycleDetectionMessage`) -> 연관 캐시 Evict
+* **비동기 큐 수신 & 그래프 사이클 탐색 (백그라운드):** Worker가 PGMQ 메시지 수신(인지) -> 활성 Intent 스캔 (`is_deleted = FALSE`) & DFS 사이클 탐색 -> 사이클 발견 시 `PESSIMISTIC_WRITE` 락 획득 -> `EXCHANGE_ROOM` 생성 (`status = 'ACTIVE'`) -> `EXCHANGE_ROOM_INTENT` 매핑 적재 (`is_deleted = FALSE`, `is_on = TRUE`) -> `EXCHANGE_ROOM_READ_STATUS` 초기화 -> `EXCHANGE_ROOM_MESSAGE` 웰컴 SYSTEM 메시지 작성 (`message_type = 'SYSTEM'`) -> 참여자 전원 캐시 Evict -> PGMQ 메시지 DELETE
+* **사용자의 Main 폴링 (`GET /api/v1/exchange/main`):** 5초 주기 폴링 요청 -> Redis 캐시 조회 (MyIntents, Feed, Rooms 캐시 조립) -> 캐시 미스 시 DB 조회 후 캐시 재적재 -> 내 Intent 목록, 연관 방 목록 및 각 방의 상세 정보(방 단일 status `ACTIVE`/`PARTIAL_OFF`/`PARTIAL_DELETE`/`ALL_DELETE`, 내 토글 `isOn`, 안 읽은 메시지 수 `unreadCount`, 최근 메시지 이력, 방 구성원/참여 Intent 카드 목록 등)를 단일 API 응답으로 풍부하게 일괄 반환
+* **사용자의 Room 메시지 전송:** DB 삽입 (`message_type = 'TALK'`) -> 발신자 `last_read_message_id` 즉시 갱신 -> 참여자 전원 캐시 Evict
+* **사용자의 Intent 철회:** Intent/Mapping Soft Delete (`is_deleted = TRUE`) -> `PESSIMISTIC_WRITE` 락 기반 방 `status` 재계산 및 갱신 (`PARTIAL_DELETE` / `ALL_DELETE`) -> `EXCHANGE_ROOM_MESSAGE` 이탈 안내 SYSTEM 메시지 일괄 작성 -> 참여자 전원 캐시 Evict
+* **사용자의 Room 토글(OFF/ON):** `is_on` 변경 (`TRUE` / `FALSE`) -> `PESSIMISTIC_WRITE` 락 기반 방 `status` 재계산 및 갱신 -> 필요 시 SYSTEM 메시지 작성 -> 연관 캐시 Evict
+* **사용자의 Room 메시지 읽음 처리:** `EXCHANGE_ROOM_READ_STATUS` 내 `last_read_message_id` DB 갱신 -> 본인 캐시 Evict
+
+##### **[상태 변경 및 시스템 메시지 연동 방식]**
+
+1. **단일 상태 축적 관리:** `EXCHANGE_ROOM`의 `status` 컬럼 하나로 방 전체 상태를 나타냅니다.
+* `ACTIVE`: 모든 유저가 참여 중 및 알림 ON 상태
+* `PARTIAL_OFF`: 1명 이상의 유저가 방을 OFF(알림 수신 거부) 처리함 (삭제된 의사는 없음)
+* `PARTIAL_DELETE`: 1명 이상의 유저가 Intent를 철회함 (전체 참여자 중 일부 삭제, `0 < d < n`)
+* `ALL_DELETE`: 참여자 전체가 Intent를 철회함 (`d == n`)
+
+> **대화방 비활성화(Deactivation) 기준:**
+> - 활성 Intent가 1개 이하(`n - d < 2`)가 되면 대화방은 비활성화되어 추가 메시지 전송이 차단됩니다.
+> - 따라서 `PARTIAL_DELETE` 상태이더라도 남은 활성 Intent가 1개인 경우 대화방은 비활성화 상태가 됩니다.
+> - `ALL_DELETE`는 전원 철회 시 기록 보관용으로 전환되며 적절한 비활성화 시스템 메시지가 남습니다.
+
+2. **메시지 테이블 내 시스템 메시지 통합:** `EXCHANGE_ROOM_MESSAGE` 테이블에 `message_type` (`TALK`, `SYSTEM`) 컬럼을 도입합니다.
+* 유저 행동(Intent 철회, 방 토글 등)으로 인해 방 상태 변경이 일어날 때, 동시성 락(`PESSIMISTIC_WRITE`) 내에서 **Room status 업데이트**와 함께 **SYSTEM 타입 메시지(`member_id`, `intent_id`는 NULL 허용)를 일괄 INSERT**합니다.
+
+---
+
+#### 4. 데이터베이스 ERD & DDL 명세
+
+일반적으로 member가 주축이 되어서 처리되는 것을 생각할 수 있지만 여기서는 사용자의 intent가 실질적인 주체 역할을 합니다. 즉 관계들은 모두 intent와 필수적으로 관계를 가지고 있습니다. 또한 설계 시 등에서는 intent가 실질적인 식별자라고 생각해야 합니다.
+
+> 그럼에도 member를 FK로 잡은 이유는 향후 member 안에 포함된 내용이 필요한 경우 JOIN을 통해 쉽게 접근 가능하도록 하기 위함입니다.
 
 ##### **[ERD 다이어그램]**
-상태 업데이트로 인한 Lock이나 복잡한 Join을 최소화하기 위해 철저하게 이력(History)과 기본 정보 위주로 테이블을 구성합니다. 과목 번호는 앞자리에 0이 포함될 수 있는 점을 고려하여 `varchar`로 선언하되, 내용은 숫자로 된 고유번호입니다.
+
+상태 업데이트로 인한 Lock이나 복잡한 Join을 최소화하기 위해 철저하게 이력(History)과 기본 정보 위주로 테이블을 구성합니다. 개설 강좌 식별 코드(`coursecls`)는 앞자리에 0이 포함될 수 있는 점(예: `"0001"`)을 고려하여 `varchar`로 선언하여 관리합니다.
 
 ```mermaid
 erDiagram
@@ -100,8 +139,7 @@ erDiagram
         VARCHAR term PK "학기 (예: 202620)"
         BIGINT id PK "방 고유 ID"
         VARCHAR cycle_hash "UNIQUE (Intent 조합 해시)"
-        VARCHAR status "방 상태 (ACTIVE, PARTIAL_DELETE, PARTIAL_OFF, ALL_DELETE)"
-        BOOLEAN is_active "방 활성 상태 (활성 카드 2개 이상일 때 TRUE)"
+        VARCHAR status "방 상태 (ACTIVE, PARTIAL_OFF, PARTIAL_DELETE, ALL_DELETE)"
         TIMESTAMP created_at
     }
 
@@ -130,9 +168,10 @@ erDiagram
         VARCHAR term PK "학기"
         BIGINT id PK "메시지 고유 ID"
         BIGINT room_id FK "EXCHANGE_ROOM(term, id)"
-        BIGINT member_id FK "MEMBER(id)"
-        BIGINT intent_id FK "EXCHANGE_INTENT(term, id)"
-        TEXT content
+        BIGINT member_id FK "MEMBER(id), NULLABLE(SYSTEM 메시지)"
+        BIGINT intent_id FK "EXCHANGE_INTENT(term, id), NULLABLE(SYSTEM 메시지)"
+        VARCHAR message_type "메시지 유형 (TALK, SYSTEM)"
+        TEXT content "메시지 본문"
         TIMESTAMP created_at
     }
 
@@ -140,7 +179,7 @@ erDiagram
         VARCHAR term PK "학기"
         BIGINT room_id PK, FK "EXCHANGE_ROOM(term, id)"
         BIGINT member_id PK, FK "MEMBER(id)"
-        BIGINT intent_id FK "EXCHANGE_INTENT(term, id)"
+        BIGINT intent_id PK, FK "EXCHANGE_INTENT(term, id)"
         BIGINT last_read_message_id FK "EXCHANGE_ROOM_MESSAGE(term, id)"
         TIMESTAMP last_read_at
     }
@@ -162,85 +201,74 @@ erDiagram
     EXCHANGE_ROOM_MESSAGE ||--o{ EXCHANGE_ROOM_READ_STATUS : "last_read_pointer(term, id)"
 ```
 
-##### **[DDL SQL 및 파티셔닝]**
+##### **[DDL 명세 (PostgreSQL)]**
 
 ```sql
--- 1. 회원 테이블 (전역 공통)
-CREATE TABLE MEMBER (
-    id BIGINT GENERATED ALWAYS AS IDENTITY,
-    PRIMARY KEY (id)
-);
-
--- 2. 교환 방 테이블 (파티션 기준 테이블)
-CREATE TABLE EXCHANGE_ROOM (
-    term VARCHAR(10) NOT NULL,
-    id BIGINT NOT NULL,
-    cycle_hash VARCHAR(64) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', -- 방 상태
-    is_active BOOLEAN NOT NULL DEFAULT TRUE, -- 전체 방 활성 상태
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (term, id),
-    CONSTRAINT uniq_term_cycle_hash UNIQUE (term, cycle_hash)
-) PARTITION BY LIST (term);
-
--- 3. 교환 의사 테이블
-CREATE TABLE EXCHANGE_INTENT (
+-- 1. EXCHANGE_INTENT (교환 의사)
+CREATE TABLE exchange_intent (
     term VARCHAR(10) NOT NULL,
     id BIGINT NOT NULL,
     member_id BIGINT NOT NULL,
     give_course_no VARCHAR(20) NOT NULL,
     want_course_no VARCHAR(20) NOT NULL,
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMP NULL,
-    PRIMARY KEY (term, id),
-    FOREIGN KEY (member_id) REFERENCES MEMBER(id)
+    is_deleted BOOLEAN DEFAULT FALSE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_exchange_intent PRIMARY KEY (term, id)
 ) PARTITION BY LIST (term);
 
--- 4. 교환 방-의사 매핑 테이블
-CREATE TABLE EXCHANGE_ROOM_INTENT (
+-- 2. EXCHANGE_ROOM (교환 채팅방)
+-- status 단일 컬럼으로 방 전체 상태 관리 (is_active 삭제 및 CHECK 제약 조건 적용)
+CREATE TABLE exchange_room (
+    term VARCHAR(10) NOT NULL,
+    id BIGINT NOT NULL,
+    cycle_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(20) DEFAULT 'ACTIVE' NOT NULL, -- ACTIVE, PARTIAL_OFF, PARTIAL_DELETE, ALL_DELETE
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT pk_exchange_room PRIMARY KEY (term, id),
+    CONSTRAINT uk_exchange_room_cycle_hash UNIQUE (term, cycle_hash),
+    CONSTRAINT chk_exchange_room_status CHECK (status IN ('ACTIVE', 'PARTIAL_OFF', 'PARTIAL_DELETE', 'ALL_DELETE'))
+) PARTITION BY LIST (term);
+
+-- 3. EXCHANGE_ROOM_INTENT (채팅방-의사 매핑)
+CREATE TABLE exchange_room_intent (
     term VARCHAR(10) NOT NULL,
     room_id BIGINT NOT NULL,
     intent_id BIGINT NOT NULL,
     member_id BIGINT NOT NULL,
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE, -- 의사 철회 시 비활성화 동기화용
-    is_on BOOLEAN NOT NULL DEFAULT TRUE,       -- 알림 및 화면 표시 토글 상태 (유저 제어용)
-    joined_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (term, room_id, intent_id),
-    -- 파티션 제약을 준수하기 위해 부모 PK 복합 참조 선언
-    FOREIGN KEY (term, room_id) REFERENCES EXCHANGE_ROOM(term, id),
-    FOREIGN KEY (term, intent_id) REFERENCES EXCHANGE_INTENT(term, id),
-    FOREIGN KEY (member_id) REFERENCES MEMBER(id)
+    is_deleted BOOLEAN DEFAULT FALSE NOT NULL,
+    is_on BOOLEAN DEFAULT TRUE NOT NULL,
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT pk_exchange_room_intent PRIMARY KEY (term, room_id, intent_id)
 ) PARTITION BY LIST (term);
 
--- 5. 채팅 메시지 테이블
-CREATE TABLE EXCHANGE_ROOM_MESSAGE (
+-- 4. EXCHANGE_ROOM_MESSAGE (채팅 및 시스템 메시지)
+-- message_type 도입 및 SYSTEM/TALK 메시지 데이터 무결성 강화를 위해 CHECK 제약 조건 적용
+CREATE TABLE exchange_room_message (
     term VARCHAR(10) NOT NULL,
     id BIGINT NOT NULL,
     room_id BIGINT NOT NULL,
-    member_id BIGINT NOT NULL,
-    intent_id BIGINT NOT NULL,
+    member_id BIGINT,              -- SYSTEM 메시지 시 NULL
+    intent_id BIGINT,              -- SYSTEM 메시지 시 NULL
+    message_type VARCHAR(10) DEFAULT 'TALK' NOT NULL, -- TALK, SYSTEM
     content TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (term, id),
-    FOREIGN KEY (term, room_id) REFERENCES EXCHANGE_ROOM(term, id),
-    FOREIGN KEY (term, intent_id) REFERENCES EXCHANGE_INTENT(term, id),
-    FOREIGN KEY (member_id) REFERENCES MEMBER(id)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT pk_exchange_room_message PRIMARY KEY (term, id),
+    CONSTRAINT chk_exchange_room_message_type CHECK (
+        (message_type = 'TALK' AND member_id IS NOT NULL AND intent_id IS NOT NULL) OR
+        (message_type = 'SYSTEM' AND member_id IS NULL AND intent_id IS NULL)
+    )
 ) PARTITION BY LIST (term);
 
--- 6. 안읽은 메시지 추적 테이블
-CREATE TABLE EXCHANGE_ROOM_READ_STATUS (
+-- 5. EXCHANGE_ROOM_READ_STATUS (안읽은 메시지 읽음 처리)
+CREATE TABLE exchange_room_read_status (
     term VARCHAR(10) NOT NULL,
     room_id BIGINT NOT NULL,
     member_id BIGINT NOT NULL,
     intent_id BIGINT NOT NULL,
-    last_read_message_id BIGINT NOT NULL,
-    last_read_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (term, room_id, member_id),
-    FOREIGN KEY (term, room_id) REFERENCES EXCHANGE_ROOM(term, id),
-    FOREIGN KEY (term, intent_id) REFERENCES EXCHANGE_INTENT(term, id),
-    FOREIGN KEY (member_id) REFERENCES MEMBER(id),
-    FOREIGN KEY (term, last_read_message_id) REFERENCES EXCHANGE_ROOM_MESSAGE(term, id)
+    last_read_message_id BIGINT DEFAULT 0 NOT NULL,
+    last_read_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT pk_exchange_room_read_status PRIMARY KEY (term, room_id, intent_id)
 ) PARTITION BY LIST (term);
 ```
 
@@ -270,12 +298,11 @@ CREATE INDEX idx_intent_matching_pool
 -- [2] EXCHANGE_ROOM_INTENT 관련 인덱스
 -----------------------------------------------------------
 
--- idx_room_intent_member: 유저의 활성 대화방 리스트 폴링 최적화
--- 사용자가 앱에 진입하거나 5초 주기로 메인 화면을 폴링할 때 '참여 중이고 활성화(is_on = TRUE)된 방'의 ID를 빠르게 획득.
--- SELECT room_id FROM EXCHANGE_ROOM_INTENT WHERE member_id = :myId AND is_on = TRUE;
+-- idx_room_intent_member: 유저의 대화방 리스트 폴링 최적화
+-- 사용자가 앱에 진입하거나 5초 주기로 메인 화면을 폴링할 때 참여 중인 방의 ID를 빠르게 획득.
+-- SELECT room_id FROM EXCHANGE_ROOM_INTENT WHERE member_id = :myId;
 CREATE INDEX idx_room_intent_member 
-    ON EXCHANGE_ROOM_INTENT(member_id, room_id)
-    WHERE is_on = TRUE;
+    ON EXCHANGE_ROOM_INTENT(member_id, room_id);
 
 -- idx_room_intent_reverse: 특정 카드 취소 시 연관 대화방 역방향 추적 최적화
 -- 유저가 의사를 삭제(취소)했을 때 해당 카드가 연결되어 활성화 중이던 방 목록을 역방향으로 조회해 방 비활성화 또는 시스템 알림 전송.
@@ -335,7 +362,7 @@ END $$;
 
 ---
 
-#### 4. Redis 캐시 전략 및 정합성 보장
+#### 5. Redis 캐시 전략 및 정합성 보장
 
 본 시스템은 분산 서버 환경에서의 빠른 실시간 5초 폴링을 지원하기 위해, **RDB를 단일 신뢰 원천(Single Source of Truth)으로 삼고, Redis 캐시를 조작하여 캐시 정합성을 유지**하는 방식으로 설계되었습니다.
 
@@ -343,9 +370,9 @@ END $$;
 
 | 캐시 종류 | Redis Key 형식 | 데이터 구조 | TTL | 설명 |
 | :--- | :--- | :--- | :--- | :--- |
-| **CACHE 1** (공용 피드) | `exchange::{term}:feed:cache` | List | 10분 | 실시간 전체 공용 피드로 사용되는 최근 50개의 교환 의사 DTO 리스트. |
+| **CACHE 1** (공용 피드) | `exchange::{term}:feed:cache` | List | 10시간 | 실시간 전체 공용 피드로 사용되는 최근 50개의 교환 의사 DTO 리스트. |
 | **CACHE 2** (유저별 Intent) | `exchange::{term}:member:{member_id}:intents:cache` | List | 10분 | 해당 유저가 등록한 미삭제 상태의 활성 Intent DTO 리스트. |
-| **CACHE 3** (유저별 방 목록) | `exchange::{term}:member:{member_id}:rooms:cache` | List | 10분 | 해당 유저가 참여 중이고 화면 표시가 켜진(is_on = TRUE) 방의 요약 정보 목록 (안 읽은 개수, 최신 글 포함). |
+| **CACHE 3** (유저별 방 목록) | `exchange::{term}:member:{member_id}:rooms:cache` | List | 10분 | 해당 유저가 참여 중인 방의 상세 요약 정보 목록 (방 status, isOn 토글 상태, lastReadMessageId 위치, 안 읽은 메시지 수, 최근 메시지, 방 참여 구성원 목록 등 포함). |
 
 - 모든 캐시 객체의 날짜/시간 필드는 직렬화 일관성을 위해 ISO-8601 문자열 대신 **밀리초 단위 epoch timestamp (Long)** 형식으로 직렬화합니다.
 
@@ -390,10 +417,18 @@ private void scheduleDoubleEvict(String key) {
   ```sql
   SELECT
       r.id                          AS room_id,
-      r.is_active,
+      r.term                        AS term,
+      r.cycle_hash                  AS cycle_hash,
+      r.status                      AS room_status,
+      ri.is_on                      AS is_on,
+      COALESCE(rs.last_read_message_id, 0) AS last_read_message_id,
+      msg.id                        AS last_message_id,
+      msg.message_type              AS last_message_type,
+      msg.member_id                 AS last_message_sender_id,
       msg.content                   AS last_message_content,
       msg.created_at                AS last_message_at,
-      COUNT(new_msg.id)             AS unread_count
+      COUNT(new_msg.id)             AS unread_count,
+      r.created_at                  AS created_at
   FROM EXCHANGE_ROOM_INTENT ri
   JOIN EXCHANGE_ROOM r
       ON r.term = ri.term AND r.id = ri.room_id
@@ -411,19 +446,17 @@ private void scheduleDoubleEvict(String key) {
       AND new_msg.id > COALESCE(rs.last_read_message_id, 0)
   WHERE ri.term      = :term
     AND ri.member_id = :member_id
-    AND ri.is_on     = TRUE
-    AND ri.is_deleted = FALSE
-  GROUP BY r.id, r.is_active, msg.content, msg.created_at;
+  GROUP BY r.id, r.term, r.cycle_hash, r.status, ri.is_on, rs.last_read_message_id, msg.id, msg.message_type, msg.member_id, msg.content, msg.created_at, r.created_at;
   ```
 
 ---
 
-#### 5. 상태 및 비즈니스 플로우 상세 이정표
+#### 6. 상태 및 비즈니스 플로우 상세 이정표
 
 ---
 
 - **① INTENT 등록**
-    - **트리거:** 사용자가 버릴 과목과 원하는 과목 번호를 입력하여 카드를 등록할 때.
+    - **트리거:** 사용자가 버릴 개설 강좌 식별 코드(`coursecls`)와 원하는 개설 강좌 식별 코드(`coursecls`)를 입력하여 카드를 등록할 때.
     - **타겟 테이블:** `EXCHANGE_INTENT`
     - **상세 처리 로직:**
         1. 동일 학기에 중복된 활성 의사(`is_deleted = FALSE`)가 존재하는지 확인 후, 새 레코드를 생성합니다 (`is_deleted = FALSE`).
@@ -451,10 +484,10 @@ private void scheduleDoubleEvict(String key) {
     - **타겟 테이블:** `EXCHANGE_ROOM`, `EXCHANGE_ROOM_INTENT`, `EXCHANGE_ROOM_READ_STATUS`, `EXCHANGE_ROOM_MESSAGE`
     - **상세 처리 로직 (단일 트랜잭션):**
         1. **비관적 락 획득:** 사이클 내의 `intent_id` 레코드들을 `SELECT FOR UPDATE`로 락을 걸고 삭제 여부를 재검증합니다.
-        2. **방 생성:** `EXCHANGE_ROOM` 테이블에 신규 행을 저장합니다 (`cycle_hash` 포함).
+        2. **방 생성:** `EXCHANGE_ROOM` 테이블에 신규 행을 저장합니다 (`status = 'ACTIVE'`, `cycle_hash` 포함).
         3. **참여자 매핑:** `EXCHANGE_ROOM_INTENT` 테이블에 모든 참여자의 정보를 적재합니다 (`is_deleted = FALSE`, `is_on = TRUE`).
         4. **읽음 포인터 초기화:** `EXCHANGE_ROOM_READ_STATUS` 테이블에 참여자별 초기 읽음 상태를 저장합니다.
-        5. **시스템 메시지 전송:** 매칭 완료 안내 텍스트를 `EXCHANGE_ROOM_MESSAGE`에 삽입하고, 이 메시지의 고유 ID로 각 참여자의 `last_read_message_id`를 최신화하여 읽음 처리합니다.
+        5. **시스템 메시지 전송:** 매칭 완료 안내 웰컴 메시지를 `EXCHANGE_ROOM_MESSAGE`에 삽입(`message_type = 'SYSTEM'`, `member_id`, `intent_id`는 NULL)하고, 이 메시지의 고유 ID로 각 참여자의 `last_read_message_id`를 최신화하여 읽음 처리합니다.
     - **캐시 조작:**
         1. 방 참여자 **전원**의 `exchange::{term}:member:{member_id}:rooms:cache`에 대해 이중 무효화(`evictRooms`) 처리합니다.
 
@@ -467,10 +500,10 @@ private void scheduleDoubleEvict(String key) {
         1. **의사 삭제:** `EXCHANGE_INTENT` 테이블에서 대상 카드를 `is_deleted = TRUE` 및 `deleted_at = NOW()`로 갱신합니다.
         2. **영향 받는 대화방 파악:** 역방향 인덱스(`idx_room_intent_reverse`)를 통해 해당 카드가 참여 중이던 대화방 목록을 조회합니다.
         3. **매핑 동기화:** 식별된 대화방들의 해당 멤버 매핑 정보(`EXCHANGE_ROOM_INTENT`) 내 상태를 `is_deleted = TRUE`, `is_on = FALSE`로 갱신합니다.
-        4. **방 활성 상태 재계산:**
-           - 해당 방의 전체 참여자 수($N$)와 의사가 삭제된 이탈자 수($D$)를 집계합니다.
-           - 잔여 인원($N-D$)이 **2명 미만**이 되는 경우 해당 방을 비활성화합니다 (`EXCHANGE_ROOM.is_active = FALSE`).
-        5. **알림 메시지 생성:** 대화방에 사용자의 이탈 알림 및 전체 방 비활성화 알림 시스템 메시지를 작성하여 삽입합니다.
+        4. **방 상태 재계산:**
+           - `PESSIMISTIC_WRITE` 락을 확보한 상태에서 대화방의 활성 Intent 수 및 참여자 상태를 재계산합니다.
+           - 활성 Intent가 2개 이상 유지되면 `EXCHANGE_ROOM.status`를 `PARTIAL_DELETE`로 갱신하고, 활성 Intent가 1개 이하가 되어 사이클이 깨지면 `status`를 `ALL_DELETE`로 갱신합니다.
+        5. **시스템 메시지 작성:** 동시성 락 안에서 대화방에 사용자의 이탈 알림 및 방 상태 변경 안내 시스템 메시지(`message_type = 'SYSTEM'`, `member_id`, `intent_id`는 NULL)를 일괄 INSERT합니다.
     - **캐시 조작:**
         1. 탈퇴자 본인의 `exchange::{term}:member:{member_id}:intents:cache` 이중 무효화.
         2. 연관된 방에 속해 있는 **참여자 전원**의 `exchange::{term}:member:{member_id}:rooms:cache` 이중 무효화.
@@ -479,11 +512,12 @@ private void scheduleDoubleEvict(String key) {
 
 - **⑤ 방 ON/OFF 토글**
     - **트리거:** 사용자가 특정 대화방 목록에서 알림 수신을 일시정지하거나 방을 목록에서 숨기기 위해 토글 스위치를 켰다 껄 때.
-    - **타겟 테이블:** `EXCHANGE_ROOM_INTENT`, `EXCHANGE_ROOM`
+    - **타겟 테이블:** `EXCHANGE_ROOM_INTENT`, `EXCHANGE_ROOM`, `EXCHANGE_ROOM_MESSAGE`
     - **상세 처리 로직 (단일 트랜잭션):**
         1. 해당 유저의 `EXCHANGE_ROOM_INTENT` 테이블 내 `is_on` 컬럼을 입력받은 값(`TRUE` or `FALSE`)으로 업데이트합니다.
-        2. `updateRoomStatusAndState`를 호출하여 `PESSIMISTIC_WRITE` 락을 걸고 방 상태를 재계산(상태 전이 규칙 A, B, C, D 적용)한 뒤 `EXCHANGE_ROOM` 테이블의 `status` 및 `is_active`를 업데이트합니다.
-        3. 토글이 `FALSE`가 된 유저의 경우 메인/채팅방 목록 쿼리에서 `idx_room_intent_member` 인덱스의 필터 조건(`is_on = TRUE`)에 의해 즉시 조회 결과에서 배제됩니다.
+        2. `updateRoomStatusAndState`를 호출하여 `PESSIMISTIC_WRITE` 락을 걸고 방 상태를 재계산(상태 전이 규칙 A, B, C, D 적용)한 뒤 `EXCHANGE_ROOM` 테이블의 `status`를 업데이트합니다.
+        3. 방 상태가 변경되는 경우(`PARTIAL_OFF`로 전이되거나 `ACTIVE`로 복귀 시) 동시성 락 안에서 방 상태 변경에 대한 SYSTEM 메시지(`message_type = 'SYSTEM'`)를 작성하여 삽입합니다. (예: `"[시스템] 일부 참여자가 대화방 알림을 OFF 하였습니다."`, `"[시스템] 모든 참여자가 대화방 알림을 ON으로 전환하였습니다."`)
+        4. 토글이 `FALSE`가 된 유저의 경우에도 메인/채팅방 목록 쿼리(polling)에서 방은 삭제되거나 숨겨지지 않고 `isOn: false` 상태로 목록에 계속 노출되어 방 상태를 확인할 수 있습니다.
     - **캐시 조작:**
         1. 토글을 조작한 유저 **본인**의 `exchange::{term}:member:{member_id}:rooms:cache` 이중 무효화.
 
@@ -493,7 +527,7 @@ private void scheduleDoubleEvict(String key) {
     - **트리거:** 사용자가 활성화된 대화방 내부에서 텍스트를 작성하여 전송할 때.
     - **타겟 테이블:** `EXCHANGE_ROOM_MESSAGE`, `EXCHANGE_ROOM_READ_STATUS`
     - **상세 처리 로직 (단일 트랜잭션):**
-        1. `EXCHANGE_ROOM_MESSAGE` 테이블에 해당 학기, 방 ID, 발신자 고유 ID와 Intent ID, 그리고 본문 텍스트를 저장합니다.
+        1. `EXCHANGE_ROOM_MESSAGE` 테이블에 해당 학기, 방 ID, 발신자 고유 ID와 Intent ID, `message_type = 'TALK'`, 그리고 본문 텍스트를 저장합니다.
         2. 발신자 본인은 메시지를 전송하자마자 읽은 것이 되므로, 생성된 메시지 ID로 본인의 `EXCHANGE_ROOM_READ_STATUS.last_read_message_id`를 즉시 갱신합니다.
     - **캐시 조작:**
         1. 대화방에 속한 **참여자 전원**의 `exchange::{term}:member:{member_id}:rooms:cache` 이중 무효화 (안 읽은 개수 및 최근 글 갱신 목적).
@@ -510,7 +544,7 @@ private void scheduleDoubleEvict(String key) {
 
 ---
 
-#### 6. API 명세 (API Specifications)
+#### 7. API 명세 (API Specifications)
 
 ##### **[공통 응답 구조]**
 성공 시 모든 응답은 `SingleSuccessResponseEnvelope` 표준 규격으로 감싸져 반환됩니다. `meta` 필드는 글로벌 필터에 의해 공통 주입됩니다.
@@ -537,7 +571,7 @@ private void scheduleDoubleEvict(String key) {
 
 ##### **1. 교환 의사(Intent) 등록**
 - **Method & Path:** `POST /api/v1/exchange/intents`
-- **Description:** 버릴 과목과 원하는 과목 번호를 지정하여 매칭 풀에 등록합니다.
+- **Description:** 버릴 개설 강좌 식별 코드(`coursecls`)와 원하는 개설 강좌 식별 코드(`coursecls`)를 지정하여 매칭 풀에 등록합니다.
 - **Request Body:**
   ```json
   {
@@ -563,7 +597,7 @@ private void scheduleDoubleEvict(String key) {
 
 ##### **2. 교환 의사(Intent) 철회**
 - **Method & Path:** `DELETE /api/v1/exchange/intents/{intentId}`
-- **Description:** 등록했던 카드를 철회합니다. 연관 대화방의 인원이 부족할 경우 방은 자동으로 비활성화됩니다.
+- **Description:** 등록했던 카드를 철회합니다. 연관 대화방의 인원이 부족할 경우 방 상태는 자동으로 `PARTIAL_DELETE`, `ALL_DELETE` 으로 전환됩니다.
 - **Response JSON (200 OK):**
   ```json
   {
@@ -579,7 +613,7 @@ private void scheduleDoubleEvict(String key) {
 
 ##### **3. 메인 화면 상태 조회 (5초 주기 Polling 용도)**
 - **Method & Path:** `GET /api/v1/exchange/main`
-- **Description:** 5초 주기로 메인 화면을 갱신하는 통합 조회 API입니다. Redis 내 분산 마이크로 캐시를 조립하여 반환함으로써 RDB의 조회 병목을 최소화합니다.
+- **Description:** 5초 주기로 메인 화면을 갱신하는 통합 조회 API입니다. 클라이언트가 개별 방 진입이나 추가 API 호출 없이도 메인 화면과 각 내 Intent(카드)별 매칭 대화방 목록 및 구성원 정보를 한눈에 렌더링할 수 있도록, 내 Intent 객체 내부(`myIntents[].rooms`)에 연관 대화방 상세 목록(방 단일 status, 토글 state, unreadCount, lastReadMessageId 읽음 위치, 최근 메시지 lastMessage, 방 구성원 카드 목록 participants 등)을 중첩 배치하고 최신 피드(`recentIntents`)와 함께 일괄 반환합니다.
 - **Response JSON (200 OK):**
   ```json
   {
@@ -587,28 +621,63 @@ private void scheduleDoubleEvict(String key) {
       "myIntents": [
         {
           "intentId": 10524,
-          "giveCourseNo": "10023",
-          "wantCourseNo": "40101",
+          "giveCourseNo": "0001",
+          "wantCourseNo": "0005",
           "deleted": false,
-          "createdAt": 1749518850000
-        }
-      ],
-      "myRooms": [
-        {
-          "roomId": 402,
-          "active": true,
-          "on": true,
-          "unreadCount": 2,
-          "lastMessageContent": "네 그럼 3시에 맞춰서 동시에 취소할까요?",
-          "lastMessageAt": 1749519015000
+          "createdAt": 1749518850000,
+          "rooms": [
+            {
+              "roomId": 402,
+              "term": "202620",
+              "cycleHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "status": "ACTIVE",
+              "on": true,
+              "unreadCount": 2,
+              "lastReadMessageId": 55100,
+              "lastMessage": {
+                "messageId": 55102,
+                "senderId": 4412,
+                "messageType": "TALK",
+                "content": "네 그럼 3시에 맞춰서 동시에 취소할까요?",
+                "createdAt": 1749519015000
+              },
+              "participants": [
+                {
+                  "memberId": 9931,
+                  "intentId": 10524,
+                  "giveCourseNo": "0001",
+                  "wantCourseNo": "0005",
+                  "deleted": false,
+                  "on": true
+                },
+                {
+                  "memberId": 4412,
+                  "intentId": 10525,
+                  "giveCourseNo": "0005",
+                  "wantCourseNo": "0012",
+                  "deleted": false,
+                  "on": true
+                },
+                {
+                  "memberId": 7710,
+                  "intentId": 10526,
+                  "giveCourseNo": "0012",
+                  "wantCourseNo": "0001",
+                  "deleted": false,
+                  "on": true
+                }
+              ],
+              "createdAt": 1749518900000
+            }
+          ]
         }
       ],
       "recentIntents": [
-        { "intentId": 10529, "giveCourseNo": "50201", "wantCourseNo": "10042", "createdAt": 1749519730000 },
-        { "intentId": 10528, "giveCourseNo": "30122", "wantCourseNo": "20441", "createdAt": 1749519712000 },
-        { "intentId": 10527, "giveCourseNo": "11025", "wantCourseNo": "30221", "createdAt": 1749519644000 },
-        { "intentId": 10526, "giveCourseNo": "40012", "wantCourseNo": "99301", "createdAt": 1749519601000 },
-        { "intentId": 10525, "giveCourseNo": "20391", "wantCourseNo": "10023", "createdAt": 1749519520000 }
+        { "intentId": 10529, "giveCourseNo": "5020", "wantCourseNo": "1004", "createdAt": 1749519730000 },
+        { "intentId": 10528, "giveCourseNo": "3012", "wantCourseNo": "2044", "createdAt": 1749519712000 },
+        { "intentId": 10527, "giveCourseNo": "1102", "wantCourseNo": "3022", "createdAt": 1749519644000 },
+        { "intentId": 10526, "giveCourseNo": "4001", "wantCourseNo": "9930", "createdAt": 1749519601000 },
+        { "intentId": 10525, "giveCourseNo": "2039", "wantCourseNo": "0001", "createdAt": 1749519520000 }
       ]
     }
   }
@@ -616,25 +685,19 @@ private void scheduleDoubleEvict(String key) {
 
 ---
 
-##### **4. 최근 등록된 교환 의사 피드 조회 (무한 스크롤)**
-- **Method & Path:** `GET /api/v1/exchange/intents/recent?lastIntentId={lastIntentId}&limit={limit}`
-- **Description:** 피드 캐시를 기반으로 커서 페이징을 수행해 최신 Intent 리스트를 무한 스크롤로 반환합니다.
-- **Query Parameters:**
-  | 파라미터 | 타입 | 필수 여부 | 설명 |
-  | :--- | :--- | :--- | :--- |
-  | `lastIntentId` | Long | N | 직전 페이지의 마지막 `intentId`. 미지정 시 최신 목록부터 반환. |
-  | `limit` | Integer | N | 조회할 개수. 기본값 10, 최대 50. |
-
+##### **4. 최근 등록된 교환 의사 피드 조회**
+- **Method & Path:** `GET /api/v1/exchange/intents/recent`
+- **Description:** 최근 등록된 활성 교환 의사 리스트(최대 50개)를 단순 조회합니다. Redis 피드 캐시(`exchange::{term}:feed:cache`)에서 최근 50개 데이터를 즉시 반환하여 초고속 조회를 보장합니다.
+- **Query Parameters:** 없음
 - **Response JSON (200 OK):**
   ```json
   {
     "data": {
-      "intents": [
-        { "intentId": 10524, "giveCourseNo": "10023", "wantCourseNo": "40101", "createdAt": 1749518850000 },
-        { "intentId": 10523, "giveCourseNo": "20011", "wantCourseNo": "50022", "createdAt": 1749518848000 }
-      ],
-      "nextLastIntentId": 10523,
-      "hasNext": false
+      "recentIntents": [
+        { "intentId": 10529, "giveCourseNo": "5020", "wantCourseNo": "1004", "createdAt": 1749519730000 },
+        { "intentId": 10528, "giveCourseNo": "3012", "wantCourseNo": "2044", "createdAt": 1749519712000 },
+        { "intentId": 10527, "giveCourseNo": "1102", "wantCourseNo": "3022", "createdAt": 1749519644000 }
+      ]
     }
   }
   ```
@@ -642,12 +705,12 @@ private void scheduleDoubleEvict(String key) {
 ---
 
 ##### **5. 채팅방 메시지 내역 조회**
-- **Method & Path:** `GET /api/v1/exchange/rooms/{roomId}/messages?lastMessageId={lastMessageId}&size={size}`
-- **Description:** 해당 방의 이전 메시지 이력을 페이징하여 조회합니다. 호출 시 자동으로 읽음 처리 스키마(`EXCHANGE_ROOM_READ_STATUS`)가 갱신됩니다.
+- **Method & Path:** `GET /api/v1/exchange/rooms/{roomId}/messages?beforeMessageId={beforeMessageId}&size={size}`
+- **Description:** 해당 방의 이전 메시지 이력을 역방향 무한 스크롤(Previous Scroll, `id < beforeMessageId` 최신순 정렬) 방식으로 조회합니다. 호출 시 자동으로 읽음 처리 스키마(`EXCHANGE_ROOM_READ_STATUS`)가 갱신됩니다.
 - **Query Parameters:**
   | 파라미터 | 타입 | 필수 여부 | 설명 |
   | :--- | :--- | :--- | :--- |
-  | `lastMessageId` | Long | N | 직전 페이지의 마지막 메시지 ID. 미지정 시 가장 최신부터 반환. |
+  | `beforeMessageId` | Long | N | 지정한 메시지 ID보다 더 과거(작은 ID)의 메시지를 최신순으로 조회. 미지정 시 가장 최신 메시지부터 반환. |
   | `size` | Integer | N | 한 번에 가져올 메시지 수. 기본값 20. |
 
 - **Response JSON (200 OK):**
@@ -656,10 +719,10 @@ private void scheduleDoubleEvict(String key) {
     "data": {
       "roomId": 402,
       "messages": [
-        { "messageId": 55102, "senderId": 4412, "content": "네 그럼 3시에 맞춰서 동시에 취소할까요?", "createdAt": 1749519015000 },
-        { "messageId": 55101, "senderId": 9931, "content": "저는 10023 과목 버립니다.", "createdAt": 1749518940000 }
+        { "messageId": 55102, "senderId": 4412, "messageType": "TALK", "content": "네 그럼 3시에 맞춰서 동시에 취소할까요?", "createdAt": 1749519015000 },
+        { "messageId": 55101, "senderId": 9931, "messageType": "TALK", "content": "저는 0001 과목 버립니다.", "createdAt": 1749518940000 }
       ],
-      "nextLastMessageId": 55101,
+      "nextBeforeMessageId": 55101,
       "hasNext": true
     }
   }
@@ -683,6 +746,7 @@ private void scheduleDoubleEvict(String key) {
       "messageId": 55103,
       "roomId": 402,
       "senderId": 9931,
+      "messageType": "TALK",
       "content": "좋습니다. 대기하겠습니다.",
       "createdAt": 1749520580000
     }
@@ -693,11 +757,11 @@ private void scheduleDoubleEvict(String key) {
 
 ##### **7. 방 ON/OFF 토글**
 - **Method & Path:** `PATCH /api/v1/exchange/rooms/{roomId}/toggle`
-- **Description:** 특정 방의 알림 수신 상태 및 메인 목록 노출 여부를 전환합니다. `on: false`로 설정된 방은 메인 화면 폴링 목록에서 배제됩니다.
+- **Description:** 특정 방의 알림 수신 상태 및 ON/OFF 토글 상태를 전환합니다.
 - **Request Body:**
   ```json
   {
-    "on": false
+    "isOn": false
   }
   ```
 - **Response JSON (200 OK):**
@@ -705,7 +769,7 @@ private void scheduleDoubleEvict(String key) {
   {
     "data": {
       "roomId": 402,
-      "on": false
+      "isOn": false
     }
   }
   ```

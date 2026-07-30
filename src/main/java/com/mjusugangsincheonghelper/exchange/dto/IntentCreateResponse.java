@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
@@ -15,7 +16,10 @@ public class IntentCreateResponse {
 	private Long memberId;
 	private String giveCourseNo;
 	private String wantCourseNo;
+
+	@JsonProperty("isDeleted")
 	private boolean isDeleted;
+
 	private Instant createdAt;
 
 	public static IntentCreateResponse from(ExchangeIntentEntity entity) {

@@ -351,10 +351,10 @@ CREATE TABLE IF NOT EXISTS exchange_room (
     id          BIGINT      NOT NULL,
     cycle_hash  VARCHAR(64) NOT NULL,
     status      VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMP   NOT NULL DEFAULT now(),
     PRIMARY KEY (term, id),
-    CONSTRAINT uniq_term_cycle_hash UNIQUE (term, cycle_hash)
+    CONSTRAINT uniq_term_cycle_hash UNIQUE (term, cycle_hash),
+    CONSTRAINT chk_exchange_room_status CHECK (status IN ('ACTIVE', 'PARTIAL_OFF', 'PARTIAL_DELETE', 'ALL_DELETE'))
 ) PARTITION BY LIST (term);
 
 -- ============================================================
@@ -384,16 +384,21 @@ CREATE INDEX IF NOT EXISTS idx_room_intent_reverse
 -- 17. exchange_room_message (파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room_message (
-    term        VARCHAR(10) NOT NULL,
-    id          BIGINT      NOT NULL,
-    room_id     BIGINT      NOT NULL,
-    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
-    intent_id   BIGINT      NOT NULL,
-    content     TEXT        NOT NULL,
-    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    term          VARCHAR(10) NOT NULL,
+    id            BIGINT      NOT NULL,
+    room_id       BIGINT      NOT NULL,
+    member_id     BIGINT      REFERENCES member(id) ON DELETE CASCADE,
+    intent_id     BIGINT,
+    message_type  VARCHAR(10) NOT NULL DEFAULT 'TALK',
+    content       TEXT        NOT NULL,
+    created_at    TIMESTAMP   NOT NULL DEFAULT now(),
     PRIMARY KEY (term, id),
     FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id) ON DELETE CASCADE,
-    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id) ON DELETE CASCADE
+    FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id) ON DELETE CASCADE,
+    CONSTRAINT chk_exchange_room_message_type CHECK (
+        (message_type = 'TALK' AND member_id IS NOT NULL AND intent_id IS NOT NULL) OR
+        (message_type = 'SYSTEM' AND member_id IS NULL AND intent_id IS NULL)
+    )
 ) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_message_room_id_pagination

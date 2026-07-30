@@ -2,10 +2,11 @@ package com.mjusugangsincheonghelper.notification.service;
 
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
+import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
+import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenDeleteRequest;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenRegisterRequest;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenResponse;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,32 +33,57 @@ class NotificationServiceTest {
 	}
 
 	@Test
-	@DisplayName("FCM 토큰 등록 시 MemberDevice에 새 토큰을 갱신한다")
+	@DisplayName("FCM 토큰 등록 시 deviceId로 기기를 특정하여 토큰을 저장한다")
 	void shouldRegisterFcmTokenSuccessfully() {
 		Long memberId = 1L;
+		Long deviceId = 10L;
 		String token = "sample-fcm-token-123";
 		MemberDevice device = MemberDevice.builder()
 				.memberId(memberId)
 				.refreshToken("ref-token-1")
 				.build();
 
+		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
 		given(memberDeviceRepository.findByFcmToken(token)).willReturn(Optional.empty());
-		given(memberDeviceRepository.findFirstByMemberIdOrderByLastAccessedAtDesc(memberId)).willReturn(Optional.of(device));
 
 		NotificationTokenRegisterRequest request = NotificationTokenRegisterRequest.builder()
 				.fcmToken(token)
 				.build();
 
-		NotificationTokenResponse response = notificationService.registerToken(memberId, request);
+		NotificationTokenResponse response = notificationService.registerToken(memberId, deviceId, request);
 
 		assertThat(response.getFcmToken()).isEqualTo(token);
 		assertThat(device.getFcmToken()).isEqualTo(token);
 	}
 
 	@Test
-	@DisplayName("FCM 토큰 삭제 시 해당 기기의 FCM 토큰을 초기화한다")
+	@DisplayName("다른 사용자의 deviceId로 요청 시 예외가 발생한다")
+	void shouldThrowWhenDeviceBelongsToOtherMember() {
+		Long currentMemberId = 1L;
+		Long otherMemberId = 2L;
+		Long deviceId = 10L;
+		String token = "sample-fcm-token-123";
+		MemberDevice device = MemberDevice.builder()
+				.memberId(otherMemberId)
+				.refreshToken("ref-token-1")
+				.build();
+
+		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
+
+		NotificationTokenRegisterRequest request = NotificationTokenRegisterRequest.builder()
+				.fcmToken(token)
+				.build();
+
+		assertThatThrownBy(() -> notificationService.registerToken(currentMemberId, deviceId, request))
+				.isInstanceOf(BaseException.class)
+				.hasFieldOrPropertyWithValue("errorCode", ErrorCode.GLOBAL_SECURITY_FORBIDDEN);
+	}
+
+	@Test
+	@DisplayName("FCM 토큰 삭제 시 deviceId로 기기를 특정하여 토큰을 클리어한다")
 	void shouldDeleteFcmTokenSuccessfully() {
 		Long memberId = 1L;
+		Long deviceId = 10L;
 		String token = "sample-fcm-token-123";
 		MemberDevice device = MemberDevice.builder()
 				.memberId(memberId)
@@ -64,14 +91,38 @@ class NotificationServiceTest {
 				.build();
 		device.updateFcmToken(token);
 
-		given(memberDeviceRepository.findByMemberIdAndFcmToken(memberId, token)).willReturn(List.of(device));
+		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
 
 		NotificationTokenDeleteRequest request = NotificationTokenDeleteRequest.builder()
 				.fcmToken(token)
 				.build();
 
-		notificationService.deleteToken(memberId, request);
+		notificationService.deleteToken(memberId, deviceId, request);
 
 		assertThat(device.getFcmToken()).isNull();
+	}
+
+	@Test
+	@DisplayName("다른 사용자의 deviceId로 삭제 요청 시 예외가 발생한다")
+	void shouldThrowWhenDeletingOtherMemberDevice() {
+		Long currentMemberId = 1L;
+		Long otherMemberId = 2L;
+		Long deviceId = 10L;
+		String token = "sample-fcm-token-123";
+		MemberDevice device = MemberDevice.builder()
+				.memberId(otherMemberId)
+				.refreshToken("ref-token-1")
+				.build();
+		device.updateFcmToken(token);
+
+		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
+
+		NotificationTokenDeleteRequest request = NotificationTokenDeleteRequest.builder()
+				.fcmToken(token)
+				.build();
+
+		assertThatThrownBy(() -> notificationService.deleteToken(currentMemberId, deviceId, request))
+				.isInstanceOf(BaseException.class)
+				.hasFieldOrPropertyWithValue("errorCode", ErrorCode.GLOBAL_SECURITY_FORBIDDEN);
 	}
 }

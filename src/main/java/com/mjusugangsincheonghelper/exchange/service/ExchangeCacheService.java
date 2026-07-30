@@ -1,22 +1,12 @@
 package com.mjusugangsincheonghelper.exchange.service;
 
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
-import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
-import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
-import com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadStatusEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
-import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
+import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
-import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
-import com.mjusugangsincheonghelper.exchange.dto.cache.RoomCacheDto;
 import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +16,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
@@ -34,97 +25,89 @@ import org.springframework.transaction.annotation.Transactional;
 public class ExchangeCacheService {
 
 	private static final String CACHE_NAME_FEED = "exchange-feed";
-	private static final String CACHE_NAME_INTENTS = "exchange-intents";
-	private static final String CACHE_NAME_ROOMS = "exchange-rooms";
+	private static final String CACHE_NAME_MAIN = "exchange-main";
 	private static final long FEED_MAX_SIZE = 50;
 	private static final Duration DOUBLE_EVICT_DELAY = Duration.ofSeconds(2);
 
 	private final RedisTemplate<String, Object> redisTemplate;
 	private final ExchangeIntentRepository intentRepository;
-	private final ExchangeRoomIntentRepository roomIntentRepository;
-	private final ExchangeRoomMessageRepository messageRepository;
-	private final ExchangeRoomReadStatusRepository readStatusRepository;
-	private final ExchangeRoomRepository roomRepository;
 	private final TaskScheduler taskScheduler;
 	private final CacheProperties cacheProperties;
+	private final ObjectMapper objectMapper;
 
 	public List<FeedCacheDto> getFeed(String term) {
 		String key = feedKey(term);
-		List<Object> cached = redisTemplate.opsForList().range(key, 0, -1);
-		if (cached != null && !cached.isEmpty()) {
-			return cached.stream()
-					.map(this::toFeedCacheDto)
-					.filter(Objects::nonNull)
-					.toList();
+		try {
+			List<Object> cached = redisTemplate.opsForList().range(key, 0, -1);
+			if (cached != null && !cached.isEmpty()) {
+				List<FeedCacheDto> dtos = cached.stream()
+						.map(this::toFeedCacheDto)
+						.filter(Objects::nonNull)
+						.toList();
+				if (!dtos.isEmpty()) {
+					return dtos;
+				}
+			}
+		} catch (Exception e) {
+			log.warn("Redis getFeed failed for key={}: {}", key, e.getMessage());
 		}
 		return rebuildFeed(term);
 	}
 
-	public List<FeedCacheDto> getFeedSlice(String term, Long lastIntentId, int limit) {
-		List<FeedCacheDto> feed = getFeed(term);
-		if (lastIntentId == null || lastIntentId == 0) {
-			return feed.stream().limit(limit).toList();
-		}
-		boolean found = false;
-		List<FeedCacheDto> slice = new ArrayList<>();
-		for (FeedCacheDto dto : feed) {
-			if (found) {
-				slice.add(dto);
-				if (slice.size() >= limit) break;
-			}
-			if (dto.getIntentId().equals(lastIntentId)) {
-				found = true;
-			}
-		}
-		return slice;
-	}
-
 	public void pushFeed(String term, FeedCacheDto dto) {
 		String key = feedKey(term);
-		redisTemplate.opsForList().leftPush(key, dto);
-		redisTemplate.opsForList().trim(key, 0, FEED_MAX_SIZE - 1);
-		redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_FEED));
+		try {
+			redisTemplate.opsForList().leftPush(key, dto);
+			redisTemplate.opsForList().trim(key, 0, FEED_MAX_SIZE - 1);
+			redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_FEED));
+		} catch (Exception e) {
+			log.warn("Redis pushFeed failed for key={}: {}", key, e.getMessage());
+		}
 	}
 
 	public void evictFeed(String term) {
 		String key = feedKey(term);
-		redisTemplate.delete(key);
+		try {
+			redisTemplate.delete(key);
+		} catch (Exception e) {
+			log.warn("Redis evictFeed failed for key={}: {}", key, e.getMessage());
+		}
 		scheduleDoubleEvict(key);
 	}
 
-	public List<IntentCacheDto> getIntents(String term, Long memberId) {
-		String key = intentsKey(term, memberId);
-		List<Object> cached = redisTemplate.opsForList().range(key, 0, -1);
-		if (cached != null && !cached.isEmpty()) {
-			return cached.stream()
-					.map(this::toIntentCacheDto)
-					.filter(Objects::nonNull)
-					.toList();
+	public MainResponse getMainCache(String term, Long memberId) {
+		String key = mainKey(term, memberId);
+		try {
+			Object value = redisTemplate.opsForValue().get(key);
+			if (value instanceof MainResponse response) {
+				return response;
+			}
+			if (value != null) {
+				return objectMapper.convertValue(value, MainResponse.class);
+			}
+		} catch (Exception e) {
+			log.warn("Redis getMainCache failed for key={}: {}", key, e.getMessage());
 		}
-		return rebuildIntents(term, memberId);
+		return null;
 	}
 
-	public void evictIntents(String term, Long memberId) {
-		String key = intentsKey(term, memberId);
-		redisTemplate.delete(key);
-		scheduleDoubleEvict(key);
-	}
-
-	public List<RoomCacheDto> getRooms(String term, Long memberId) {
-		String key = roomsKey(term, memberId);
-		List<Object> cached = redisTemplate.opsForList().range(key, 0, -1);
-		if (cached != null && !cached.isEmpty()) {
-			return cached.stream()
-					.map(this::toRoomCacheDto)
-					.filter(Objects::nonNull)
-					.toList();
+	public void putMainCache(String term, Long memberId, MainResponse response) {
+		if (response == null) return;
+		String key = mainKey(term, memberId);
+		try {
+			redisTemplate.opsForValue().set(key, response, cacheProperties.getTtl(CACHE_NAME_MAIN));
+		} catch (Exception e) {
+			log.warn("Redis putMainCache failed for key={}: {}", key, e.getMessage());
 		}
-		return rebuildRooms(term, memberId);
 	}
 
-	public void evictRooms(String term, Long memberId) {
-		String key = roomsKey(term, memberId);
-		redisTemplate.delete(key);
+	public void evictMainCache(String term, Long memberId) {
+		String key = mainKey(term, memberId);
+		try {
+			redisTemplate.delete(key);
+		} catch (Exception e) {
+			log.warn("Redis evictMainCache failed for key={}: {}", key, e.getMessage());
+		}
 		scheduleDoubleEvict(key);
 	}
 
@@ -133,67 +116,15 @@ public class ExchangeCacheService {
 				term, PageRequest.of(0, (int) FEED_MAX_SIZE));
 		List<FeedCacheDto> dtos = entities.stream().map(FeedCacheDto::from).toList();
 		if (!dtos.isEmpty()) {
-			String key = feedKey(term);
-			redisTemplate.delete(key);
-			List<Object> objects = new ArrayList<>(dtos);
-			redisTemplate.opsForList().rightPushAll(key, objects);
-			redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_FEED));
-		}
-		return dtos;
-	}
-
-	private List<IntentCacheDto> rebuildIntents(String term, Long memberId) {
-		List<ExchangeIntentEntity> entities = intentRepository.findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(term, memberId);
-		List<IntentCacheDto> dtos = entities.stream().map(IntentCacheDto::from).toList();
-		if (!dtos.isEmpty()) {
-			String key = intentsKey(term, memberId);
-			redisTemplate.delete(key);
-			List<Object> objects = new ArrayList<>(dtos);
-			redisTemplate.opsForList().rightPushAll(key, objects);
-			redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_INTENTS));
-		}
-		return dtos;
-	}
-
-	private List<RoomCacheDto> rebuildRooms(String term, Long memberId) {
-		List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndMemberIdAndIsOnTrueAndIsDeletedFalse(term, memberId);
-		if (roomIntents.isEmpty()) {
-			return Collections.emptyList();
-		}
-
-		List<RoomCacheDto> dtos = roomIntents.stream()
-				.map(ri -> {
-					ExchangeRoomReadStatusEntity read = readStatusRepository.findById(
-							new ExchangeRoomReadStatusEntity.ExchangeRoomReadStatusId(term, ri.getRoomId(), memberId)
-					).orElse(null);
-					Long lastReadId = read != null ? read.getLastReadMessageId() : 0L;
-
-					ExchangeRoomMessageEntity lastMsg = messageRepository.findTopByTermAndRoomIdOrderByIdDesc(term, ri.getRoomId()).orElse(null);
-					int unread = messageRepository.countByTermAndRoomIdAndIdGreaterThan(term, ri.getRoomId(), lastReadId);
-
-					ExchangeRoomEntity room = roomRepository.findById(
-							new ExchangeRoomEntity.ExchangeRoomId(term, ri.getRoomId())
-					).orElse(null);
-					boolean isActive = room != null && room.isActive();
-					boolean isOn = ri.isOn();
-
-					return RoomCacheDto.builder()
-							.roomId(ri.getRoomId())
-							.isActive(isActive)
-							.isOn(isOn)
-							.unreadCount(unread)
-							.lastMessageContent(lastMsg != null ? lastMsg.getContent() : null)
-							.lastMessageAt(lastMsg != null ? lastMsg.getCreatedAt() : null)
-							.build();
-				})
-				.toList();
-
-		if (!dtos.isEmpty()) {
-			String key = roomsKey(term, memberId);
-			redisTemplate.delete(key);
-			List<Object> objects = new ArrayList<>(dtos);
-			redisTemplate.opsForList().rightPushAll(key, objects);
-			redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_ROOMS));
+			try {
+				String key = feedKey(term);
+				redisTemplate.delete(key);
+				List<Object> objects = new ArrayList<>(dtos);
+				redisTemplate.opsForList().rightPushAll(key, objects);
+				redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_FEED));
+			} catch (Exception e) {
+				log.warn("Redis rebuildFeed cache save failed: {}", e.getMessage());
+			}
 		}
 		return dtos;
 	}
@@ -210,16 +141,13 @@ public class ExchangeCacheService {
 
 	private FeedCacheDto toFeedCacheDto(Object obj) {
 		if (obj instanceof FeedCacheDto dto) return dto;
-		return null;
-	}
-
-	private IntentCacheDto toIntentCacheDto(Object obj) {
-		if (obj instanceof IntentCacheDto dto) return dto;
-		return null;
-	}
-
-	private RoomCacheDto toRoomCacheDto(Object obj) {
-		if (obj instanceof RoomCacheDto dto) return dto;
+		if (obj != null) {
+			try {
+				return objectMapper.convertValue(obj, FeedCacheDto.class);
+			} catch (Exception e) {
+				log.warn("Failed to convert feed cache object: {}", e.getMessage());
+			}
+		}
 		return null;
 	}
 
@@ -227,11 +155,7 @@ public class ExchangeCacheService {
 		return "exchange::" + term + ":feed:cache";
 	}
 
-	private String intentsKey(String term, Long memberId) {
-		return "exchange::" + term + ":member:" + memberId + ":intents:cache";
-	}
-
-	private String roomsKey(String term, Long memberId) {
-		return "exchange::" + term + ":member:" + memberId + ":rooms:cache";
+	private String mainKey(String term, Long memberId) {
+		return "exchange::" + term + ":member:" + memberId + ":main:cache";
 	}
 }

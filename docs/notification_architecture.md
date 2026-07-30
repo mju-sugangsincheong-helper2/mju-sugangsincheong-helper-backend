@@ -50,17 +50,28 @@
 
 
 
-### 프론트 처리
+표준 notification 형식
 ```
-[ FCM Push Server ]
-        │
-        ├──> 1. 백그라운드 / 앱 종료 상태
-        │    └─> Service Worker (sw.js) <= vue-pwa-plugin
-        │         ├─> OS 알림 (브라우저가 자동 노출)
-        │         └─> IndexedDB 저장
-        │
-        └──> 2. 포그라운드 (Vue 앱이 켜져 있는 상태)
-             └─> Vue 메인 앱 (App.vue)
-                  ├─> OS 알림 (new Notification()으로 OS 알림 배너 호출)
-                  └─> IndexedDB 저장
+{
+  "token": "fcm_device_token_sample",
+  "notification": {
+    "title": "공지 알림",
+    "body": "새로운 공지가 등록되었습니다. 앱을 확인하세요!"
+  },
+  "data": {
+    "type": "GENERAL",
+    "path": "/",
+    "timestamp": 1710000000000
+  }
+}
 ```
+
+type : 
+GENERAL(/)
+MULTIGAME_RESERVED_TIME(/multigame)
+EXCHANGE_MATCHED(/exchange/rooms/{roomId})
+EXCHANGE_NEW_MESSAGE(/exchange/rooms/{roomId})
+
+data 에는 type, path, timestamp 를 넣어주고, path 는 앱에서 해당 경로로 이동할 수 있도록 해준다.
+
+notification consumer 계층은 그냥 보내는 것만 담당하므로 여기서 data 객체에 대한 validation 은 하지 않는다. 각 도메인에서 적절한 세팅을 할 뿐이다

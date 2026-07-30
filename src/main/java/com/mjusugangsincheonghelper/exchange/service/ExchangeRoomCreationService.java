@@ -5,13 +5,19 @@ import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadStatusEntity;
+import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
+import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
+import com.mjusugangsincheonghelper.global.config.PgmqService;
+import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
+import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
 import jakarta.persistence.EntityManager;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,6 +35,8 @@ public class ExchangeRoomCreationService {
 	private final ExchangeRoomIntentRepository roomIntentRepository;
 	private final ExchangeRoomMessageRepository messageRepository;
 	private final ExchangeRoomReadStatusRepository readStatusRepository;
+	private final MemberDeviceRepository memberDeviceRepository;
+	private final PgmqService pgmqService;
 	private final ExchangeCacheService cacheService;
 
 	@Transactional
@@ -57,7 +65,6 @@ public class ExchangeRoomCreationService {
 				.term(term)
 				.cycleHash(cycleHash)
 				.status("ACTIVE")
-				.isActive(true)
 				.build());
 
 		for (ExchangeIntentEntity intent : cycle) {
@@ -69,7 +76,11 @@ public class ExchangeRoomCreationService {
 					.build());
 		}
 
-		for (ExchangeIntentEntity intent : cycle) {
+		List<ExchangeIntentEntity> distinctMemberIntents = cycle.stream()
+				.collect(java.util.stream.Collectors.toMap(ExchangeIntentEntity::getMemberId, i -> i, (i1, i2) -> i1, java.util.LinkedHashMap::new))
+				.values().stream().toList();
+
+		for (ExchangeIntentEntity intent : distinctMemberIntents) {
 			readStatusRepository.save(ExchangeRoomReadStatusEntity.builder()
 					.term(term)
 					.roomId(room.getId())
@@ -82,36 +93,75 @@ public class ExchangeRoomCreationService {
 		ExchangeRoomMessageEntity welcomeMsg = messageRepository.save(ExchangeRoomMessageEntity.builder()
 				.term(term)
 				.roomId(room.getId())
-				.memberId(cycle.get(0).getMemberId())
-				.intentId(cycle.get(0).getId())
+				.memberId(null)
+				.intentId(null)
+				.messageType("SYSTEM")
 				.content(welcomeContent)
 				.build());
 
-		for (ExchangeIntentEntity intent : cycle) {
+		for (ExchangeIntentEntity intent : distinctMemberIntents) {
 			ExchangeRoomReadStatusEntity read = readStatusRepository.findById(
 					new ExchangeRoomReadStatusEntity.ExchangeRoomReadStatusId(term, room.getId(), intent.getMemberId())
 			).orElseThrow();
 			read.updateLastReadMessageId(welcomeMsg.getId());
 		}
 
-		List<Long> memberIds = cycle.stream().map(ExchangeIntentEntity::getMemberId).toList();
+		List<Long> memberIds = distinctMemberIntents.stream().map(ExchangeIntentEntity::getMemberId).toList();
 
+		executeAfterCommit(() -> {
+			for (Long memberId : memberIds) {
+				cacheService.evictMainCache(term, memberId);
+			}
+			sendFcmForRoomCreated(term, room.getId(), memberIds);
+		});
+
+		return room.getId();
+	}
+
+	private void sendFcmForRoomCreated(String term, Long roomId, List<Long> memberIds) {
+		try {
+			String path = "/exchange/rooms/" + roomId;
+			String timestamp = String.valueOf(System.currentTimeMillis());
+
+			for (Long targetMemberId : memberIds) {
+				List<MemberDevice> devices = memberDeviceRepository.findByMemberId(targetMemberId);
+				for (MemberDevice device : devices) {
+					String token = device.getFcmToken();
+					if (token != null && !token.isBlank()) {
+						NotificationEventMessage event = NotificationEventMessage.builder()
+								.token(token)
+								.notification(NotificationEventMessage.NotificationPayload.builder()
+										.title("수강신청 교환 매칭 성공")
+										.body("[시스템] 교환 매칭이 성사되었습니다!")
+										.build())
+								.data(Map.of(
+										"type", "EXCHANGE_ROOM",
+										"path", path,
+										"timestamp", timestamp
+								))
+								.build();
+						pgmqService.send(NotificationConsumerWorker.QUEUE_NAME, event);
+						log.info("Queued FCM notification for EXCHANGE_ROOM: memberId={}, deviceId={}, path={}",
+								targetMemberId, device.getId(), path);
+					}
+				}
+			}
+		} catch (Exception e) {
+			log.warn("FCM 방 생성 알림 발송 중 오류 발생: roomId={}", roomId, e);
+		}
+	}
+
+	private void executeAfterCommit(Runnable action) {
 		if (TransactionSynchronizationManager.isSynchronizationActive()) {
 			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
 				@Override
 				public void afterCommit() {
-					for (Long memberId : memberIds) {
-						cacheService.evictRooms(term, memberId);
-					}
+					action.run();
 				}
 			});
 		} else {
-			for (Long memberId : memberIds) {
-				cacheService.evictRooms(term, memberId);
-			}
+			action.run();
 		}
-
-		return room.getId();
 	}
 
 	private String buildWelcomeMessage(List<ExchangeIntentEntity> cycle) {
@@ -121,7 +171,6 @@ public class ExchangeRoomCreationService {
 		for (ExchangeIntentEntity intent : cycle) {
 			sb.append("  - ").append(intent.getGiveCourseNo()).append(" → ").append(intent.getWantCourseNo()).append("\n");
 		}
-		sb.append("채팅을 통해 교환 시점과 방법을 협의해주세요.");
 		return sb.toString();
 	}
 }

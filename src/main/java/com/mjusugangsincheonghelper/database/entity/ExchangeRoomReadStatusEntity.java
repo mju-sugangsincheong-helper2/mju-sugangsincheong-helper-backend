@@ -13,13 +13,16 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import jakarta.persistence.EntityListeners;
 import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
 @Table(name = "exchange_room_read_status")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @IdClass(ExchangeRoomReadStatusEntity.ExchangeRoomReadStatusId.class)
+@EntityListeners(AuditingEntityListener.class)
 public class ExchangeRoomReadStatusEntity {
 
 	@Id

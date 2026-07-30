@@ -32,7 +32,6 @@ export default function (data) {
   }
 
   // 최근 교환 의사 피드 조회
-  getRecentIntents(token, 0, 10);
+  getRecentIntents(token);
   sleep(1);
 }
-

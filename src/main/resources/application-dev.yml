@@ -16,11 +16,11 @@ spring:
   jpa:
     defer-datasource-initialization: true
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     properties:
       hibernate:
-        show_sql: true
-        format_sql: true
+        # show_sql: true
+        # format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
         generate_statistics: true
         log_slow_query: 1000
@@ -80,7 +80,8 @@ app:
     google:
       client-id: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID}
       client-secret: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET}
-      redirect-uri: http://localhost:8080/auth-test.html
+      # redirect-uri: http://localhost:8080/auth-test.html
+      redirect-uri: http://localhost:5173/login
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
   firebase:

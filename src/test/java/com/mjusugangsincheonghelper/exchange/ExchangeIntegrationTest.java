@@ -22,6 +22,7 @@ import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.MessageSendRequest;
 import com.mjusugangsincheonghelper.exchange.dto.RoomToggleRequest;
+import com.mjusugangsincheonghelper.exchange.service.ExchangeCacheService;
 import com.mjusugangsincheonghelper.exchange.service.ExchangeCycleDetector;
 import com.mjusugangsincheonghelper.exchange.service.ExchangeService;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
@@ -57,6 +58,9 @@ class ExchangeIntegrationTest {
 
 	@Autowired
 	private ExchangeIntentRepository intentRepository;
+
+	@Autowired
+	private ExchangeCacheService cacheService;
 
 	@Autowired
 	private ExchangeRoomRepository roomRepository;
@@ -192,7 +196,6 @@ class ExchangeIntegrationTest {
 			mockMvc.perform(get("/api/v1/exchange/main"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.myIntents").isArray())
-					.andExpect(jsonPath("$.data.myRooms").isArray())
 					.andExpect(jsonPath("$.data.recentIntents").isArray());
 		}
 	}
@@ -228,7 +231,6 @@ class ExchangeIntegrationTest {
 			assertThat(rooms).hasSize(1);
 			ExchangeRoomEntity room = rooms.get(0);
 			assertThat(room.getStatus()).isEqualTo("ACTIVE");
-			assertThat(room.isActive()).isTrue();
 
 			List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, room.getId());
 			assertThat(roomIntents).hasSize(3);
@@ -239,6 +241,35 @@ class ExchangeIntegrationTest {
 
 			List<ExchangeRoomReadStatusEntity> readStatuses = readStatusRepository.findAll();
 			assertThat(readStatuses).hasSize(3);
+		}
+	}
+
+	@Nested
+	@DisplayName("동일 사용자의 자가 순환 매칭 통합 테스트")
+	class Describe_selfCycleMatching {
+
+		@Test
+		@DisplayName("한 사용자가 (1->2), (2->1)을 모두 등록해도 자가 매칭 방이 정상 생성되고 main 조회에서 에러 없이 보여야 한다")
+		void it_creates_self_matching_room_without_error() throws Exception {
+			// Given
+			String term = systemConfigService.getCurrentTerm();
+
+			ExchangeIntentEntity intent1 = intentRepository.save(ExchangeIntentEntity.builder()
+					.term(term).memberId(testMember.getId()).giveCourseNo("10001").wantCourseNo("10002").build());
+			ExchangeIntentEntity intent2 = intentRepository.save(ExchangeIntentEntity.builder()
+					.term(term).memberId(testMember.getId()).giveCourseNo("10002").wantCourseNo("10001").build());
+
+			// When
+			cycleDetector.detectCyclesAndCreateRooms(term, intent2.getId(), testMember.getId(), "10002", "10001");
+
+			// Then
+			List<ExchangeRoomEntity> rooms = roomRepository.findAll();
+			assertThat(rooms).hasSize(1);
+
+			mockMvc.perform(get("/api/v1/exchange/main"))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.myIntents").isArray())
+					.andExpect(jsonPath("$.data.myIntents[0].rooms[0].roomId").value(rooms.get(0).getId()));
 		}
 	}
 
@@ -255,7 +286,7 @@ class ExchangeIntegrationTest {
 			Member memberB = memberRepository.save(Member.builder().role(Member.Role.MEMBER).name("B").department("B").build());
 
 			ExchangeRoomEntity room = roomRepository.save(ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash1").status("ACTIVE").isActive(true).build());
+					.term(term).cycleHash("hash1").status("ACTIVE").build());
 
 			ExchangeIntentEntity intentA = intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(memberA.getId()).giveCourseNo("10001").wantCourseNo("10002").build());
@@ -301,7 +332,7 @@ class ExchangeIntegrationTest {
 	class Describe_intentDeleteAndRoomDeactivation {
 
 		@Test
-		@DisplayName("2인 방에서 1명 철회 시 방이 ALL_DELETE로 비활성화된다")
+		@DisplayName("2인 방에서 1명 철회 시 방이 PARTIAL_DELETE로 전환되고 비활성화된다")
 		void it_deactivates_2_person_room_on_intent_delete() {
 			// Given
 			String term = systemConfigService.getCurrentTerm();
@@ -314,7 +345,7 @@ class ExchangeIntegrationTest {
 					.term(term).memberId(memberB.getId()).giveCourseNo("10002").wantCourseNo("10001").build());
 
 			ExchangeRoomEntity room = roomRepository.save(ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash1").status("ACTIVE").isActive(true).build());
+					.term(term).cycleHash("hash1").status("ACTIVE").build());
 
 			roomIntentRepository.save(ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(room.getId()).intentId(intentA.getId()).memberId(memberA.getId()).build());
@@ -331,8 +362,7 @@ class ExchangeIntegrationTest {
 			// Then
 			ExchangeRoomEntity updatedRoom = roomRepository.findById(
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
-			assertThat(updatedRoom.getStatus()).isEqualTo("ALL_DELETE");
-			assertThat(updatedRoom.isActive()).isFalse();
+			assertThat(updatedRoom.getStatus()).isEqualTo("PARTIAL_DELETE");
 
 			List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, room.getId());
 			assertThat(roomIntents).anyMatch(ri -> ri.getIntentId().equals(intentA.getId()) && ri.isDeleted());
@@ -355,7 +385,7 @@ class ExchangeIntegrationTest {
 					.term(term).memberId(memberC.getId()).giveCourseNo("10003").wantCourseNo("10001").build());
 
 			ExchangeRoomEntity room = roomRepository.save(ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash1").status("ACTIVE").isActive(true).build());
+					.term(term).cycleHash("hash1").status("ACTIVE").build());
 
 			roomIntentRepository.save(ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(room.getId()).intentId(intentA.getId()).memberId(memberA.getId()).build());
@@ -375,7 +405,6 @@ class ExchangeIntegrationTest {
 			ExchangeRoomEntity updatedRoom = roomRepository.findById(
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(updatedRoom.getStatus()).isEqualTo("PARTIAL_DELETE");
-			assertThat(updatedRoom.isActive()).isTrue();
 		}
 	}
 
@@ -388,6 +417,7 @@ class ExchangeIntegrationTest {
 		void it_excludes_deleted_cards_from_feed() throws Exception {
 			// Given
 			String term = systemConfigService.getCurrentTerm();
+			cacheService.evictFeed(term);
 
 			ExchangeIntentEntity activeIntent = intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(testMember.getId()).giveCourseNo("10001").wantCourseNo("10002").build());
@@ -400,8 +430,8 @@ class ExchangeIntegrationTest {
 			// When & Then
 			mockMvc.perform(get("/api/v1/exchange/intents/recent"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.intents").isArray())
-					.andExpect(jsonPath("$.data.intents[0].intentId").value(activeIntent.getId()));
+					.andExpect(jsonPath("$.data.recentIntents").isArray())
+					.andExpect(jsonPath("$.data.recentIntents[0].intentId").value(activeIntent.getId()));
 
 			List<ExchangeIntentEntity> allIntents = intentRepository.findByTermAndIsDeletedFalse(term);
 			assertThat(allIntents).hasSize(1);
@@ -490,7 +520,7 @@ class ExchangeIntegrationTest {
 	class Describe_scenario2_multiPartyPartialWithdrawal {
 
 		@Test
-		@DisplayName("3인 방에서 A철회(PARTIAL_DELETE+시스템메시지) → B철회(ALL_DELETE+시스템메시지) 연속 흐름")
+		@DisplayName("3인 방에서 A철회 → B철회 → C철회 단계별 방 상태 및 시스템 메시지 기록 흐름")
 		void it_cascades_partial_then_all_delete_with_system_messages() {
 			// Given
 			String term = systemConfigService.getCurrentTerm();
@@ -506,7 +536,7 @@ class ExchangeIntegrationTest {
 					.term(term).memberId(memberC.getId()).giveCourseNo("10003").wantCourseNo("10001").build());
 
 			ExchangeRoomEntity room = roomRepository.save(ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash_scenario2").status("ACTIVE").isActive(true).build());
+					.term(term).cycleHash("hash_scenario2").status("ACTIVE").build());
 
 			roomIntentRepository.save(ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(room.getId()).intentId(intentA.getId()).memberId(memberA.getId()).build());
@@ -515,45 +545,57 @@ class ExchangeIntegrationTest {
 			roomIntentRepository.save(ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(room.getId()).intentId(intentC.getId()).memberId(memberC.getId()).build());
 
-			// When 1: A가 철회
+			// When 1: A가 철회 (d=1, n=3 -> PARTIAL_DELETE, activeCount=2 >= 2)
 			SecurityContextHolder.getContext().setAuthentication(
 					new UsernamePasswordAuthenticationToken(memberA.getId(), null,
 							List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MEMBER"))));
 			exchangeService.deleteIntent(memberA.getId(), intentA.getId());
 
-			// Then 1: PARTIAL_DELETE + 시스템 메시지
+			// Then 1: PARTIAL_DELETE
 			ExchangeRoomEntity afterA = roomRepository.findById(
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterA.getStatus()).isEqualTo("PARTIAL_DELETE");
-			assertThat(afterA.isActive()).isTrue();
 
 			List<ExchangeRoomMessageEntity> msgsAfterA = messageRepository.findAll();
 			assertThat(msgsAfterA).anyMatch(m -> m.getContent().contains("[시스템] 일부 참여자가 교환 의사를 철회하였습니다."));
 
-			// When 2: B마저 철회
+			// When 2: B 철회 (d=2, n=3 -> PARTIAL_DELETE, activeCount=1 < 2 비활성화)
 			SecurityContextHolder.getContext().setAuthentication(
 					new UsernamePasswordAuthenticationToken(memberB.getId(), null,
 							List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MEMBER"))));
 			exchangeService.deleteIntent(memberB.getId(), intentB.getId());
 
-			// Then 2: ALL_DELETE + 시스템 종료 메시지
+			// Then 2: PARTIAL_DELETE 유지 및 비활성화 안내 메시지
 			ExchangeRoomEntity afterB = roomRepository.findById(
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
-			assertThat(afterB.getStatus()).isEqualTo("ALL_DELETE");
-			assertThat(afterB.isActive()).isFalse();
+			assertThat(afterB.getStatus()).isEqualTo("PARTIAL_DELETE");
 
 			List<ExchangeRoomMessageEntity> msgsAfterB = messageRepository.findAll();
-			assertThat(msgsAfterB).anyMatch(m -> m.getContent().contains("[시스템] 참여자의 교환 의사 철회로 인해 대화방이 비활성화되었습니다."));
+			assertThat(msgsAfterB).anyMatch(m -> m.getContent().contains("[시스템] 일부 참여자의 교환 의사 철회로 인해 대화방이 비활성화되었습니다."));
+
+			// When 3: C마저 철회 (d=3, n=3 -> ALL_DELETE)
+			SecurityContextHolder.getContext().setAuthentication(
+					new UsernamePasswordAuthenticationToken(memberC.getId(), null,
+							List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MEMBER"))));
+			exchangeService.deleteIntent(memberC.getId(), intentC.getId());
+
+			// Then 3: ALL_DELETE
+			ExchangeRoomEntity afterC = roomRepository.findById(
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
+			assertThat(afterC.getStatus()).isEqualTo("ALL_DELETE");
+
+			List<ExchangeRoomMessageEntity> msgsAfterC = messageRepository.findAll();
+			assertThat(msgsAfterC).anyMatch(m -> m.getContent().contains("[시스템] 모든 참여자의 교환 의사 철회로 인해 대화방이 비활성화되었습니다."));
 		}
 	}
 
 	@Nested
-	@DisplayName("시나리오 3: 방 숨기기(OFF) 토글 후 상대방 인지 여정")
+	@DisplayName("시나리오 3: 방 숨기기(OFF) 토글 후 상대방 인지 여정 및 메시지 숨김 테스트")
 	class Describe_scenario3_roomHideToggleAndAwareness {
 
 		@Test
-		@DisplayName("A가 OFF → PARTIAL_OFF 전이 → A가 ON 복귀 → ACTIVE 전이")
-		void it_transitions_partial_off_then_back_to_active() {
+		@DisplayName("A가 OFF 시 메인 폴링에서 unreadCount=0, lastMessage=null로 숨겨지며, ON 복귀 시 정상 노출된다")
+		void it_hides_messages_and_unread_count_when_room_off() {
 			// Given
 			String term = systemConfigService.getCurrentTerm();
 			Member memberA = memberRepository.save(Member.builder().role(Member.Role.MEMBER).name("A").department("A").build());
@@ -565,12 +607,17 @@ class ExchangeIntegrationTest {
 					.term(term).memberId(memberB.getId()).giveCourseNo("10002").wantCourseNo("10001").build());
 
 			ExchangeRoomEntity room = roomRepository.save(ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash_scenario3").status("ACTIVE").isActive(true).build());
+					.term(term).cycleHash("hash_scenario3").status("ACTIVE").build());
 
-			ExchangeRoomIntentEntity riA = roomIntentRepository.save(ExchangeRoomIntentEntity.builder()
+			roomIntentRepository.save(ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(room.getId()).intentId(intentA.getId()).memberId(memberA.getId()).build());
 			roomIntentRepository.save(ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(room.getId()).intentId(intentB.getId()).memberId(memberB.getId()).build());
+
+			// B가 메시지 전송
+			messageRepository.save(ExchangeRoomMessageEntity.builder()
+					.term(term).roomId(room.getId()).memberId(memberB.getId()).intentId(intentB.getId())
+					.messageType("TALK").content("안녕하세요 B입니다.").build());
 
 			// When 1: A가 방 OFF
 			SecurityContextHolder.getContext().setAuthentication(
@@ -578,36 +625,42 @@ class ExchangeIntegrationTest {
 							List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MEMBER"))));
 			exchangeService.toggleRoom(memberA.getId(), room.getId(), RoomToggleRequest.builder().isOn(false).build());
 
-			// Then 1: PARTIAL_OFF
+			// Then 1: PARTIAL_OFF 및 A의 메인 폴링 시 unreadCount=0, lastMessage=null
 			ExchangeRoomEntity afterOff = roomRepository.findById(
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterOff.getStatus()).isEqualTo("PARTIAL_OFF");
-			assertThat(afterOff.isActive()).isTrue();
 
-			ExchangeRoomIntentEntity riAAfterOff = roomIntentRepository.findByTermAndRoomIdAndMemberId(term, room.getId(), memberA.getId()).get(0);
-			assertThat(riAAfterOff.isOn()).isFalse();
+			cacheService.evictMainCache(term, memberA.getId());
+			var mainRespAfterOff = exchangeService.getMain(memberA.getId());
+			var roomItemOff = mainRespAfterOff.getMyIntents().get(0).getRooms().get(0);
+			assertThat(roomItemOff.isOn()).isFalse();
+			assertThat(roomItemOff.getUnreadCount()).isEqualTo(0);
+			assertThat(roomItemOff.getLastMessage()).isNull();
 
 			// When 2: A가 방 ON 복귀
 			exchangeService.toggleRoom(memberA.getId(), room.getId(), RoomToggleRequest.builder().isOn(true).build());
 
-			// Then 2: ACTIVE
+			// Then 2: ACTIVE 및 A의 메인 폴링 시 unreadCount >= 1, lastMessage 복원
 			ExchangeRoomEntity afterOn = roomRepository.findById(
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterOn.getStatus()).isEqualTo("ACTIVE");
-			assertThat(afterOn.isActive()).isTrue();
 
-			ExchangeRoomIntentEntity riAAfterOn = roomIntentRepository.findByTermAndRoomIdAndMemberId(term, room.getId(), memberA.getId()).get(0);
-			assertThat(riAAfterOn.isOn()).isTrue();
+			cacheService.evictMainCache(term, memberA.getId());
+			var mainRespAfterOn = exchangeService.getMain(memberA.getId());
+			var roomItemOn = mainRespAfterOn.getMyIntents().get(0).getRooms().get(0);
+			assertThat(roomItemOn.isOn()).isTrue();
+			assertThat(roomItemOn.getUnreadCount()).isGreaterThanOrEqualTo(1);
+			assertThat(roomItemOn.getLastMessage()).isNotNull();
 		}
 	}
 
 	@Nested
-	@DisplayName("무한 스크롤(cursor 기반 피드 페이징) 테스트")
-	class Describe_infiniteScrollFeedPagination {
+	@DisplayName("피드 조회 테스트")
+	class Describe_recentIntentsFeed {
 
 		@Test
-		@DisplayName("cursor 파라미터로 피드를 조회하면 빈 결과가 아닌 데이터를 반환한다")
-		void it_loads_feed_with_cursor_pagination() {
+		@DisplayName("최근 피드 API에서 데이터를 정상 반환한다")
+		void it_loads_recent_intents_feed() {
 			// Given
 			String term = systemConfigService.getCurrentTerm();
 
@@ -620,12 +673,11 @@ class ExchangeIntegrationTest {
 						.build());
 			}
 
-			// When: 첫 페이지 조회
-			var firstPage = exchangeService.getRecentIntents(null, 2);
+			// When
+			var feedResponse = exchangeService.getRecentIntents();
 
-			// Then: 결과가 반환되고 cursor가 존재한다
-			assertThat(firstPage.getIntents()).isNotEmpty();
-			assertThat(firstPage.getNextLastIntentId()).isGreaterThan(0L);
+			// Then
+			assertThat(feedResponse.getRecentIntents()).isNotEmpty();
 		}
 	}
 
@@ -642,7 +694,7 @@ class ExchangeIntegrationTest {
 			Member memberB = memberRepository.save(Member.builder().role(Member.Role.MEMBER).name("B").department("B").build());
 
 			ExchangeRoomEntity room = roomRepository.save(ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash_read").status("ACTIVE").isActive(true).build());
+					.term(term).cycleHash("hash_read").status("ACTIVE").build());
 
 			ExchangeIntentEntity intentA = intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(memberA.getId()).giveCourseNo("10001").wantCourseNo("10002").build());

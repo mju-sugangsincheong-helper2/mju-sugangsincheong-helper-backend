@@ -16,7 +16,7 @@ public class DeviceSessionService {
 	private final MemberDeviceRepository memberDeviceRepository;
 
 	@Transactional
-	public void upsert(Long memberId, String refreshToken, DeviceInfo deviceInfo, long expiryMs) {
+	public MemberDevice upsert(Long memberId, String refreshToken, DeviceInfo deviceInfo, long expiryMs) {
 		if (deviceInfo == null) {
 			deviceInfo = DeviceInfo.builder().build();
 		}
@@ -35,7 +35,7 @@ public class DeviceSessionService {
 				.platformjsUa(deviceInfo.getUa())
 				.expiresAt(Instant.now().plusMillis(expiryMs))
 				.build();
-		memberDeviceRepository.save(device);
+		return memberDeviceRepository.save(device);
 	}
 
 	@Transactional

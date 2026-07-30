@@ -45,35 +45,26 @@ public class ExchangeRoomEntity {
 	@Column(name = "status", nullable = false, length = 20)
 	private String status;
 
-	@Column(name = "is_active", nullable = false)
-	private boolean isActive;
-
 	@CreatedDate
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
 	@Builder
-	public ExchangeRoomEntity(String term, String cycleHash, String status, boolean isActive) {
+	public ExchangeRoomEntity(String term, String cycleHash, String status) {
 		this.term = term;
 		this.cycleHash = cycleHash;
 		this.status = status != null ? status : "ACTIVE";
-		this.isActive = isActive;
 	}
 
 	@PrePersist
 	public void prePersist() {
 		if (this.id == null) {
-			this.id = ID_GENERATOR.getAndIncrement();
+			this.id = System.currentTimeMillis() * 1000L + (ID_GENERATOR.getAndIncrement() % 1000L);
 		}
 	}
 
-	public void updateActive(boolean isActive) {
-		this.isActive = isActive;
-	}
-
-	public void updateStatus(String status, boolean isActive) {
+	public void updateStatus(String status) {
 		this.status = status;
-		this.isActive = isActive;
 	}
 
 	@Getter

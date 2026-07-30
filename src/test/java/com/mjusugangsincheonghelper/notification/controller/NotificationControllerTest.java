@@ -79,7 +79,7 @@ class NotificationControllerTest {
 				.fcmToken("sample-fcm-token")
 				.build();
 
-		given(notificationService.registerToken(eq(1L), any()))
+		given(notificationService.registerToken(eq(1L), any(), any()))
 				.willReturn(NotificationTokenResponse.of("sample-fcm-token"));
 
 		mockMvc.perform(post("/api/v1/notification/token")
@@ -97,7 +97,7 @@ class NotificationControllerTest {
 				.fcmToken("sample-fcm-token")
 				.build();
 
-		doNothing().when(notificationService).deleteToken(eq(1L), any());
+		doNothing().when(notificationService).deleteToken(eq(1L), any(), any());
 
 		mockMvc.perform(delete("/api/v1/notification/token")
 						.with(csrf())

@@ -149,7 +149,7 @@ class SingleGameControllerTest {
 									.build()
 					))
 					.build();
-			given(singleGameService.getRankings(anyInt(), anyString(), anyLong()))
+			given(singleGameService.getRankings(anyInt(), anyString(), any(), anyLong()))
 					.willReturn(serviceResponse);
 
 			mockMvc.perform(get("/api/v1/singlegame/rank")

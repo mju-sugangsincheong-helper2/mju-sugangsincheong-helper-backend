@@ -74,13 +74,20 @@ class SessionServiceTest {
 					.build();
 			ReflectionTestUtils.setField(member, "id", 1L);
 
+			MemberDevice device = MemberDevice.builder()
+					.memberId(1L)
+					.refreshToken("refresh-token")
+					.build();
+			ReflectionTestUtils.setField(device, "id", 10L);
+
 			HttpServletResponse response = new MockHttpServletResponse();
 
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
 			given(accountAgreementService.isAgreed(1L)).willReturn(false);
-			given(tokenProvider.createAccessToken(1L, "GUEST", false)).willReturn("access-token");
 			given(tokenProvider.createRefreshToken()).willReturn("refresh-token");
 			given(tokenProvider.getRefreshTokenExpiryMs()).willReturn(604800000L);
+			given(deviceSessionService.upsert(eq(1L), eq("refresh-token"), any(), eq(604800000L))).willReturn(device);
+			given(tokenProvider.createAccessToken(1L, "GUEST", false, 10L)).willReturn("access-token");
 
 			SessionResult result = sessionService.createSession(identity, DeviceInfo.builder().build(), response);
 
@@ -90,7 +97,6 @@ class SessionServiceTest {
 			assertThat(result.getRefreshToken()).isEqualTo("refresh-token");
 
 			verify(tokenDeliveryStrategy).deliver("access-token", "refresh-token", response);
-			verify(deviceSessionService).upsert(eq(1L), eq("refresh-token"), any(), eq(604800000L));
 		}
 	}
 
@@ -109,6 +115,7 @@ class SessionServiceTest {
 					.refreshToken(refreshToken)
 					.expiresAt(java.time.Instant.now().plusMillis(3600_000L))
 					.build();
+			ReflectionTestUtils.setField(device, "id", 10L);
 
 			Member member = Member.builder()
 					.role(Role.MEMBER)
@@ -119,8 +126,8 @@ class SessionServiceTest {
 			given(memberDeviceRepository.findByRefreshToken(refreshToken)).willReturn(Optional.of(device));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
 			given(accountAgreementService.isAgreed(1L)).willReturn(false);
-			given(tokenProvider.createAccessToken(1L, "MEMBER", false)).willReturn("new-access-token");
 			given(tokenProvider.createRefreshToken()).willReturn("new-refresh-token");
+			given(tokenProvider.createAccessToken(1L, "MEMBER", false, 10L)).willReturn("new-access-token");
 
 			SessionResult result = sessionService.refreshSession(refreshToken, response);
 

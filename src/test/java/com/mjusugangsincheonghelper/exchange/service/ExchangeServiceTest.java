@@ -13,9 +13,9 @@ import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
 import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
@@ -28,8 +28,6 @@ import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse;
 import com.mjusugangsincheonghelper.exchange.dto.RoomToggleRequest;
 import com.mjusugangsincheonghelper.exchange.dto.RoomToggleResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
-import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
-import com.mjusugangsincheonghelper.exchange.dto.cache.RoomCacheDto;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
@@ -193,7 +191,7 @@ class ExchangeServiceTest {
 		}
 
 		@Test
-		@DisplayName("등록 후 pushFeed, evictIntents, enqueueCycleDetection 후처리가 수행된다")
+		@DisplayName("등록 후 pushFeed, evictMainCache, enqueueCycleDetection 후처리가 수행된다")
 		void it_performs_aftercare_after_create() {
 			// Given
 			String term = "202620";
@@ -220,7 +218,7 @@ class ExchangeServiceTest {
 
 			// Then
 			verify(cacheService).pushFeed(eq(term), any(FeedCacheDto.class));
-			verify(cacheService).evictIntents(term, memberId);
+			verify(cacheService).evictMainCache(term, memberId);
 			verify(cycleDetector).enqueueCycleDetection(any(CycleDetectionMessage.class));
 		}
 	}
@@ -364,7 +362,6 @@ class ExchangeServiceTest {
 					.term(term)
 					.cycleHash("hash")
 					.status("ACTIVE")
-					.isActive(true)
 					.build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
@@ -386,8 +383,8 @@ class ExchangeServiceTest {
 		}
 
 		@Test
-		@DisplayName("2인 방에서 1명 이탈 시 방 상태가 ALL_DELETE로 전이된다")
-		void it_transitions_to_all_delete_when_2_person_room_loses_member() {
+		@DisplayName("2인 방에서 1명 이탈 시 방 상태가 PARTIAL_DELETE로 전이된다")
+		void it_transitions_to_partial_delete_when_2_person_room_loses_member() {
 			// Given
 			String term = "202620";
 			Long memberIdA = 1L;
@@ -408,7 +405,7 @@ class ExchangeServiceTest {
 					.term(term).roomId(roomId).intentId(200L).memberId(memberIdB).build();
 
 			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+					.term(term).cycleHash("hash").status("ACTIVE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
@@ -424,8 +421,7 @@ class ExchangeServiceTest {
 			exchangeService.deleteIntent(memberIdA, intentIdA);
 
 			// Then
-			assertThat(room.getStatus()).isEqualTo("ALL_DELETE");
-			assertThat(room.isActive()).isFalse();
+			assertThat(room.getStatus()).isEqualTo("PARTIAL_DELETE");
 		}
 
 		@Test
@@ -454,7 +450,7 @@ class ExchangeServiceTest {
 					.term(term).roomId(roomId).intentId(300L).memberId(memberIdC).build();
 
 			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+					.term(term).cycleHash("hash").status("ACTIVE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
@@ -471,16 +467,14 @@ class ExchangeServiceTest {
 
 			// Then
 			assertThat(room.getStatus()).isEqualTo("PARTIAL_DELETE");
-			assertThat(room.isActive()).isTrue();
 		}
 
 		@Test
-		@DisplayName("ALL_DELETE 전이 시 이탈 안내 시스템 메시지가 저장된다")
+		@DisplayName("전원 이탈 시 방 상태가 ALL_DELETE로 전이되고 시스템 메시지가 저장된다")
 		void it_saves_system_message_on_all_delete() {
 			// Given
 			String term = "202620";
 			Long memberIdA = 1L;
-			Long memberIdB = 2L;
 			Long intentIdA = 100L;
 			Long roomId = 200L;
 
@@ -489,11 +483,9 @@ class ExchangeServiceTest {
 
 			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(roomId).intentId(intentIdA).memberId(memberIdA).build();
-			ExchangeRoomIntentEntity riB = ExchangeRoomIntentEntity.builder()
-					.term(term).roomId(roomId).intentId(200L).memberId(memberIdB).build();
 
 			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+					.term(term).cycleHash("hash").status("PARTIAL_DELETE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
@@ -501,7 +493,7 @@ class ExchangeServiceTest {
 			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
 					.willReturn(List.of(riA));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
-					.willReturn(List.of(riA, riB));
+					.willReturn(List.of(riA));
 			given(roomRepository.findByIdForUpdate(term, roomId))
 					.willReturn(Optional.of(room));
 
@@ -509,11 +501,12 @@ class ExchangeServiceTest {
 			exchangeService.deleteIntent(memberIdA, intentIdA);
 
 			// Then
+			assertThat(room.getStatus()).isEqualTo("ALL_DELETE");
 			verify(messageRepository).save(any(ExchangeRoomMessageEntity.class));
 		}
 
 		@Test
-		@DisplayName("삭제 후 본인 intents:cache와 영향받은 참여자 전원의 rooms:cache가 Evict된다")
+		@DisplayName("삭제 후 영향받은 참여자 전원의 main:cache가 Evict된다")
 		void it_evicts_caches_after_delete() {
 			// Given
 			String term = "202620";
@@ -531,7 +524,7 @@ class ExchangeServiceTest {
 					.term(term).roomId(roomId).intentId(200L).memberId(memberIdB).build();
 
 			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+					.term(term).cycleHash("hash").status("ACTIVE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
@@ -547,9 +540,8 @@ class ExchangeServiceTest {
 			exchangeService.deleteIntent(memberIdA, intentIdA);
 
 			// Then
-			verify(cacheService).evictIntents(term, memberIdA);
-			verify(cacheService).evictRooms(term, memberIdA);
-			verify(cacheService).evictRooms(term, memberIdB);
+			verify(cacheService).evictMainCache(term, memberIdA);
+			verify(cacheService).evictMainCache(term, memberIdB);
 		}
 	}
 
@@ -564,26 +556,16 @@ class ExchangeServiceTest {
 			String term = "202620";
 			Long memberId = 1L;
 
+			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
+					.term(term).memberId(memberId).giveCourseNo("10001").wantCourseNo("10002").build();
+			ReflectionTestUtils.setField(intent, "id", 10L);
+
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(cacheService.getIntents(term, memberId)).willReturn(List.of(
-					IntentCacheDto.builder()
-							.intentId(10L)
-							.giveCourseNo("10001")
-							.wantCourseNo("10002")
-							.deleted(false)
-							.build()
-			));
-			given(cacheService.getRooms(term, memberId)).willReturn(List.of(
-					RoomCacheDto.builder()
-							.roomId(100L)
-							.isActive(true)
-							.isOn(true)
-							.unreadCount(2)
-							.lastMessageContent("Hello")
-							.lastMessageAt(java.time.Instant.now())
-							.build()
-			));
-			given(cacheService.getFeedSlice(term, null, 5)).willReturn(List.of(
+			given(cacheService.getMainCache(term, memberId)).willReturn(null);
+			given(intentRepository.findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(term, memberId))
+					.willReturn(List.of(intent));
+			given(roomIntentRepository.findByTermAndIntentId(term, 10L)).willReturn(List.of());
+			given(cacheService.getFeed(term)).willReturn(List.of(
 					FeedCacheDto.builder()
 							.intentId(20L)
 							.giveCourseNo("10003")
@@ -598,10 +580,9 @@ class ExchangeServiceTest {
 			// Then
 			assertThat(response.getMyIntents()).hasSize(1);
 			assertThat(response.getMyIntents().get(0).getIntentId()).isEqualTo(10L);
-			assertThat(response.getMyRooms()).hasSize(1);
-			assertThat(response.getMyRooms().get(0).getRoomId()).isEqualTo(100L);
 			assertThat(response.getRecentIntents()).hasSize(1);
 			assertThat(response.getRecentIntents().get(0).getIntentId()).isEqualTo(20L);
+			verify(cacheService).putMainCache(eq(term), eq(memberId), any(MainResponse.class));
 		}
 	}
 
@@ -614,11 +595,9 @@ class ExchangeServiceTest {
 		void it_returns_recent_intents() {
 			// Given
 			String term = "202620";
-			Long lastIntentId = 0L;
-			int limit = 10;
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(cacheService.getFeedSlice(term, lastIntentId, limit + 1)).willReturn(List.of(
+			given(cacheService.getFeed(term)).willReturn(List.of(
 					FeedCacheDto.builder()
 							.intentId(15L)
 							.giveCourseNo("10001")
@@ -628,12 +607,11 @@ class ExchangeServiceTest {
 			));
 
 			// When
-			RecentIntentsResponse response = exchangeService.getRecentIntents(lastIntentId, limit);
+			RecentIntentsResponse response = exchangeService.getRecentIntents();
 
 			// Then
-			assertThat(response.getIntents()).hasSize(1);
-			assertThat(response.getIntents().get(0).getIntentId()).isEqualTo(15L);
-			assertThat(response.isHasNext()).isFalse();
+			assertThat(response.getRecentIntents()).hasSize(1);
+			assertThat(response.getRecentIntents().get(0).getIntentId()).isEqualTo(15L);
 		}
 	}
 
@@ -701,6 +679,7 @@ class ExchangeServiceTest {
 			assertThat(response.getMessages()).hasSize(1);
 			assertThat(response.getMessages().get(0).getContent()).isEqualTo("Test message");
 			verify(readStatusRepository).save(any());
+			verify(cacheService).evictMainCache(term, memberId);
 		}
 	}
 
@@ -760,7 +739,7 @@ class ExchangeServiceTest {
 		}
 
 		@Test
-		@DisplayName("유효한 방 멤버이면 메시지를 전송하고 방 목록 캐시를 만료시킨다")
+		@DisplayName("유효한 방 멤버이면 메시지를 전송하고 main:cache를 만료시킨다")
 		void it_sends_message() {
 			// Given
 			String term = "202620";
@@ -768,12 +747,19 @@ class ExchangeServiceTest {
 			Long roomId = 100L;
 			MessageSendRequest request = MessageSendRequest.builder().content("Hello").build();
 
-			ExchangeRoomIntentEntity roomIntent = 
+			ExchangeRoomIntentEntity roomIntent1 = 
 					ExchangeRoomIntentEntity.builder()
 							.term(term)
 							.roomId(roomId)
 							.memberId(memberId)
 							.intentId(50L)
+							.build();
+			ExchangeRoomIntentEntity roomIntent2 = 
+					ExchangeRoomIntentEntity.builder()
+							.term(term)
+							.roomId(roomId)
+							.memberId(2L)
+							.intentId(51L)
 							.build();
 
 			ExchangeRoomMessageEntity message =
@@ -782,12 +768,14 @@ class ExchangeServiceTest {
 							.roomId(roomId)
 							.memberId(memberId)
 							.intentId(50L)
+							.messageType("TALK")
 							.content("Hello")
 							.build();
 			ReflectionTestUtils.setField(message, "id", 1000L);
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent));
+			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent1));
+			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(roomIntent1, roomIntent2));
 			given(messageRepository.save(any())).willReturn(message);
 			given(readStatusRepository.findById(any())).willReturn(Optional.empty());
 			given(roomIntentRepository.findDistinctMemberIdsByTermAndRoomId(term, roomId)).willReturn(List.of(1L, 2L));
@@ -799,8 +787,8 @@ class ExchangeServiceTest {
 			assertThat(response.getMessageId()).isEqualTo(1000L);
 			assertThat(response.getContent()).isEqualTo("Hello");
 			verify(messageRepository).save(any());
-			verify(cacheService).evictRooms(term, 1L);
-			verify(cacheService).evictRooms(term, 2L);
+			verify(cacheService).evictMainCache(term, 1L);
+			verify(cacheService).evictMainCache(term, 2L);
 		}
 	}
 
@@ -830,7 +818,7 @@ class ExchangeServiceTest {
 		}
 
 		@Test
-		@DisplayName("방 멤버이면 상태를 토글하고 캐시를 만료시킨다")
+		@DisplayName("방 멤버이면 상태를 토글하고 main:cache를 만료시킨다")
 		void it_toggles_room_status() {
 			// Given
 			String term = "202620";
@@ -850,9 +838,8 @@ class ExchangeServiceTest {
 					.term(term)
 					.cycleHash("hash")
 					.status("ACTIVE")
-					.isActive(true)
 					.build();
-			org.springframework.test.util.ReflectionTestUtils.setField(room, "id", roomId);
+			ReflectionTestUtils.setField(room, "id", roomId);
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent));
@@ -866,7 +853,7 @@ class ExchangeServiceTest {
 			assertThat(response.getRoomId()).isEqualTo(roomId);
 			assertThat(response.isOn()).isFalse();
 			assertThat(roomIntent.isOn()).isFalse();
-			verify(cacheService).evictRooms(term, memberId);
+			verify(cacheService).evictMainCache(term, memberId);
 		}
 
 		@Test
@@ -885,7 +872,7 @@ class ExchangeServiceTest {
 					.term(term).roomId(roomId).memberId(memberIdB).intentId(60L).build();
 
 			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash").status("ACTIVE").isActive(true).build();
+					.term(term).cycleHash("hash").status("ACTIVE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberIdA)).willReturn(List.of(riA));
@@ -897,7 +884,6 @@ class ExchangeServiceTest {
 
 			// Then
 			assertThat(room.getStatus()).isEqualTo("PARTIAL_OFF");
-			assertThat(room.isActive()).isTrue();
 		}
 
 		@Test
@@ -917,7 +903,7 @@ class ExchangeServiceTest {
 					.term(term).roomId(roomId).memberId(memberIdB).intentId(60L).build();
 
 			ExchangeRoomEntity room = ExchangeRoomEntity.builder()
-					.term(term).cycleHash("hash").status("PARTIAL_OFF").isActive(true).build();
+					.term(term).cycleHash("hash").status("PARTIAL_OFF").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberIdA)).willReturn(List.of(riA));
@@ -929,7 +915,6 @@ class ExchangeServiceTest {
 
 			// Then
 			assertThat(room.getStatus()).isEqualTo("ACTIVE");
-			assertThat(room.isActive()).isTrue();
 		}
 	}
 }

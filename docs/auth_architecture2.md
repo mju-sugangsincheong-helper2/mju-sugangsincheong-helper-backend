@@ -132,7 +132,7 @@ public class GlobalSecurityConfig {
 요청 → [JwtAuthenticationFilter] → [ConsentCheckFilter] → DispatcherServlet → [@PreAuthorize] → Controller
 ```
 
-- **JwtAuthenticationFilter**는 `shouldNotFilter()`로 `/api/`로 시작하지 않는 요청을 건너뛰며, DB 접근 없이 JWT 내부 Claims(`memberId`, `role`, `agreed`)만으로 Spring Security의 `Authentication` 객체를 만듭니다. `agreed` 클레임은 `request.setAttribute("privacyAgreed", ...)`로 후속 필터에 전달됩니다.
+- **JwtAuthenticationFilter**는 `shouldNotFilter()`로 `/api/`로 시작하지 않는 요청을 건너뛰며, DB 접근 없이 JWT 내부 Claims(`memberId`, `role`, `agreed`, `deviceId`)만으로 Spring Security의 `Authentication` 객체를 만듭니다. `agreed` 클레임은 `request.setAttribute("privacyAgreed", ...)`, `deviceId` 클레임은 `request.setAttribute("deviceId", ...)`로 후속 필터 및 컨트롤러에 전달됩니다.
 - **ConsentCheckFilter**는 SecurityContext의 인증 객체가 `Long`(memberId) principal을 가지며 `ROLE_MEMBER`/`ROLE_ADMIN` 권한을 가질 때만 `privacyAgreed` 플래그를 검사합니다. 동의하지 않은 사용자가 비면제 경로로 접근하면 `AUTH_PRIVACY_POLICY_REQUIRED`(403) 응답을 즉시 반환합니다. 면제 경로는 `/auth/privacy/agree`, `/auth/logout`입니다.
 - 세부 인가는 컨트롤러/메서드에 정의된 `@PreAuthorize("hasRole('MEMBER')")` 등에 의해 스프링 AOP 단에서 최종 검증됩니다.
 
@@ -199,7 +199,7 @@ com.mjusugangsincheonghelper/
     │   ├── SessionService.java               #   - createSession/refreshSession/reissueToken/destroySession
     │   ├── SessionResult.java                #   - ATK/RTK + 회원 프로필 통합 결과 VO
     │   ├── device/
-    │   │   └── DeviceSessionService.java     #   - member_device upsert/switchMember/deleteByFcmToken
+    │   │   └── DeviceSessionService.java     #   - member_device upsert(반환 MemberDevice)/switchMember/deleteByRefreshToken
     │   ├── token/
     │   │   └── TokenProvider.java            #   - JWT 서명/발급 (ATK/RTK/MergeTicket) + TokenClaims VO
     │   ├── delivery/
@@ -282,10 +282,12 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
     "sub": "12",
     "role": "MEMBER",
     "agreed": true,
+    "deviceId": 10,
     "iat": 1700000000,
     "exp": 1700003600
   }
   ```
+- **deviceId**: `member_device.id` 값으로, 요청이 발생한 기기를 식별합니다. 모든 API 요청에서 `HttpServletRequest.getAttribute("deviceId")`로 접근 가능합니다.
 
 ### 7.2 Refresh Token (RTK)
 - **용도**: Access Token 만료 시 재발급을 요청하기 위한 만료 7일짜리 난수 UUID. 만료 시간은 `application.yml`의 `app.jwt.refresh-token-expiry-ms`(기본 7일).
@@ -362,11 +364,11 @@ POST /api/{version}/auth/guest
          ├→ Member.builder().role(GUEST).name("게스트_xxxx").build() 저장
          ├→ MemberAuth.builder().authType(GUEST_KEY).authKey(UUID).build() 저장
          └→ AuthenticatedIdentity 반환
-     └→ SessionService.createSession(identity, device, fcmToken, response)
+     └→ SessionService.createSession(identity, device, response)
          ├→ accountAgreementService.isAgreed(memberId)  (게스트는 항상 false)
-         ├→ TokenProvider.createAccessToken(memberId, "GUEST", false)
          ├→ TokenProvider.createRefreshToken()  (UUID)
-         ├→ DeviceSessionService.upsert(memberId, refreshToken, fcmToken, device, refreshExpiryMs)
+         ├→ DeviceSessionService.upsert(memberId, refreshToken, device, refreshExpiryMs) → MemberDevice 반환
+         ├→ TokenProvider.createAccessToken(memberId, "GUEST", false, device.getId())  (deviceId 포함)
          └→ TokenDeliveryStrategy.deliver(atk, rtk, response) (쿠키 세팅)
 ```
 
@@ -416,7 +418,7 @@ POST /api/{version}/auth/refresh
          ├→ accountAgreementService.isAgreed(memberId)  (재발급 ATK에 반영)
          ├→ tokenProvider.createRefreshToken() (UUID 회전)
          ├→ device.updateRefreshToken(newRtk)
-         ├→ tokenProvider.createAccessToken(memberId, role, privacyAgreed)
+         ├→ tokenProvider.createAccessToken(memberId, role, privacyAgreed, device.getId())  (deviceId 포함)
          └→ TokenDeliveryStrategy.deliver(...)
 ```
 
@@ -429,7 +431,7 @@ POST /api/{version}/auth/privacy/agree  (PreAuthorize: hasRole('MEMBER'))
          ├→ MemberDevice 조회 (refresh_token 매핑)
          ├→ tokenProvider.createRefreshToken() (UUID 회전)
          ├→ device.updateRefreshToken(newRtk)
-         ├→ tokenProvider.createAccessToken(memberId, role, true)  (agreed=true)
+         ├→ tokenProvider.createAccessToken(memberId, role, true, device.getId())  (agreed=true, deviceId 포함)
          └→ TokenDeliveryStrategy.deliver(...)
 ```
 
@@ -509,7 +511,7 @@ POST /api/{version}/auth/test-accounts {role}
 
 ### 11.4 TokenClaims
 - **위치**: `com/mjusugangsincheonghelper/auth/session/token/TokenProvider.java` (record `TokenProvider.TokenClaims`)
-- **역할**: JwtAuthenticationFilter가 SecurityContext 인증 객체를 구성할 때 사용하는 claims record (`memberId`, `role`, `agreed`).
+- **역할**: JwtAuthenticationFilter가 SecurityContext 인증 객체를 구성할 때 사용하는 claims record (`memberId`, `role`, `agreed`, `deviceId`). `deviceId`는 `member_device.id`로, 요청 기기를 식별합니다.
 
 ### 11.5 MergeTicketClaims
 - **위치**: `com/mjusugangsincheonghelper/auth/merge/MergeTicketService.java` (record `MergeTicketService.MergeTicketClaims`)

@@ -3,6 +3,7 @@ package com.mjusugangsincheonghelper.singlegame.controller;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
+import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
@@ -81,9 +82,30 @@ public class SingleGameController {
 			@Parameter(description = "과목 수 (1, 3, 6, 7, 8)", example = "6", required = true)
 			@RequestParam("totalCourses") int totalCourses,
 			@Parameter(description = "조회 범위 (GLOBAL or DEPARTMENT)", example = "GLOBAL", required = true)
-			@RequestParam("scope") String scope) {
+			@RequestParam("scope") String scope,
+			@Parameter(description = "학과명 (DEPARTMENT일 때, 없으면 본인 학과)", example = "컴퓨터공학과")
+			@RequestParam(value = "department", required = false) String department) {
 		Long memberId = getCurrentMemberId();
-		RankingResponse response = singleGameService.getRankings(totalCourses, scope, memberId);
+		RankingResponse response = singleGameService.getRankings(totalCourses, scope, department, memberId);
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	@GetMapping(value = "/departments", version = "1+")
+	@Operation(
+			summary = "Get departments",
+			description = "싱글게임 데이터에 존재하는 모든 학과 목록을 조회합니다.",
+			responses = {
+					@ApiResponse(
+							responseCode = "200",
+							description = "조회 성공"
+					)
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<DepartmentsResponse>> getDepartments() {
+		DepartmentsResponse response = singleGameService.getDepartments();
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 

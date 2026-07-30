@@ -39,11 +39,14 @@ public class ExchangeRoomMessageEntity {
 	@Column(name = "room_id", nullable = false)
 	private Long roomId;
 
-	@Column(name = "member_id", nullable = false)
+	@Column(name = "member_id", nullable = true)
 	private Long memberId;
 
-	@Column(name = "intent_id", nullable = false)
+	@Column(name = "intent_id", nullable = true)
 	private Long intentId;
+
+	@Column(name = "message_type", nullable = false, length = 10)
+	private String messageType;
 
 	@Column(nullable = false, columnDefinition = "TEXT")
 	private String content;
@@ -53,18 +56,19 @@ public class ExchangeRoomMessageEntity {
 	private Instant createdAt;
 
 	@Builder
-	public ExchangeRoomMessageEntity(String term, Long roomId, Long memberId, Long intentId, String content) {
+	public ExchangeRoomMessageEntity(String term, Long roomId, Long memberId, Long intentId, String messageType, String content) {
 		this.term = term;
 		this.roomId = roomId;
 		this.memberId = memberId;
 		this.intentId = intentId;
+		this.messageType = messageType != null ? messageType : "TALK";
 		this.content = content;
 	}
 
 	@PrePersist
 	public void prePersist() {
 		if (this.id == null) {
-			this.id = ID_GENERATOR.getAndIncrement();
+			this.id = System.currentTimeMillis() * 1000L + (ID_GENERATOR.getAndIncrement() % 1000L);
 		}
 	}
 

@@ -37,11 +37,13 @@ public class SessionService {
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 
 		boolean privacyAgreed = accountAgreementService.isAgreed(member.getId());
-		String accessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed);
-		String refreshToken = tokenProvider.createRefreshToken();
 
-		deviceSessionService.upsert(member.getId(), refreshToken, device,
+		String refreshToken = tokenProvider.createRefreshToken();
+		MemberDevice savedDevice = deviceSessionService.upsert(member.getId(), refreshToken, device,
 				tokenProvider.getRefreshTokenExpiryMs());
+
+		String accessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed,
+				savedDevice.getId());
 
 		tokenDeliveryStrategy.deliver(accessToken, refreshToken, response);
 
@@ -73,7 +75,8 @@ public class SessionService {
 		device.updateRefreshToken(newRefreshToken);
 
 		boolean privacyAgreed = accountAgreementService.isAgreed(member.getId());
-		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed);
+		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed,
+				device.getId());
 
 		tokenDeliveryStrategy.deliver(newAccessToken, newRefreshToken, response);
 
@@ -104,7 +107,8 @@ public class SessionService {
 		String newRefreshToken = tokenProvider.createRefreshToken();
 		device.updateRefreshToken(newRefreshToken);
 
-		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), true);
+		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), true,
+				device.getId());
 
 		tokenDeliveryStrategy.deliver(newAccessToken, newRefreshToken, response);
 	}

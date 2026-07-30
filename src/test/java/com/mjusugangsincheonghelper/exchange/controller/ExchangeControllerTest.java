@@ -200,7 +200,6 @@ class ExchangeControllerTest {
 		void it_returns_200() throws Exception {
 			MainResponse response = MainResponse.builder()
 					.myIntents(List.of())
-					.myRooms(List.of())
 					.recentIntents(List.of())
 					.build();
 
@@ -209,7 +208,6 @@ class ExchangeControllerTest {
 			mockMvc.perform(get("/api/v1/exchange/main"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.myIntents").isArray())
-					.andExpect(jsonPath("$.data.myRooms").isArray())
 					.andExpect(jsonPath("$.data.recentIntents").isArray());
 		}
 	}
@@ -222,17 +220,14 @@ class ExchangeControllerTest {
 		@DisplayName("200 응답을 반환한다")
 		void it_returns_200() throws Exception {
 			RecentIntentsResponse response = RecentIntentsResponse.builder()
-					.intents(List.of())
-					.nextLastIntentId(0L)
-					.hasNext(false)
+					.recentIntents(List.of())
 					.build();
 
-			given(exchangeService.getRecentIntents(any(), any(int.class))).willReturn(response);
+			given(exchangeService.getRecentIntents()).willReturn(response);
 
 			mockMvc.perform(get("/api/v1/exchange/intents/recent"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.intents").isArray())
-					.andExpect(jsonPath("$.data.hasNext").value(false));
+					.andExpect(jsonPath("$.data.recentIntents").isArray());
 		}
 	}
 
@@ -306,7 +301,7 @@ class ExchangeControllerTest {
 							.content(objectMapper.writeValueAsString(request)))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.roomId").value(1))
-					.andExpect(jsonPath("$.data.on").value(false));
+					.andExpect(jsonPath("$.data.isOn").value(false));
 		}
 	}
 }

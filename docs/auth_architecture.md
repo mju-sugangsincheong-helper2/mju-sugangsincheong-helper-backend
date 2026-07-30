@@ -19,7 +19,7 @@
 ## 2. 도메인별 세부 구조 및 책임
 
 ### 2.1 Security (보안 및 필터)
-- **JwtAuthenticationFilter**: 모든 인증이 필요한 요청에 대해 JWT 서명과 유효성을 검증합니다. DB 조회를 일절 배제하여 무상태성을 보장하며, `agreed` 클레임을 요청 attribute에 저장합니다.
+- **JwtAuthenticationFilter**: 모든 인증이 필요한 요청에 대해 JWT 서명과 유효성을 검증합니다. DB 조회를 일절 배제하여 무상태성을 보장하며, `agreed` 클레임을 `request.setAttribute("privacyAgreed", ...)`로, `deviceId` 클레임을 `request.setAttribute("deviceId", ...)`로 저장합니다. `deviceId`는 `member_device.id`로 요청 기기를 식별합니다.
 - **ConsentCheckFilter**: SecurityContext의 권한과 `privacyAgreed` 플래그를 종합해 MEMBER/ADMIN 권한 사용자가 동의하지 않은 경우 403(`AUTH_PRIVACY_POLICY_REQUIRED`)을 반환합니다. 단, `/auth/privacy/agree`, `/auth/logout` 경로는 차단을 면제합니다.
 - **TokenExtractor**: 환경별(개발/운영) 토큰 추출 전략을 캡슐화합니다.
 - **GlobalSecurityConfig**: ① 공개 URL용 SecurityFilterChain, ② `/api/**` 인증 필수 SecurityFilterChain 두 개의 체인을 등록하며 CORS, CSRF, 세션 정책 및 역할 계층(Role Hierarchy)을 설정합니다.
@@ -28,7 +28,7 @@
 - **guest**: 서버측에서 고유 임의 키(UUID)를 발급하여 임시 게스트 회원 세션을 형성합니다.
 - **oauth**: Google 제공자로부터 ID Token을 발급받아 명지대 도메인(`mju.ac.kr`)을 검증하고 멤버 신원을 확립합니다. Google `name` 클레임은 `이름/직책/학과` 형식으로 파싱됩니다.
 - **merge**: 게스트 이용 데이터(디바이스 세션 등)를 구글 계정 신원으로 안전하게 이관하고 기존 게스트 데이터를 제거합니다.
-- **session**: JWT 토큰 발급 및 파싱(`TokenProvider`), DB 기반 디바이스 세션 관리 및 로그인 상태 회수를 총괄합니다.
+- **session**: JWT 토큰 발급 및 파싱(`TokenProvider`), DB 기반 디바이스 세션 관리 및 로그인 상태 회수를 총괄합니다. Access Token에는 `deviceId`(`member_device.id`) 클레임이 포함되어 요청 기기를 식별합니다.
 - **test**: `dev` 프로파일 한정 테스트 계정 자동 시드 및 테스트 로그인 엔드포인트를 제공합니다.
 
 ### 2.3 Account (회원 데이터 및 생명주기)

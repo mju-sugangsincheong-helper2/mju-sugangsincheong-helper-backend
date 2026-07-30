@@ -9,6 +9,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface ExchangeRoomIntentRepository extends JpaRepository<ExchangeRoomIntentEntity, ExchangeRoomIntentId> {
 
+	List<ExchangeRoomIntentEntity> findByTermAndMemberId(String term, Long memberId);
+
 	List<ExchangeRoomIntentEntity> findByTermAndMemberIdAndIsOnTrueAndIsDeletedFalse(String term, Long memberId);
 
 	List<ExchangeRoomIntentEntity> findByTermAndRoomId(String term, Long roomId);

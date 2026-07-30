@@ -13,9 +13,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class RecentIntentsResponse {
 
-	private List<IntentFeedItem> intents;
-	private Long nextLastIntentId;
-	private boolean hasNext;
+	private List<IntentFeedItem> recentIntents;
 
 	@Getter
 	@Builder

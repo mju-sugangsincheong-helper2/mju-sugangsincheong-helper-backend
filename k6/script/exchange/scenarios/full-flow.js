@@ -38,7 +38,7 @@ export default function (data) {
   sleep(1);
 
   // 2. 최근 교환 의사 피드 확인
-  getRecentIntents(token, 0, 10);
+  getRecentIntents(token);
   sleep(0.5);
 
   // 3. 교환 의사 등록
@@ -76,4 +76,3 @@ export default function (data) {
   // 7. 최종 메인 확인
   getMain(token);
 }
-

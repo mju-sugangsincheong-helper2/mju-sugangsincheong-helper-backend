@@ -14,6 +14,6 @@ import lombok.NoArgsConstructor;
 public class MessageSendRequest {
 
 	@NotBlank(message = "content는 필수입니다.")
-	@Size(max = 2000, message = "content는 2000자 이하여야 합니다.")
+	@Size(max = 30000, message = "content는 30000자 이하여야 합니다.")
 	private String content;
 }

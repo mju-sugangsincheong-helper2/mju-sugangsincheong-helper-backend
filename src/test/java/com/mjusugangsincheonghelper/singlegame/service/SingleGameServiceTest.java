@@ -7,6 +7,7 @@ import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameDetailRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
@@ -557,7 +558,7 @@ class SingleGameServiceTest {
 			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
 			given(singleGameRepository.findRankingRaw(6)).willReturn(List.<Object[]>of(row));
 
-			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null);
+			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
 
 			assertThat(response.getRankings()).hasSize(1);
 			assertThat(response.getRankings().get(0).getName()).isEqualTo("홍길동");
@@ -565,7 +566,7 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("DEPARTMENT 범위로 랭킹을 반환한다")
+		@DisplayName("DEPARTMENT 범위로 본인 학과 랭킹을 반환한다")
 		void it_returns_department_rankings() {
 			Member member = Member.builder()
 					.role(Member.Role.MEMBER)
@@ -577,7 +578,19 @@ class SingleGameServiceTest {
 			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
 			given(singleGameRepository.findDeptRankingRaw(6, "컴퓨터공학과")).willReturn(List.<Object[]>of(row));
 
-			RankingResponse response = singleGameService.getRankings(6, "DEPARTMENT", 1L);
+			RankingResponse response = singleGameService.getRankings(6, "DEPARTMENT", null, 1L);
+
+			assertThat(response.getRankings()).hasSize(1);
+			assertThat(response.getScope()).isEqualTo("DEPARTMENT");
+		}
+
+		@Test
+		@DisplayName("DEPARTMENT 범위에서 department 파라미터가 있으면 해당 학과 랭킹을 반환한다")
+		void it_returns_department_rankings_with_department_param() {
+			Object[] row = {1L, 1L, "홍길동", "전자공학과", 6, 5000, 2000, System.currentTimeMillis()};
+			given(singleGameRepository.findDeptRankingRaw(6, "전자공학과")).willReturn(List.<Object[]>of(row));
+
+			RankingResponse response = singleGameService.getRankings(6, "DEPARTMENT", "전자공학과", 1L);
 
 			assertThat(response.getRankings()).hasSize(1);
 			assertThat(response.getScope()).isEqualTo("DEPARTMENT");
@@ -592,7 +605,7 @@ class SingleGameServiceTest {
 			Object[] firstClick = {1L, "홍길동", 800};
 			given(singleGameRepository.findFirstClickRaw(6)).willReturn(List.<Object[]>of(firstClick));
 
-			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null);
+			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
 
 			assertThat(response.getSubRankings()).isNotNull();
 			assertThat(response.getSubRankings().getEnterMainTop3()).hasSize(1);
@@ -613,7 +626,7 @@ class SingleGameServiceTest {
 			Object[] fc3 = {3L, "3등", 400};
 			given(singleGameRepository.findFirstClickRaw(6)).willReturn(List.<Object[]>of(fc1, fc2, fc3));
 
-			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null);
+			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
 
 			assertThat(response.getSubRankings().getEnterMainTop3()).hasSize(3);
 			assertThat(response.getSubRankings().getEnterMainTop3().get(0).getRank()).isEqualTo(1);
@@ -636,7 +649,7 @@ class SingleGameServiceTest {
 			}
 			given(singleGameRepository.findRankingRaw(6)).willReturn(rows);
 
-			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null);
+			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
 
 			assertThat(response.getRankings()).hasSize(20);
 			assertThat(response.getRankings().get(0).getRank()).isEqualTo(1);
@@ -649,9 +662,36 @@ class SingleGameServiceTest {
 			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 2, 5000, 2000, System.currentTimeMillis()};
 			given(singleGameRepository.findRankingRaw(2)).willReturn(List.<Object[]>of(row));
 
-			RankingResponse response = singleGameService.getRankings(2, "GLOBAL", null);
+			RankingResponse response = singleGameService.getRankings(2, "GLOBAL", null, null);
 
 			assertThat(response.getSubRankings()).isNull();
+		}
+	}
+
+	@Nested
+	@DisplayName("getDepartments 메서드는")
+	class Describe_getDepartments {
+
+		@Test
+		@DisplayName("모든 학과 목록을 반환한다")
+		void it_returns_all_departments() {
+			given(singleGameRepository.findDistinctDepartments())
+					.willReturn(List.of("간호학과", "경영학과", "건축학과", "컴퓨터공학과"));
+
+			DepartmentsResponse response = singleGameService.getDepartments();
+
+			assertThat(response.getDepartments()).hasSize(4);
+			assertThat(response.getDepartments()).containsExactly("간호학과", "경영학과", "건축학과", "컴퓨터공학과");
+		}
+
+		@Test
+		@DisplayName("학과가 없으면 빈 목록을 반환한다")
+		void it_returns_empty_list_when_no_departments() {
+			given(singleGameRepository.findDistinctDepartments()).willReturn(List.of());
+
+			DepartmentsResponse response = singleGameService.getDepartments();
+
+			assertThat(response.getDepartments()).isEmpty();
 		}
 	}
 

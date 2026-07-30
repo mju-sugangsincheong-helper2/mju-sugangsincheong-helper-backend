@@ -30,12 +30,13 @@ public class TokenProvider {
 		this.mergeTicketExpiryMs = mergeTicketExpiryMs;
 	}
 
-	public String createAccessToken(Long memberId, String role, boolean privacyAgreed) {
+	public String createAccessToken(Long memberId, String role, boolean privacyAgreed, Long deviceId) {
 		Instant now = Instant.now();
 		return Jwts.builder()
 				.subject(String.valueOf(memberId))
 				.claim("role", role)
 				.claim("agreed", privacyAgreed)
+				.claim("deviceId", deviceId)
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(now.plusMillis(accessTokenExpiryMs)))
 				.signWith(key)
@@ -67,7 +68,8 @@ public class TokenProvider {
 		return new TokenClaims(
 				Long.parseLong(claims.getSubject()),
 				claims.get("role", String.class),
-				claims.get("agreed", Boolean.class) != null && claims.get("agreed", Boolean.class)
+				claims.get("agreed", Boolean.class) != null && claims.get("agreed", Boolean.class),
+				claims.get("deviceId", Long.class)
 		);
 	}
 
@@ -87,6 +89,6 @@ public class TokenProvider {
 		return refreshTokenExpiryMs;
 	}
 
-	public record TokenClaims(Long memberId, String role, boolean agreed) {
+	public record TokenClaims(Long memberId, String role, boolean agreed, Long deviceId) {
 	}
 }

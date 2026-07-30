@@ -22,6 +22,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,7 +33,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Exchange", description = "수강신청 과목 교환 API")
@@ -47,7 +47,7 @@ public class ExchangeController {
 	@PostMapping(value = "/intents", version = "1+")
 	@Operation(
 			summary = "Exchange intent create",
-			description = "교환 의사를 등록합니다. 버릴 과목과 원하는 과목을 지정합니다.",
+			description = "교환 의사를 등록합니다. 버릴 개설 강좌 식별 코드와 원하는 개설 강좌 식별 코드를 지정합니다.",
 			responses = {
 					@ApiResponse(responseCode = "201", description = "등록 성공")
 			}
@@ -91,7 +91,7 @@ public class ExchangeController {
 	@GetMapping(value = "/main", version = "1+")
 	@Operation(
 			summary = "Exchange main status",
-			description = "메인 화면 상태를 조회합니다. 나의 의도 목록, 참여 중인 채팅방 목록, 최근 교환 의사를 반환합니다.",
+			description = "메인 화면 상태를 5초 주기로 조회합니다. 내 의도 목록 및 각 의도에 연결된 채팅방 상세 목록, 최근 피드를 통합 반환합니다.",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "조회 성공")
 			}
@@ -108,7 +108,7 @@ public class ExchangeController {
 	@GetMapping(value = "/intents/recent", version = "1+")
 	@Operation(
 			summary = "Recent exchange intents",
-			description = "최근 등록된 교환 의사를 무한 스크롤로 조회합니다.",
+			description = "최근 등록된 교환 의사 리스트(최대 50개)를 단순 조회합니다.",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "조회 성공")
 			}
@@ -116,19 +116,15 @@ public class ExchangeController {
 	@OperationErrorCodes({
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
-	public ResponseEntity<SingleSuccessResponseEnvelope<RecentIntentsResponse>> getRecentIntents(
-			@Parameter(description = "마지막으로 확인한 의도 ID (미전달 시 최신부터)", example = "0")
-			@RequestParam(name = "lastIntentId", required = false, defaultValue = "0") Long lastIntentId,
-			@Parameter(description = "조회할 개수", example = "10")
-			@RequestParam(name = "limit", defaultValue = "10") int limit) {
-		RecentIntentsResponse response = exchangeService.getRecentIntents(lastIntentId, limit);
+	public ResponseEntity<SingleSuccessResponseEnvelope<RecentIntentsResponse>> getRecentIntents() {
+		RecentIntentsResponse response = exchangeService.getRecentIntents();
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 
 	@GetMapping(value = "/rooms/{roomId}/messages", version = "1+")
 	@Operation(
 			summary = "Room messages",
-			description = "채팅방 메시지 내역을 조회합니다. 조회 시 읽음 처리도 함께 수행됩니다.",
+			description = "채팅방 이전 메시지 내역을 역방향 무한 스크롤(beforeMessageId 커서) 방식으로 조회합니다. 조회 시 읽음 처리도 함께 수행됩니다.",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "조회 성공")
 			}
@@ -140,12 +136,12 @@ public class ExchangeController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<MessageResponse>> getMessages(
 			@Parameter(description = "채팅방 ID", example = "402")
 			@PathVariable("roomId") Long roomId,
-			@Parameter(description = "마지막으로 확인한 메시지 ID (미전달 시 최신부터)", example = "999999999")
-			@RequestParam(name = "lastMessageId", required = false, defaultValue = "999999999") Long lastMessageId,
+			@Parameter(description = "기준 메시지 ID (미전달 시 최신 메시지부터)", example = "55102")
+			@RequestParam(name = "beforeMessageId", required = false) Long beforeMessageId,
 			@Parameter(description = "조회할 개수", example = "20")
 			@RequestParam(name = "size", defaultValue = "20") int size) {
 		Long memberId = getCurrentMemberId();
-		MessageResponse response = exchangeService.getMessages(memberId, roomId, lastMessageId, size);
+		MessageResponse response = exchangeService.getMessages(memberId, roomId, beforeMessageId, size);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 

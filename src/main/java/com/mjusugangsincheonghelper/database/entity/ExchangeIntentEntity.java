@@ -67,7 +67,7 @@ public class ExchangeIntentEntity {
 	@PrePersist
 	public void prePersist() {
 		if (this.id == null) {
-			this.id = ID_GENERATOR.getAndIncrement();
+			this.id = System.currentTimeMillis() * 1000L + (ID_GENERATOR.getAndIncrement() % 1000L);
 		}
 	}
 

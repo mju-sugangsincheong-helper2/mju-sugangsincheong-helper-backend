@@ -77,7 +77,7 @@ public class GlobalOpenApiConfig {
 				.info(new io.swagger.v3.oas.models.info.Info()
 						.title("MJU Sugangsincheong Helper API")
 						.version("1.0")
-						.description("### 인증 방법\n\n" +
+						.description("인증 방법\n\n" +
 								"1. `GET /api/v1/auth/config/google` → Client ID 확인\n" +
 								"2. `POST /api/v1/auth/oauth/start` → Google 인증 URL 획득\n" +
 								"3. Google 로그인 후 code 획득\n" +

@@ -109,4 +109,13 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 			""", nativeQuery = true)
 	List<Long> findDeptRankedGameIds(@Param("totalCourses") int totalCourses,
 	                                 @Param("department") String department);
+
+	@Query(value = """
+			SELECT DISTINCT m.department
+			FROM single_game sg
+			JOIN member m ON sg.member_id = m.id
+			WHERE sg.is_completed = TRUE AND m.department IS NOT NULL AND m.department != ''
+			ORDER BY m.department ASC
+			""", nativeQuery = true)
+	List<String> findDistinctDepartments();
 }

@@ -14,6 +14,7 @@ public class MessageSendResponse {
 	private Long messageId;
 	private Long roomId;
 	private Long senderId;
+	private String messageType;
 	private String content;
 	private Instant createdAt;
 
@@ -22,6 +23,7 @@ public class MessageSendResponse {
 				.messageId(entity.getId())
 				.roomId(entity.getRoomId())
 				.senderId(entity.getMemberId())
+				.messageType(entity.getMessageType())
 				.content(entity.getContent())
 				.createdAt(entity.getCreatedAt())
 				.build();

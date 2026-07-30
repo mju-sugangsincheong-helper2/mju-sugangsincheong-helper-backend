@@ -8,6 +8,7 @@ import com.mjusugangsincheonghelper.database.repository.SingleGameDetailReposito
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.AnalysisDetail;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.AnalysisSummary;
@@ -72,6 +73,13 @@ public class SingleGameService {
 	}
 
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
+
+	public DepartmentsResponse getDepartments() {
+		List<String> departments = singleGameRepository.findDistinctDepartments();
+		return DepartmentsResponse.builder()
+				.departments(departments)
+				.build();
+	}
 
 	@Transactional
 	public SingleGameSaveResponse saveGame(Long memberId, SingleGameSaveRequest request) {
@@ -151,13 +159,16 @@ public class SingleGameService {
 				.build();
 	}
 
-	@Cacheable(value = "singlegame-rank", key = "#totalCourses + ':' + #scope + ':cache'", sync = true)
-	public RankingResponse getRankings(int totalCourses, String scope, Long memberId) {
+	@Cacheable(value = "singlegame-rank", key = "#totalCourses + ':' + #scope + ':' + #department + ':cache'", sync = true)
+	public RankingResponse getRankings(int totalCourses, String scope, String department, Long memberId) {
 		List<Object[]> raw;
 		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
-			Member me = memberRepository.findById(memberId)
-					.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
-			String dept = me.getDepartment();
+			String dept = department;
+			if (dept == null || dept.isBlank()) {
+				Member me = memberRepository.findById(memberId)
+						.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
+				dept = me.getDepartment();
+			}
 			if (dept == null) dept = "";
 			raw = singleGameRepository.findDeptRankingRaw(totalCourses, dept);
 		} else {
@@ -540,8 +551,7 @@ public class SingleGameService {
 	private void evictRankingCaches(int totalCourses) {
 		Cache cache = cacheManager.getCache("singlegame-rank");
 		if (cache != null) {
-			cache.evict(totalCourses + ":GLOBAL:cache");
-			cache.evict(totalCourses + ":DEPARTMENT:cache");
+			cache.clear();
 		}
 	}
 

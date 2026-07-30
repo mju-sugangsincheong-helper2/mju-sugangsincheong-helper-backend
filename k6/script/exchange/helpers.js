@@ -57,9 +57,11 @@ export function getMain(token) {
 
   try {
     const json = res.json();
+    const myIntents = json?.data?.myIntents || [];
+    const myRooms = myIntents.flatMap((intent) => intent.rooms || []);
     return {
-      myIntents: json?.data?.myIntents || [],
-      myRooms: json?.data?.myRooms || [],
+      myIntents,
+      myRooms,
       recentIntents: json?.data?.recentIntents || [],
     };
   } catch (e) {
@@ -67,18 +69,14 @@ export function getMain(token) {
   }
 }
 
-export function getRecentIntents(token, lastIntentId = 0, limit = 10) {
-  let url = `${BASE_URL}/api/v1/exchange/intents/recent?limit=${limit}`;
-  if (lastIntentId && lastIntentId > 0) {
-    url += `&lastIntentId=${lastIntentId}`;
-  }
-  const res = http.get(url, {
+export function getRecentIntents(token) {
+  const res = http.get(`${BASE_URL}/api/v1/exchange/intents/recent`, {
     headers: { Authorization: `Bearer ${token}` },
     tags: { name: 'GET_recent_intents' },
   });
   check(res, {
     'recent intents status is 200': (r) => r.status === 200,
-    'has valid intents array': (r) => Array.isArray(r.json('data.intents')),
+    'has valid recentIntents array': (r) => Array.isArray(r.json('data.recentIntents')),
   });
   return res;
 }
@@ -87,10 +85,10 @@ export function getRecentIntents(token, lastIntentId = 0, limit = 10) {
 // Room API
 // ============================================================
 
-export function getMessages(token, roomId, lastMessageId = null, size = 20) {
+export function getMessages(token, roomId, beforeMessageId = null, size = 20) {
   let url = `${BASE_URL}/api/v1/exchange/rooms/${roomId}/messages?size=${size}`;
-  if (lastMessageId !== null && lastMessageId !== undefined) {
-    url += `&lastMessageId=${lastMessageId}`;
+  if (beforeMessageId !== null && beforeMessageId !== undefined) {
+    url += `&beforeMessageId=${beforeMessageId}`;
   }
   const res = http.get(url, {
     headers: { Authorization: `Bearer ${token}` },
@@ -103,7 +101,11 @@ export function getMessages(token, roomId, lastMessageId = null, size = 20) {
 
   try {
     const json = res.json();
-    return { messages: json?.data?.messages || [] };
+    return {
+      messages: json?.data?.messages || [],
+      nextBeforeMessageId: json?.data?.nextBeforeMessageId,
+      hasNext: json?.data?.hasNext,
+    };
   } catch (e) {
     return null;
   }
@@ -168,4 +170,3 @@ export function getCoursePair() {
   ];
   return courses[Math.floor(Math.random() * courses.length)];
 }
-

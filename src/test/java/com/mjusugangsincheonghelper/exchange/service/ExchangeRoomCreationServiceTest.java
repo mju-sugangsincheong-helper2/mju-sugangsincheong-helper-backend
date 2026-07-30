@@ -95,7 +95,6 @@ class ExchangeRoomCreationServiceTest {
 					.term(term)
 					.cycleHash(cycleHash)
 					.status("ACTIVE")
-					.isActive(true)
 					.build();
 			ReflectionTestUtils.setField(savedRoom, "id", 100L);
 
@@ -104,8 +103,9 @@ class ExchangeRoomCreationServiceTest {
 			ExchangeRoomMessageEntity savedMessage = ExchangeRoomMessageEntity.builder()
 					.term(term)
 					.roomId(100L)
-					.memberId(1L)
-					.intentId(10L)
+					.memberId(null)
+					.intentId(null)
+					.messageType("SYSTEM")
 					.content("Welcome message")
 					.build();
 			ReflectionTestUtils.setField(savedMessage, "id", 1000L);
@@ -137,8 +137,8 @@ class ExchangeRoomCreationServiceTest {
 			assertThat(roomId).isEqualTo(100L);
 			verify(roomIntentRepository, times(2)).save(any(ExchangeRoomIntentEntity.class));
 			verify(readStatusRepository, times(2)).save(any(ExchangeRoomReadStatusEntity.class));
-			verify(cacheService).evictRooms(term, 1L);
-			verify(cacheService).evictRooms(term, 2L);
+			verify(cacheService).evictMainCache(term, 1L);
+			verify(cacheService).evictMainCache(term, 2L);
 			assertThat(readStatus1.getLastReadMessageId()).isEqualTo(1000L);
 		}
 
@@ -225,12 +225,12 @@ class ExchangeRoomCreationServiceTest {
 			given(roomRepository.findByTermAndCycleHash(term, cycleHash)).willReturn(Optional.empty());
 
 			ExchangeRoomEntity savedRoom = ExchangeRoomEntity.builder()
-					.term(term).cycleHash(cycleHash).status("ACTIVE").isActive(true).build();
+					.term(term).cycleHash(cycleHash).status("ACTIVE").build();
 			ReflectionTestUtils.setField(savedRoom, "id", 100L);
 			given(roomRepository.save(any(ExchangeRoomEntity.class))).willReturn(savedRoom);
 
 			ExchangeRoomMessageEntity savedMessage = ExchangeRoomMessageEntity.builder()
-					.term(term).roomId(100L).memberId(1L).intentId(10L).content("Welcome").build();
+					.term(term).roomId(100L).memberId(null).intentId(null).messageType("SYSTEM").content("Welcome").build();
 			ReflectionTestUtils.setField(savedMessage, "id", 1000L);
 			given(messageRepository.save(any(ExchangeRoomMessageEntity.class))).willReturn(savedMessage);
 
@@ -253,6 +253,8 @@ class ExchangeRoomCreationServiceTest {
 			assertThat(savedMsg.getContent()).contains("[시스템] 교환 매칭이 성사되었습니다!");
 			assertThat(savedMsg.getContent()).contains("10001");
 			assertThat(savedMsg.getContent()).contains("10002");
+			assertThat(savedMsg.getMessageType()).isEqualTo("SYSTEM");
+			assertThat(savedMsg.getMemberId()).isNull();
 		}
 	}
 }
