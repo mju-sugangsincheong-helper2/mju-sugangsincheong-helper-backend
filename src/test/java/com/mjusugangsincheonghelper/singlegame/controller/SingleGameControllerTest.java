@@ -26,6 +26,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
@@ -178,14 +179,16 @@ class SingleGameControllerTest {
 							.build())
 					.build();
 			given(singleGameService.getMyRecords(anyLong(), anyInt(), anyInt()))
-					.willReturn(new PageImpl<>(List.of(record)));
+					.willReturn(new PageImpl<>(List.of(record), PageRequest.of(0, 10), 1));
 
 			mockMvc.perform(get("/api/v1/singlegame/my")
 							.param("page", "0")
 							.param("size", "10"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.content[0].gameId").value(1))
-					.andExpect(jsonPath("$.data.content[0].tTotal").value(5000))
+					.andExpect(jsonPath("$.data[0].gameId").value(1))
+					.andExpect(jsonPath("$.data[0].tTotal").value(5000))
+					.andExpect(jsonPath("$.page.pageNumber").value(0))
+					.andExpect(jsonPath("$.page.pageSize").value(10))
 					.andExpect(jsonPath("$.meta").exists());
 		}
 	}

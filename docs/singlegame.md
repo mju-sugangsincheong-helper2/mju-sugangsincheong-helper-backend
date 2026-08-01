@@ -354,7 +354,15 @@ GET /api/{version}/singlegame/my?page={page}&size={size}
 **응답 구조:**
 ```json
 {
-  "content": [
+  "meta": {
+    "requestId": "uuid",
+    "apiVersion": "v1",
+    "path": "/api/v1/singlegame/my",
+    "method": "GET",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "durationMs": 45
+  },
+  "data": [
     {
       "gameId": 1234,
       "totalCourses": 6,
@@ -376,11 +384,19 @@ GET /api/{version}/singlegame/my?page={page}&size={size}
       }
     }
   ],
-  "page": 0,
-  "size": 10,
-  "totalElements": 25
+  "page": {
+    "pageNumber": 0,
+    "pageSize": 10,
+    "totalElements": 25,
+    "totalPages": 3,
+    "hasNext": true,
+    "hasPrevious": false
+  }
 }
 ```
+
+> **봉투 규칙:** 페이징 응답은 Guideline §8에 따라 `PagedSuccessResponseEnvelope.from(page)`를 사용한다.
+> `data`는 단건 봉투의 `content`가 아니라 목록(배열)이며, 페이징 메타는 `page` 객체로 내려간다.
 
 **처리 절차:**
 1. 첫 페이지 요청(`page=0`, `size=10`)인 경우 캐시 확인

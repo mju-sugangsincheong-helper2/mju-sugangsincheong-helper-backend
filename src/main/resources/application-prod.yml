@@ -47,6 +47,10 @@ app:
   singlegame:
     reaction-time-min-ms: 1
     reaction-time-max-ms: 60000
+  multigame:
+    # 미운영(CLOSED) 시간대. start_close/end_close snake_case도 동일하게 바인딩된다.
+    start-close: "02:00"
+    end-close: "05:00"
   firebase:
     admin:
       project-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PROJECT_ID:}

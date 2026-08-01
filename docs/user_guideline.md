@@ -198,13 +198,77 @@ public class DomainController {
 |---|------|------|
 | 1 | `@RequestMapping("/api/{version}/domain")` 사용 | 필수 |
 | 2 | 모든 메서드에 `version = "1+"` 명시 | 필수 |
-| 3 | `@Operation`에 `responses` 명시 (content 하드코딩 금지) | 필수 |
+| 3 | `@Operation`에 `summary`, `description`, `responses` 명시 — `description`은 상세 작성 (아래 "description 작성 규칙" 참고) | 필수 |
 | 4 | `@OperationErrorCodes`로 에러 코드 문서화 | 필수 |
-| 5 | `@Parameter`에 `description`, `example` 추가 | 필수 |
+| 5 | `@Parameter`에 `description`, `example` 추가 — 의미/형식/기본값 포함 (아래 "description 작성 규칙" 참고) | 필수 |
 | 6 | 리턴 타입: `SingleSuccessResponseEnvelope<T>` 또는 `PagedSuccessResponseEnvelope<T>` | 필수 |
 | 7 | 응답 생성 시 `SingleSuccessResponseEnvelope.of(data)` 사용 | 필수 |
 | 8 | `ResponseEntity.ok(...)` 로 감싸서 반환 | 필수 |
 | 9 | @PreAuthorize("hasRole('ADMIN')"), ADMIN, MEMBER, GEUST | 선택 |
+
+### description 작성 규칙 (상세)
+
+`@Operation` / `@Parameter` / `@ApiResponse`의 `description`은 **클라이언트(프론트)가 Swagger 문서에서 API를 이해하는 유일한 설명**입니다. "조회 API" 수준의 문구는 금지하고, 아래 지침에 따라 3~5문장(1문단 내외)으로 작성합니다.
+
+#### `@Operation.description` — API 전체 설명
+
+다음을 포함해야 합니다:
+
+| 포함 내용 | 설명 | 예시 |
+|-----------|------|------|
+| 응답 구성 | 무엇을 반환하는가 (데이터 종류, 필드 요약) | "과목 1~6 각각의 신청 수, 성공 수, 경쟁률과 라운드 메타를 반환합니다." |
+| 호출 전제 | 인증/권한, 사전 호출 필요 여부 | "현재 로그인한 사용자의 데이터만 반환합니다." |
+| 동작 규칙 | 정렬, 페이징, 상태/시점 조건 | "최신순으로 페이징 조회합니다." |
+| 예외 조건 | 어떤 경우 어떤 에러가 나는가 | "미참여 라운드면 404(MULTIGAME_004)를 반환합니다." |
+| 참조 관계 | 클라이언트가 알아야 할 다른 API와의 관계 | "과목별 상세 집계는 분석서 API(GET /results/{multigameId})에서 확인할 수 있습니다." |
+
+**좋은 예 / 나쁜 예:**
+
+```java
+// ❌ 너무 짧음 — 무엇을 주는지, 언제 실패하는지 알 수 없음
+@Operation(summary = "Get round analysis", description = "라운드 분석서 조회")
+
+// ✅ 응답 구성 + 동작 규칙 + 예외 조건 + 참조 관계를 포함
+@Operation(summary = "Get round analysis", description = """
+        특정 라운드의 익명 분석서를 조회합니다. 과목 1~6 각각의 신청 수(applied), 성공 수(succeeded),
+        경쟁률(competitionRate = applied / capacity)과 라운드 메타(참여자 수, 좌석 수)를 반환합니다.
+        개인 식별 정보(memberId)는 포함되지 않으며, 존재하지 않는 라운드면 404(MULTIGAME_004)를 반환합니다.
+        """)
+```
+
+#### `@Parameter.description` — 파라미터 설명
+
+| 포함 내용 | 설명 |
+|-----------|------|
+| 의미 | 이 값이 무엇을 뜻하는가 |
+| 형식/제약 | 포맷, 정규식, 범위, 필수 여부 |
+| 기본값 | 생략 시 적용되는 값 |
+
+```java
+// ❌ 형식/제약 없음 — 클라이언트가 무슨 값을 넣어야 할지 모름
+@Parameter(description = "게임 ID")
+
+// ✅ 의미 + 형식 + 제약
+@Parameter(description = "게임 식별자 T — 10분 단위 게임 시작 시각 (yyyyMMddHHmmss 14자리)", example = "20260801120000")
+
+// ✅ 의미 + 기본값
+@Parameter(description = "페이지 번호 (0부터 시작, 기본값 0)", example = "0")
+```
+
+#### `@ApiResponse.description` — 응답 조건 설명
+
+`200`의 description에는 "조회 성공" 대신 **어떤 데이터가 담기는지**를, 오류 응답은 `@OperationErrorCodes`에 나열된 코드와 짝을 이뤄 **발생 조건**을 씁니다.
+
+| responseCode | ❌ | ✅ |
+|--------------|----|----|
+| `200` | "조회 성공" | "라운드 결과 목록 (최신순, 페이징)" |
+| `404` | "NotFound" | "해당 라운드에 내 기록이 없음 (MULTIGAME_004)" |
+
+#### 주의사항
+
+- Java text block(`"""`)을 사용하면 여러 문장을 읽기 쉽게 작성할 수 있습니다.
+- `summary`는 한 줄(명사형, "Get/조회"), `description`은 상세 설명으로 역할을 나눕니다.
+- `content = @Content(schema = @Schema(implementation = ...))` 하드코딩은 여전히 금지 — SpringDoc이 리턴 타입에서 제네릭을 자동 해석합니다.
 
 ### 금지 사항
 

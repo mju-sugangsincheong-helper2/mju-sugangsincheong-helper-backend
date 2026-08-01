@@ -2,6 +2,7 @@ package com.mjusugangsincheonghelper.singlegame.controller;
 
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
+import com.mjusugangsincheonghelper.global.api.envelope.PagedSuccessResponseEnvelope;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
 import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
@@ -124,14 +125,14 @@ public class SingleGameController {
 			ErrorCode.AUTH_MEMBER_NOT_FOUND,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
-	public ResponseEntity<SingleSuccessResponseEnvelope<Page<MyRecordResponse>>> getMyRecords(
+	public ResponseEntity<PagedSuccessResponseEnvelope<MyRecordResponse>> getMyRecords(
 			@Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
 			@RequestParam(name = "page", defaultValue = "0") int page,
 			@Parameter(description = "페이지 크기", example = "10")
 			@RequestParam(name = "size", defaultValue = "10") int size) {
 		Long memberId = getCurrentMemberId();
 		Page<MyRecordResponse> response = singleGameService.getMyRecords(memberId, page, size);
-		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+		return ResponseEntity.ok(PagedSuccessResponseEnvelope.from(response));
 	}
 
 	@GetMapping(value = "/{gameId}/analysis", version = "1+")

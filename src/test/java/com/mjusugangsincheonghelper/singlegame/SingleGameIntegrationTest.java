@@ -223,10 +223,10 @@ class SingleGameIntegrationTest {
 							.param("page", "0")
 							.param("size", "10"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.content").isArray())
-					.andExpect(jsonPath("$.data.content[0].totalCourses").value(6))
-					.andExpect(jsonPath("$.data.content[0].completed").value(true))
-					.andExpect(jsonPath("$.data.content[0].ranking.global.rank").exists());
+					.andExpect(jsonPath("$.data").isArray())
+					.andExpect(jsonPath("$.data[0].totalCourses").value(6))
+					.andExpect(jsonPath("$.data[0].completed").value(true))
+					.andExpect(jsonPath("$.data[0].ranking.global.rank").exists());
 		}
 	}
 
@@ -774,8 +774,8 @@ class SingleGameIntegrationTest {
 							.param("page", "0")
 							.param("size", "10"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.content").isArray())
-					.andExpect(jsonPath("$.data.content[0].ranking.global.percentile").isNumber());
+					.andExpect(jsonPath("$.data").isArray())
+					.andExpect(jsonPath("$.data[0].ranking.global.percentile").isNumber());
 		}
 
 		@Test
@@ -789,7 +789,7 @@ class SingleGameIntegrationTest {
 							.param("page", "0")
 							.param("size", "10"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.content[0].ranking.department.percentile").isNumber());
+					.andExpect(jsonPath("$.data[0].ranking.department.percentile").isNumber());
 		}
 	}
 
