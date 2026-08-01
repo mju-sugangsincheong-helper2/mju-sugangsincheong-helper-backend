@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -61,13 +62,12 @@ class MultigameReservationServiceTest {
 					.startTime(futureTime)
 					.build();
 
-			given(reservationRepository.existsByStartTimeAndMemberId(futureTime, memberId)).willReturn(false);
-			given(reservationRepository.save(any(MultigameReservationEntity.class))).willReturn(savedEntity);
+			given(reservationRepository.saveAndFlush(any(MultigameReservationEntity.class))).willReturn(savedEntity);
 
 			MultigameReservationResponse response = reservationService.create(memberId, request);
 
 			assertThat(response.getMultigameId()).isEqualTo(futureTime);
-			verify(reservationRepository).save(any(MultigameReservationEntity.class));
+			verify(reservationRepository).saveAndFlush(any(MultigameReservationEntity.class));
 		}
 
 		@Test
@@ -112,14 +112,13 @@ class MultigameReservationServiceTest {
 					.multigameId(futureTime)
 					.build();
 
-			given(reservationRepository.existsByStartTimeAndMemberId(futureTime, memberId)).willReturn(true);
+			given(reservationRepository.saveAndFlush(any(MultigameReservationEntity.class)))
+					.willThrow(new DataIntegrityViolationException("duplicate"));
 
 			assertThatThrownBy(() -> reservationService.create(memberId, request))
 					.isInstanceOf(BaseException.class)
 					.satisfies(ex -> assertThat(((BaseException) ex).getErrorCode())
 							.isEqualTo(ErrorCode.MULTIGAME_RESERVATION_DUPLICATE));
-
-			verify(reservationRepository, never()).save(any());
 		}
 	}
 

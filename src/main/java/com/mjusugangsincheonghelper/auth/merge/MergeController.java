@@ -48,6 +48,7 @@ public class MergeController {
 			ErrorCode.GLOBAL_VALIDATION_ERROR,
 			ErrorCode.AUTH_MERGE_TICKET_EXPIRED,
 			ErrorCode.AUTH_MEMBER_NOT_FOUND,
+			ErrorCode.AUTH_GUEST_NOT_FOUND,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<MergeResponse>> merge(

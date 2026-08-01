@@ -16,58 +16,108 @@ public class AnalysisResponse implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	private long gameId;
+	private boolean isOwner;
+	private boolean isMember;
 	private int totalCourses;
-	private boolean completed;
-	private AnalysisSummary summary;
-	private List<AnalysisDetail> details;
+	private int totalTime;
+	private RankingSummary ranking;
+	private List<BasicEvent> basic;
+	private List<DetailEvent> detail;
+	private FeedbacksResponse feedbacks;
 
 	@Getter
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class AnalysisSummary implements Serializable {
+	public static class RankingSummary implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
-		private int totalTime;
-		private int globalRank;
-		private double globalPercentile;
-		private int purePhysicalAverage;
-		private int entryPrecision;
-		private Integer initialSprintSpeed;
-		private Double paceDeviation;
-		private String feedbackCode;
-		private String feedbackMessage;
+		private RankDetail global;
+		private RankDetail department;
 	}
 
 	@Getter
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class AnalysisDetail implements Serializable {
+	public static class RankDetail implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
+		private int rank;
+		private int totalParticipants;
+		private double percentile;
+	}
+
+	@Getter
+	@Builder
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class BasicEvent implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
 		private int sequence;
-		private DataBucket mine;
-		private DataBucket p10;
-		private DataBucket p30;
-		private DataBucket p50;
-		private DataBucket p70;
-		private DataBucket p100;
+		private String type;
+		private String label;
+		private int durationMs;
 	}
 
 	@Getter
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class DataBucket implements Serializable {
+	public static class DetailEvent implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
-		private int clickCourse;
-		private int clickYes;
-		private int clickOk;
-		private int total;
+		private int sequence;
+		private String type;
+		private String label;
+		private int durationMs;
+		private double percentile;
+		private String grade;
+		private PopulationStats globalPopulation;
+		private PopulationStats departmentPopulation;
+	}
+
+	@Getter
+	@Builder
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class PopulationStats implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
+		private int p10;
+		private int p30;
+		private int p50;
+		private int p70;
+	}
+
+	@Getter
+	@Builder
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class FeedbacksResponse implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
+		private FeedbackItem primary;
+		private FeedbackItem secondary;
+	}
+
+	@Getter
+	@Builder
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class FeedbackItem implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
+		private String code;
+		private String message;
+		private String axis;
 	}
 }

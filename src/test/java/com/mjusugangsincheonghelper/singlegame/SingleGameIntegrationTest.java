@@ -144,10 +144,11 @@ class SingleGameIntegrationTest {
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.gameId").value(gameId))
 					.andExpect(jsonPath("$.data.totalCourses").value(6))
-					.andExpect(jsonPath("$.data.completed").value(true))
-					.andExpect(jsonPath("$.data.summary").exists())
-					.andExpect(jsonPath("$.data.details").isArray())
-					.andExpect(jsonPath("$.data.details").isNotEmpty());
+					.andExpect(jsonPath("$.data.feedbacks").exists())
+					.andExpect(jsonPath("$.data.basic").isArray())
+					.andExpect(jsonPath("$.data.basic").isNotEmpty())
+					.andExpect(jsonPath("$.data.detail").isArray())
+					.andExpect(jsonPath("$.data.detail").isNotEmpty());
 		}
 	}
 
@@ -186,7 +187,7 @@ class SingleGameIntegrationTest {
 					.andExpect(jsonPath("$.data.totalCourses").value(6))
 					.andExpect(jsonPath("$.data.scope").value("GLOBAL"))
 					.andExpect(jsonPath("$.data.rankings").isArray())
-					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
+					.andExpect(jsonPath("$.data.rankings[0].name").value("****저"));
 		}
 	}
 
@@ -568,7 +569,7 @@ class SingleGameIntegrationTest {
 					.andExpect(jsonPath("$.data.scope").value("DEPARTMENT"))
 					.andExpect(jsonPath("$.data.rankings").isArray())
 					.andExpect(jsonPath("$.data.rankings.length()").value(1))
-					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
+					.andExpect(jsonPath("$.data.rankings[0].name").value("****저"));
 		}
 	}
 
@@ -606,13 +607,13 @@ class SingleGameIntegrationTest {
 							.param("totalCourses", "6")
 							.param("scope", "GLOBAL"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
+					.andExpect(jsonPath("$.data.rankings[0].name").value("****저"));
 
 			mockMvc.perform(get("/api/v1/singlegame/rank")
 							.param("totalCourses", "6")
 							.param("scope", "GLOBAL"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"))
+					.andExpect(jsonPath("$.data.rankings[0].name").value("****저"))
 					.andExpect(jsonPath("$.data.rankings[0].tTotal").value(5000));
 		}
 
@@ -634,7 +635,7 @@ class SingleGameIntegrationTest {
 							.param("totalCourses", "6")
 							.param("scope", "GLOBAL"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
+					.andExpect(jsonPath("$.data.rankings[0].name").value("****저"));
 
 			stringRedisTemplate.execute((org.springframework.data.redis.core.RedisCallback<Object>) connection -> {
 				connection.serverCommands().flushDb();
@@ -645,7 +646,7 @@ class SingleGameIntegrationTest {
 							.param("totalCourses", "6")
 							.param("scope", "GLOBAL"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.rankings[0].name").value("테스트유저"));
+					.andExpect(jsonPath("$.data.rankings[0].name").value("****저"));
 		}
 	}
 
@@ -691,12 +692,12 @@ class SingleGameIntegrationTest {
 							.param("totalCourses", "6")
 							.param("scope", "GLOBAL"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data.rankings[0].name").value("1등유저"))
 					.andExpect(jsonPath("$.data.rankings[0].rank").value(1))
-					.andExpect(jsonPath("$.data.rankings[1].name").value("2등유저"))
+					.andExpect(jsonPath("$.data.rankings[0].tTotal").value(3000))
 					.andExpect(jsonPath("$.data.rankings[1].rank").value(2))
-					.andExpect(jsonPath("$.data.rankings[2].name").value("3등유저"))
-					.andExpect(jsonPath("$.data.rankings[2].rank").value(3));
+					.andExpect(jsonPath("$.data.rankings[1].tTotal").value(5000))
+					.andExpect(jsonPath("$.data.rankings[2].rank").value(3))
+					.andExpect(jsonPath("$.data.rankings[2].tTotal").value(7000));
 		}
 
 		@Test
@@ -725,8 +726,8 @@ class SingleGameIntegrationTest {
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.scope").value("DEPARTMENT"))
 					.andExpect(jsonPath("$.data.rankings.length()").value(2))
-					.andExpect(jsonPath("$.data.rankings[0].name").value("컴공1등"))
-					.andExpect(jsonPath("$.data.rankings[1].name").value("컴공2등"));
+					.andExpect(jsonPath("$.data.rankings[0].name").value("***등"))
+					.andExpect(jsonPath("$.data.rankings[1].name").value("***등"));
 		}
 	}
 

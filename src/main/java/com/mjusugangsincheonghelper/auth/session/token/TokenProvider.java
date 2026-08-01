@@ -47,11 +47,11 @@ public class TokenProvider {
 		return UUID.randomUUID().toString();
 	}
 
-	public String createMergeTicket(Long memberId, String googleSubId) {
+	public String createMergeTicket(Long guestMemberId, Long targetMemberId) {
 		Instant now = Instant.now();
 		return Jwts.builder()
-				.subject(String.valueOf(memberId))
-				.claim("googleSubId", googleSubId)
+				.subject(String.valueOf(guestMemberId))
+				.claim("targetMemberId", targetMemberId)
 				.claim("type", "merge")
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(now.plusMillis(mergeTicketExpiryMs)))

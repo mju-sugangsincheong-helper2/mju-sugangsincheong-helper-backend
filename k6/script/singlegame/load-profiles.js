@@ -33,6 +33,7 @@ export const profiles = {
  * 시나리오별 threshold (docs/singlegame/load_performance_test.md 기준)
  * - save 쓰기 API SLA: p(95)<150ms
  * - rank 읽기 API SLA: p(95)<100ms
+ * - analysis 읽기 API SLA: p(95)<200ms
  * - full-flow SLA: p(95)<300ms
  */
 export const thresholds = {
@@ -42,6 +43,10 @@ export const thresholds = {
   },
   rank: {
     http_req_duration: ['p(95)<100'],
+    http_req_failed: ['rate<0.01'],
+  },
+  analysis: {
+    http_req_duration: ['p(95)<200'],
     http_req_failed: ['rate<0.01'],
   },
   'full-flow': {

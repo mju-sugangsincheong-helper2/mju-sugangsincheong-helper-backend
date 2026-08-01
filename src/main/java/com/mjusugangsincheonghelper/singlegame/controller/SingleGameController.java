@@ -152,7 +152,8 @@ public class SingleGameController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<AnalysisResponse>> getAnalysis(
 			@Parameter(description = "게임 ID", example = "1234", required = true)
 			@PathVariable("gameId") Long gameId) {
-		AnalysisResponse response = singleGameService.getAnalysis(gameId);
+		Long memberId = getCurrentMemberId();
+		AnalysisResponse response = singleGameService.getAnalysis(gameId, memberId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 

@@ -298,8 +298,8 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 - **Payload**:
   ```json
   {
-    "sub": "12",              // 게스트 멤버 ID
-    "googleSubId": "12345...", // 연동될 구글 Sub ID
+    "sub": "12",               // 게스트 멤버 ID
+    "targetMemberId": 45,      // 병합 대상 멤버 ID (Google 계정)
     "type": "merge",
     "iat": 1700000000,
     "exp": 1700000600
@@ -385,28 +385,247 @@ POST /api/{version}/auth/token
      │   ├→ parseName(claims.name)  ("이름/직책/학과" 형식 파싱)
      │   └→ authenticateOrCreateMember(googleSubId, parsedName, guestMemberId)
      │       ├→ 기존 회원이면: lastLoginAt 갱신 + member.promoteToMember(name, position, department)
-     │       │   └→ guestMemberId가 있으면: MergeTicket 생성 후 mergeRequired 결과 반환
      │       └→ 신규 회원이면: Member(MEMBER) + MemberAuth(GOOGLE) 생성
+     │       └→ guestMemberId가 있으면 (기존/신규 무관):
+     │           └→ MergeTicket(guestMemberId, targetMemberId) 생성 후 mergeRequired 결과 반환
+     │       └→ guestMemberId가 없으면: Session용 identity 반환
      ├→ mergeRequired이면: 409 응답 + mergeTicket 반환
-     └→ SessionService.createSession(identity, null, null, httpResponse)  (OAuth는 device/fcmToken 미사용)
+     └→ mergeRequired가 아니면: SessionService.createSession(identity, null, httpResponse)
 ```
+
+> **참고**: 게스트 상태에서의 Google 로그인은 새/기존 계정과 무관하게 항상 merge ticket을 반환합니다.
+> 클라이언트는 409 응답을 받으면 `POST /auth/login/google/merge`를 호출하여 게스트 데이터를 Google 계정으로 이전해야 합니다.
 
 ### 9.3 게스트 → 구글 계정 데이터 병합
 ```
 POST /api/{version}/auth/login/google/merge {mergeTicket, fcmToken, device}
  └→ MergeController.merge()
      └→ MergeService.merge(mergeTicket)
-         ├→ MergeTicketService.consume(ticket) -> guestMemberId, googleSubId
-         ├→ MemberAuth(GOOGLE) 조회로 target Member 식별
+         ├→ MergeTicketService.consume(ticket) -> guestMemberId, targetMemberId
+         ├→ Self-merge 가드: guestId == targetId 이면 예외 발생
+         ├→ target Member를 ID로 직접 조회
+         ├→ guest Member를 ID로 조회
          ├→ SingleGameRepository.updateMemberId(guestId, targetId)  (싱글게임 기록 이전)
          ├→ 게스트 MemberAuth(GUEST_KEY) 삭제
          ├→ DeviceSessionService.switchMember(guestId, targetId)  (디바이스 소유권 이전)
          └→ guest Member 레코드 삭제
-     └→ SessionService.createSession(identity, device, fcmToken, response)
+     └→ SessionService.createSession(identity, device, response)
 
-참고: mergeTicket은 POST /auth/token에서 게스트가 기존 Google 계정으로 로그인 시도 시
-      409(AUTH_005) 응답과 함께 서버에서 생성되어 반환됨
+참고: mergeTicket은 POST /auth/token에서 게스트가 Google 로그인 시도 시
+      (새/기존 계정 무관) 409(AUTH_005) 응답과 함께 서버에서 생성되어 반환됨
 ```
+
+### 9.4 상세 시퀀스
+```
+ 1. 기본 OAuth 시퀀스 (Merge 불필요)
+
+ 게스트 세션 없이 처음부터 Google 로그인하는 경우입니다.
+
+ ```
+   Browser/FE                          Google                   Backend
+      |                                 |                         |
+      |  ========== [1] Config & OAuth Start ==========          |
+      |                                 |                         |
+      |-- GET /auth/config/google ----->|                        |
+      |<--- clientId, scopes, redirectUri -----------------|     |
+      |                                 |                         |
+      |-- POST /auth/oauth/start ------>|                        |
+      |<--- googleAuthUrl (w/ state) ---------------------|     |
+      |                                 |                         |
+      |  ========== [2] Google 인증 ==========                    |
+      |                                 |                         |
+      |-- Redirect Google Auth ---->|   |                         |
+      |   (hd=mju.ac.kr 강제)       |   |                         |
+      |   [사용자 로그인]           |   |                         |
+      |<-- Redirect w/ code, state --|  |                         |
+      |                                 |                         |
+      |  ========== [3] 토큰 교환 (Cookie: 없음) ==========       |
+      |                                 |                         |
+      |-- POST /auth/token ------------->|                       |
+      |   {code, state}                 |                         |
+      |   Cookie: (없음)                |                         |
+      |   (accessToken 미전송 →        |                         |
+      |    guestMemberId = null)        |                         |
+      |                                 |                         |
+      |                          |--- exchangeCodeForIdToken() ->|
+      |                          |<--- id_token -----------------|
+      |                          |                               |
+      |                          |--- verifyAndParseIdToken()    |
+      |                          |   (JWKS 캐시 1h)             |
+      |                          |--- validateMjuDomain(hd)     |
+      |                          |--- parseName("이름/직책/학과")|
+      |                          |                               |
+      |                          |--- authenticateOrCreateMember |
+      |                          |   (guestMemberId=null)        |
+      |                          |    → mergeRequired = false   |
+      |                          |    → identity(memberId) 반환 |
+      |                          |                               |
+      |                          |--- createSession()            |
+      |                          |   1. Member 조회              |
+      |                          |   2. isAgreed(memberId)       |
+      |                          |   3. RTK = UUID.randomUUID()  |
+      |                          |   4. upsert device            |
+      |                          |      (memberId, RTK, device)  |
+      |                          |   5. ATK = JWT {              |
+      |                          |        sub: memberId,         |
+      |                          |        role: "MEMBER",        |
+      |                          |        agreed: true/false,    |
+      |                          |        deviceId: N            |
+      |                          |      }                        |
+      |                          |   6. deliver(ATK, RTK)        |
+      |                          |       [Set-Cookie]            |
+      |                          |                               |
+      |<--- 200 + Set-Cookie --------|                          |
+      |                                                         |
+      |  ========== [4] Cookie 상태 ==========                    |
+      |                                                         |
+      |  Set-Cookie: access_token=<JWT>                          |
+      |    HttpOnly; SameSite=Lax; Path=/; Max-Age=3600          |
+      |  Set-Cookie: refresh_token=<UUID>                        |
+      |    HttpOnly; SameSite=Lax; Path=/; Max-Age=604800        |
+      |                                                         |
+      |  (dev/test 환경 추가 헤더)                                |
+      |  Authorization: Bearer <ATK>                             |
+      |  X-Access-Token: <ATK>                                   |
+      |  X-Refresh-Token: <RTK>                                  |
+      |                                                         |
+      |  ========== [5] 이후 요청 (Cookie 자동 전송) ==========    |
+      |                                                         |
+      |-- POST /auth/privacy/agree --> JwtAuthFilter ---> Controller
+      |   Cookie: access_token=<JWT>   | sub: memberId          |
+      |   Cookie: refresh_token=<UUID> | role: MEMBER           |
+      |                                | agreed: false          |
+      |                                | deviceId: N            |
+      |                                ↓                        |
+      |                         ConsentCheckFilter 검사          |
+      |                         (agreed=false + MEMBER → 403)   |
+ ```
+
+ ────────────────────────────────────────────────────────────────────────────────
+
+ 2. Merge 시퀀스 (게스트 → Google 로그인)
+
+ 게스트가 먼저 생성되어 있고, 이후 Google 로그인 시도 시 merge ticket이 발급되는 흐름입니다.
+
+ ```
+   Browser/FE                          Google                   Backend
+      |                                 |                         |
+      |  ========== [0] 선행: 게스트 로그인 완료 ==========        |
+      |                                                         |
+      |  Cookie: access_token=<GUEST_JWT>   (sub:12, role:GUEST) |
+      |  Cookie: refresh_token=<GUEST_RTK> (UUID)                |
+      |                                                         |
+      |  ========== [1] OAuth Start (게스트 쿠키 유지) ========== |
+      |                                                         |
+      |-- POST /auth/oauth/start ------>|                       |
+      |   Cookie: access_token=<GUEST_JWT>                       |
+      |<--- googleAuthUrl (w/ state) ---------------------|     |
+      |                                                         |
+      |  ========== [2] Google 로그인 ==========                  |
+      |                                                         |
+      |-- Redirect Google Auth ---->|   |                       |
+      |   [mju.ac.kr 로그인]        |   |                       |
+      |<-- Redirect w/ code, state --|  |                       |
+      |                                                         |
+      |  ========== [3] 토큰 교환 → 409 + mergeTicket ========= |
+      |                                                         |
+      |-- POST /auth/token ------------->|                      |
+      |   {code, state,                                         |
+      |    accessToken: "<GUEST_JWT>"}  ← 클라이언트가 게스트   |
+      |   Cookie: access_token=<GUEST_JWT>  ATK를 body로 전송   |
+      |   Cookie: refresh_token=<GUEST_RTK}                     |
+      |                                                         |
+      |   1. consumeState(state)                                |
+      |   2. extractGuestMemberId("<GUEST_JWT>")                |
+      |      → tokenProvider.parseAccessToken()                 |
+      |      → role == "GUEST" → return 12 (memberId)           |
+      |   3. GoogleOAuthService.authenticate(code, 12)           |
+      |      → exchangeCodeForIdToken(code)                     |
+      |      → verifyAndParseIdToken(idToken)                   |
+      |      → validateMjuDomain(hd="mju.ac.kr")                |
+      |      → parseName("이름/직책/학과")                       |
+      |      → authenticateOrCreateMember(googleSub, parsed, 12)|
+      |        guestMemberId(12) != null →                       |
+      |        MergeTicketService.createTicket(12, 45)          |
+      |        → mergeRequired = true                           |
+      |                                                         |
+      |<--- 409 AUTH_MERGE_REQUIRED (AUTH_005) ----|            |
+      |    {status:"MERGE_REQUIRED",                             |
+      |     mergeTicket:"<JWT: sub=12,                            |
+      |                targetMemberId=45, type=merge>"}          |
+      |                                                         |
+      |  *** Cookie 상태 변화 없음 (게스트 쿠키 그대로 유지) ***   |
+      |  Cookie: access_token=<GUEST_JWT>  (sub:12, role:GUEST)  |
+      |  Cookie: refresh_token=<GUEST_RTK>                       |
+      |                                                         |
+      |  ========== [4] Merge 요청 (PUBLIC_URL, 인증 불필요) ===== |
+      |                                                         |
+      |-- POST /auth/login/google/merge ------->|               |
+      |   {mergeTicket: "<JWT>",                                 |
+      |    fcmToken: "...",                                      |
+      |    device: {name, os, ...}}                              |
+      |   Cookie: (있으나 이 엔드포인트는 PUBLIC이라 무시)       |
+      |                                                         |
+      |   MergeService.merge()                                   |
+      |   1. consume(mergeTicket)                                |
+      |      → guestId=12, targetId=45                          |
+      |   2. Self-merge guard (12 != 45 → 통과)                  |
+      |   3. Member(12) 조회 (GUEST)                             |
+      |      Member(45) 조회 (MEMBER)                            |
+      |   4. SingleGameRepository.updateMemberId(12, 45)         |
+      |      [싱글게임 기록 이전]                                |
+      |   5. 게스트 MemberAuth(GUEST_KEY) 삭제                    |
+      |   6. DeviceSessionService.switchMember(12, 45)           |
+      |      → 모든 guest device의 member_id를 45로 변경         |
+      |      → 기존 device 레코드는 남지만,                      |
+      |        ATK 클레임의 sub:12는 memberId 12가 곧 삭제되므로  |
+      |        해당 ATK는 사실상 무효                            |
+      |   7. Member(12) 레코드 삭제                              |
+      |                                                         |
+      |   SessionService.createSession(identity(45),             |
+      |     device, response):                                   |
+      |   1. Member(45) 조회 (MEMBER role)                       |
+      |   2. isAgreed(45)                                        |
+      |   3. RTK = UUID.randomUUID()                             |
+      |   4. upsert device    [새 디바이스 레코드 생성]           |
+      |      → member_id=45, RTK, device info                    |
+      |   5. ATK = JWT {                                         |
+      |        sub: 45,                                          |
+      |        role: "MEMBER",                                   |
+      |        agreed: true/false,                               |
+      |        deviceId: N (새 device의 id)                       |
+      |      }                                                   |
+      |   6. deliver(ATK, RTK, response)                         |
+      |      → Set-Cookie (게스트 쿠키 덮어쓰기)                 |
+      |                                                         |
+      |<--- 200 + Set-Cookie ----------|                        |
+      |   {memberId:45, role:MEMBER,                              |
+      |    name, position, department}                            |
+      |                                                         |
+      |  ========== [5] Merge 후 Cookie 상태 ==========           |
+      |                                                         |
+      |  ★ 게스트 쿠키가 새 MEMBER 쿠키로 **덮어쓰기**됨 ★       |
+      |                                                         |
+      |  Set-Cookie: access_token=<NEW_MEMBER_JWT>               |
+      |    {sub:45, role:MEMBER, agreed:..., deviceId:N}         |
+      |    HttpOnly; SameSite=Lax; Path=/; Max-Age=3600          |
+      |                                                         |
+      |  Set-Cookie: refresh_token=<NEW_UUID>                    |
+      |    HttpOnly; SameSite=Lax; Path=/; Max-Age=604800        |
+      |                                                         |
+      |  (dev/test: Authorization / X-Access-Token /             |
+      |   X-Refresh-Token 헤더도 함께 갱신)                      |
+      |                                                         |
+      |  ========== [6] DB 상태 (merge 후) ==========             |
+      |                                                         |
+      |  member:        {id:45, role:MEMBER, name:...}  ← 유지   |
+      |                 {id:12}                         ← 삭제   |
+      |  member_auth:   {member_id:45, auth_type:GOOGLE} ← 유지  |
+      |                 {member_id:12, auth_type:GUEST_KEY} ← 삭제|
+      |  member_device: {id:1, member_id:45, RTK:<OLD>}  ← 이전  |
+      |                 {id:2, member_id:45, RTK:<NEW>}  ← 신규  |
+      |  single_game:   {member_id:45}  ← 게스트 기록 이전       |
+ ```
 
 ### 9.4 토큰 재발급
 ```
@@ -507,7 +726,7 @@ POST /api/{version}/auth/test-accounts {role}
 
 ### 11.3 OAuthAuthenticationResult
 - **위치**: `com/mjusugangsincheonghelper/auth/oauth/OAuthAuthenticationResult.java`
-- **역할**: GoogleOAuthService가 인증 후 컨트롤러로 반환하는 결과 VO (`identity`, `newUser`).
+- **역할**: GoogleOAuthService가 인증 후 컨트롤러로 반환하는 결과 VO (`identity`, `newUser`, `mergeRequired`, `mergeTicket`).
 
 ### 11.4 TokenClaims
 - **위치**: `com/mjusugangsincheonghelper/auth/session/token/TokenProvider.java` (record `TokenProvider.TokenClaims`)
@@ -515,7 +734,7 @@ POST /api/{version}/auth/test-accounts {role}
 
 ### 11.5 MergeTicketClaims
 - **위치**: `com/mjusugangsincheonghelper/auth/merge/MergeTicketService.java` (record `MergeTicketService.MergeTicketClaims`)
-- **역할**: MergeTicketService.consume()이 토큰에서 추출한 (`guestMemberId`, `googleSubId`) 페어.
+- **역할**: MergeTicketService.consume()이 토큰에서 추출한 (`guestMemberId`, `targetMemberId`) 페어.
 
 ### 11.6 ConsentStatus
 - **위치**: `com/mjusugangsincheonghelper/account/service/AccountAgreementService.java` (record)

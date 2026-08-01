@@ -8,7 +8,7 @@
 데이터베이스 테이블 설계와 실제 API 호출 시 일어나는 쓰기(Write) 작업의 무결성 및 관계 제약 조건이 안전하게 보호되는지 검증합니다.
 
 ### A. 게임 기록과 세부 이력의 자동 저장 검증
-* **설정 상황:** 외부 클라이언트로부터 신규 완료 기록(`POST /singlegame`) 요청 패킷이 유입됩니다.
+* **설정 상황:** 외부 클라이언트로부터 신규 완료 기록(`POST /api/{version}/singlegame`) 요청 패킷이 유입됩니다.
 * **진행 과정:** 
   1. 하나의 트랜잭션 내에서 `single_game` 테이블에 기본 정보가 등록됩니다.
   2. 그 직후 해당 데이터의 고유 식별자(`game_id`)를 외래키로 지닌 여러 개의 세부 조작 기록(`single_game_detail`)이 배열 길이만큼 루프를 돌며 등록됩니다.
@@ -42,12 +42,14 @@
   * **학과별 순위(`dept_rank`) 계산:** 같은 6과목 종목 안에서도 융합소프트웨어학부 유저들끼리만, 행정학과 유저들끼리만 격리되어 그 안에서 독립적으로 1위부터의 순위가 산출되는지 확인합니다.
   * **서브 랭킹 필드 검증:** 대기방 진입 속도 순위(`enter_main_rank`)와 첫 과목 클릭 속도 순위(`first_click_rank`)가 전체 순위와 무관하게 해당 개별 필드들의 오름차순 기준으로 각기 다르게 매겨지는지 검증합니다.
   * **미완료 유저 배제:** 올클리어 여부 필드가 거짓(`is_completed = false`)인 타임아웃 기록은 랭킹 뷰 결과 목록에서 완벽하게 제외되어 노출되지 않는지 확인합니다.
+  * **게스트 DEPARTMENT 순위 배제:** `department`가 `null`인 게스트 유저의 기록은 `dept_rank` 계산 대상에서 자동으로 제외되는지 확인합니다. (`WHERE department IS NOT NULL`)
 
 ### B. 내 기록 페이지 전용 뷰 (`v_my_records_page`)의 누적 모수 검증
 * **설정 상황:** 여러 학과의 유저들이 다양하게 누적 시도 판수를 늘려 놓은 데이터베이스 상태입니다.
 * **검증 항목:**
   * 특정 유저가 본인의 기록을 조회할 때, 해당 유저가 당시에 플레이했던 과목 수 조건에 부합하는 **전체 글로벌 플레이어의 순수 완료 판수 합산값**이 `total_global_players` 컬럼에 정확하게 찍혀 나오는지 검증합니다.
   * 동일 조건에서 해당 유저와 같은 학과 소속 유저들의 완료 판수 합산값이 `total_dept_players` 컬럼에 맞물려서 반환되는지 확인합니다. (이를 통해 별도의 전체 카운트 서브쿼리나 중복 조인 없이 1회 조회로 내 위치 백분율을 도출할 수 있어야 합니다.)
+  * **게스트 유저 처리:** `department`가 `null`인 게스트 유저의 경우 `total_dept_players`가 `null`로 반환되고, 결과적으로 `ranking.department` 전체가 `null`로 응답되는지 확인합니다.
 
 ### C. 분석 페이지 전용 뷰 (`v_analysis_page`)의 통계적 결합 검증
 * **설정 상황:** 각 분위수 통계 테이블(`v_sequence_percentile_stats`)에 10분위, 30분위 등의 기준 지연 시간이 기록되어 있고, 사용자가 특정 게임의 상세 비교 그래프를 요청합니다.
@@ -59,22 +61,35 @@
 ## 3. API 컨트롤러 및 응답 구조 통합 검증
 클라이언트와 백엔드 API 서버가 HTTP 프로토콜 위에서 요청을 주고받을 때, 구조화된 JSON 데이터가 명세서에 합치하는 형태로 반환되는지 확인합니다.
 
-### A. 랭킹 조회 API (`GET /singlegame/rank`) 통합 검증
+### A. 랭킹 조회 API (`GET /api/{version}/singlegame/rank`) 통합 검증
 * **검증 항목:**
   * 쿼리 파라미터(`totalCourses=6`, `scope=GLOBAL`)를 요청했을 때, 컨트롤러가 데이터베이스 뷰(`v_ranking_page`)의 상위 20개 데이터를 정확히 긁어와 리스트 형식으로 매핑하는지 확인합니다.
   * 응답 결과 내 `myRank` 영역에 로그인한 유저 본인의 현재 상대 순위 정보가 알맞게 조인되어 출력되는지 검증합니다.
   * 서브 랭킹 영역(`subRankings`)의 `enterMainTop3` 및 `firstClickTop3` 노드가 각각 상위 3명의 이름과 전용 기록값을 올바르게 채워 구조화된 JSON으로 반환되는지 최종 포맷을 점검합니다.
   * **과목 수가 1개인 경우 처리:** `totalCourses=1`로 조회 요청 시, 정각 진입을 제외한 첫 과목 타겟팅 등의 서브 랭킹이 성립되지 않으므로 `subRankings` 필드가 `null`로 조용히 채워지거나 생략되어 전체 JSON 파싱 에러를 유발하지 않는지 확인합니다.
+  * **게스트 DEPARTMENT 요청 처리:** 게스트(department = null)가 `scope=DEPARTMENT`로 요청 시, DEPARTMENT 랭킹 제공 불가 응답이 반환되거나 GLOBAL로 fallback 되는지 확인합니다.
 
-### B. 내 기록 목록 조회 API (`GET /singlegame/my`) 통합 검증
+### B. 내 기록 목록 조회 API (`GET /api/{version}/singlegame/my`) 통합 검증
 * **검증 항목:**
   * 페이징 조건(`page=0`, `size=10`)을 전송했을 때, 스프링 데이터 페이징 처리가 데이터베이스 레벨의 `LIMIT/OFFSET`으로 부드럽게 번역되어 필요한 범위의 내 기록 리스트만 잘라오는지 검증합니다.
   * 응답에 동봉되는 `ranking.global.percentile` 및 `ranking.department.percentile` 값이 저장된 랭킹 및 누적 참여자 수 모수를 기준으로 계산되어 소수점 아래 첫째 자리의 정확도를 가지고 채워지는지 확인합니다.
+  * **게스트 유저 처리:** 게스트(department = null)의 경우 `ranking.department`가 `null`로 반환되는지 확인합니다.
 
-### C. 개인 게임 분석 결과 조회 API (`GET /singlegame/{gameId}/analysis`) 통합 검증
+### C. 개인 게임 분석 결과 조회 API (`GET /api/{version}/singlegame/{gameId}/analysis`) 통합 검증
 * **검증 항목:**
-  * 특정 게임 식별자를 전달했을 때, 요약 분석 데이터(`summary`)와 각 회차별 비교 데이터(`details` 배열)가 동시에 출력되는지 검증합니다.
-  * **종합 피드백 매핑:** 단위 테스트로 검증했던 피드백 판정 로직이 통합 환경에서도 동일하게 동작하여, 요약부 내에 알맞은 피드백 코드(예: `SLOW_AIM`)와 그에 매핑되는 한글 텍스트 메시지가 누락 없이 채워져 내려가는지 확인합니다.
+  * 특정 게임 식별자를 전달했을 때, 응답이 게임 경험 순서대로 5개 영역(`timeline`, `baseMetrics`, `subjectDetails`, `insights`, `feedbacks`)으로 구성되어 반환되는지 검증합니다.
+  * **`timeline` 영역:** `entry`(메인방 진입 1회)와 `subjects`(과목별 반복)로 구성되며, 각 과목은 `aim` → `confirm` → `complete` phase 배열과 `fakeDelay` 정보를 포함하는지 확인합니다.
+  * **`baseMetrics` 영역:** 4대 원시 측정값(`entrySpeed`, `aimSpeed`, `confirmSpeed`, `completeSpeed`)이 `value`(ms), `percentile`, `grade`(S/A/B/C/D)와 함께 카드로 제공되는지 검증합니다.
+  * **`subjectDetails` 영역:** 과목별 phase 분해 값과 `population`(분위수 분포: p10~p100)이 포함되어 stacked bar 차트 구성에 필요한 데이터가 모두 제공되는지 확인합니다.
+  * **`insights` 영역:** 파생 인사이트(`initialSprint`, `paceDeviation`, `bestPhase`, `weakestPhase`, `fatigueIndex`)가 조건(N ≥ 3)에 따라 올바르게 산출되어 반환되는지 검증합니다.
+  * **`feedbacks` 영역:** `primary`(1순위 축)와 `secondary`(2순위 축) 2개의 피드백 코드 및 메시지가 반환되는지 확인합니다. 단위 테스트로 검증했던 피드백 판정 로직이 통합 환경에서도 동일하게 동작하여 우선순위에 맞는 코드(예: `SLOW_AIM`)와 한글 텍스트 메시지가 누락 없이 채워져 내려가는지 확인합니다.
+
+### D. 게스트 회원 응답 통합 검증
+* **검증 항목:**
+  * 게스트(department = null)가 `GET /api/{version}/singlegame/rank`에 `scope=DEPARTMENT`로 요청 시, DEPARTMENT 랭킹 제공 불가 응답이 반환되거나 GLOBAL 랭킹으로 fallback 되는지 확인합니다.
+  * 게스트가 `GET /api/{version}/singlegame/my`를 요청하면 응답 내 `ranking.department`가 `null`로 반환되는지 검증합니다.
+  * 게스트가 `GET /api/{version}/singlegame/{gameId}/analysis`를 요청하면 응답 내 `ranking.department`가 `null`로 반환되는지 검증합니다.
+  * `GET /api/{version}/singlegame/departments` 조회 시 게스트의 게임 데이터는 학과 목록에서 제외되는지 확인합니다.
 
 ---
 
@@ -83,13 +98,13 @@
 
 ### A. 캐시 조회 성공(Cache Hit) 및 데이터베이스 격리 검증
 * **설정 상황:** 특정 랭킹 정보가 이미 캐시 저장소(Redis)에 보관되어 있는 상태입니다.
-* **진행 과정:** 동일한 조건의 `GET /singlegame/rank` 요청을 전송합니다.
+* **진행 과정:** 동일한 조건의 `GET /api/{version}/singlegame/rank` 요청을 전송합니다.
 * **검증 항목:**
   * 백엔드 서버가 실제 관계형 데이터베이스(RDBMS)에 뷰 조회 SQL을 전혀 날리지 않고, Redis 캐시 계층에서 직렬화된 JSON 데이터를 즉시 추출하여 반환하는지 네트워크 및 쿼리 로그를 모니터링하여 확인합니다.
 
 ### B. 캐시 누락(Cache Miss) 시 예외 복구(Fallback) 및 자동 갱신 검증
 * **설정 상황:** 캐시 저장소에 해당 랭킹 데이터가 존재하지 않거나, 설정된 TTL(유효 수명)이 만료되어 소멸된 상태입니다.
-* **진행 과정:** 동일한 조건의 `GET /singlegame/rank` 요청을 전송합니다.
+* **진행 과정:** 동일한 조건의 `GET /api/{version}/singlegame/rank` 요청을 전송합니다.
 * **검증 항목:**
   * 백엔드가 자동으로 관계형 데이터베이스의 뷰(`v_ranking_page`)에 접근하여 실시간 랭킹 데이터를 긁어와 유저에게 반환하는지 확인합니다.
   * 동시에, 다음 조회 요청자들을 위해 획득한 최신 랭킹 데이터를 지정된 유효 기간(TTL)과 함께 Redis 캐시에 다시 밀어 넣는 작업(Write-Through/Read-Through 복구)이 백그라운드에서 안전하게 완료되는지 검증합니다.
@@ -100,7 +115,7 @@
 외부 요인으로 인한 시간 왜곡 현상이 서버에 수집 및 저장되는 기록에 침범하지 못하도록 차단하는 생명 주기 검증입니다.
 
 ### A. 실 네트워크 지연 시간의 측정 격리 검증
-* **설정 상황:** 사용자의 실제 네트워크 환경이 열악하거나, 게이트웨이 병목으로 인해 클라이언트가 보낸 `POST /singlegame` 패킷이 실제 백엔드에 도달하여 데이터베이스에 완전히 저장되는 데까지 물리적으로 약 `500ms`의 유휴 시간이 지연 발생합니다.
+* **설정 상황:** 사용자의 실제 네트워크 환경이 열악하거나, 게이트웨이 병목으로 인해 클라이언트가 보낸 `POST /api/{version}/singlegame` 패킷이 실제 백엔드에 도달하여 데이터베이스에 완전히 저장되는 데까지 물리적으로 약 `500ms`의 유휴 시간이 지연 발생합니다.
 * **검증 항목:**
   * 서버 트랜잭션 수립 속도 및 네트워크 랙은 클라이언트가 자체적으로 마이크로초 타이머로 측정해서 JSON 페이로드에 담아 보낸 순수 피지컬 반응 수치들(예: `tEnterMain = 245ms`, `tClickCourse = 450ms` 등)에 **하등의 영향을 주지 않아야 함**을 검증합니다.
   * 최종 데이터베이스 적재 후, 뷰나 마이페이지에서 이 사용자의 기록을 검사했을 때 백엔드 물리 지연(500ms)이 합산되지 않은 클라이언트 전송 원본 수치 그대로 보존되어 있는지 확인합니다.

@@ -9,6 +9,10 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 
 	Optional<MemberDevice> findByRefreshToken(String refreshToken);
 
+	Optional<MemberDevice> findByMemberIdAndPlatformjsUaAndFcmToken(Long memberId, String platformjsUa, String fcmToken);
+
+	Optional<MemberDevice> findByMemberIdAndPlatformjsUa(Long memberId, String platformjsUa);
+
 	List<MemberDevice> findByMemberId(Long memberId);
 
 	Optional<MemberDevice> findByFcmToken(String fcmToken);

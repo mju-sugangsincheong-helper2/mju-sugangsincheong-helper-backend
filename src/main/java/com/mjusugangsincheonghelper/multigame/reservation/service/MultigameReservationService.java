@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,16 +49,15 @@ public class MultigameReservationService {
 			throw new BaseException(ErrorCode.MULTIGAME_RESERVATION_INVALID_TIME);
 		}
 
-		if (reservationRepository.existsByStartTimeAndMemberId(multigameId, memberId)) {
+		MultigameReservationEntity saved;
+		try {
+			saved = reservationRepository.saveAndFlush(MultigameReservationEntity.builder()
+					.memberId(memberId)
+					.startTime(multigameId)
+					.build());
+		} catch (DataIntegrityViolationException e) {
 			throw new BaseException(ErrorCode.MULTIGAME_RESERVATION_DUPLICATE);
 		}
-
-		MultigameReservationEntity entity = MultigameReservationEntity.builder()
-				.memberId(memberId)
-				.startTime(multigameId)
-				.build();
-
-		MultigameReservationEntity saved = reservationRepository.save(entity);
 
 		// ===== 개발 환경 전용 로직 =====
 		// dev 프로필에서만 DevGameInitializer 빈이 존재하므로,

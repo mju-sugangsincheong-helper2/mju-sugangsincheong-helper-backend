@@ -8,11 +8,13 @@ import com.mjusugangsincheonghelper.database.repository.SingleGameDetailReposito
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.AnalysisDetail;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.AnalysisSummary;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.DataBucket;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.BasicEvent;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.DetailEvent;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.PopulationStats;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.RankDetail;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.RankingSummary;
+import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RankInfo;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RecordRanking;
@@ -161,13 +163,18 @@ public class SingleGameService {
 
 	@Cacheable(value = "singlegame-rank", key = "#totalCourses + ':' + #scope + ':' + #department + ':cache'", sync = true)
 	public RankingResponse getRankings(int totalCourses, String scope, String department, Long memberId) {
+		Member member = memberRepository.findById(memberId).orElse(null);
+		String myDept = member != null ? member.getDepartment() : null;
+
+		if ("DEPARTMENT".equalsIgnoreCase(scope) && (myDept == null || myDept.isBlank())) {
+			scope = "GLOBAL";
+		}
+
 		List<Object[]> raw;
 		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
 			String dept = department;
 			if (dept == null || dept.isBlank()) {
-				Member me = memberRepository.findById(memberId)
-						.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
-				dept = me.getDepartment();
+				dept = myDept;
 			}
 			if (dept == null) dept = "";
 			raw = singleGameRepository.findDeptRankingRaw(totalCourses, dept);
@@ -183,7 +190,7 @@ public class SingleGameService {
 			allRankings.add(RankingEntry.builder()
 					.rank(rank)
 					.gameId(gameId)
-					.name((String) row[2])
+					.name(maskName((String) row[2]))
 					.department((String) row[3])
 					.tTotal(toInt(row[5]))
 					.tEnterMain(toInt(row[6]))
@@ -311,172 +318,385 @@ public class SingleGameService {
 				.toList();
 	}
 
-	@Cacheable(value = "singlegame-analysis", key = "#gameId + ':cache'", sync = true)
-	public AnalysisResponse getAnalysis(long gameId) {
+	@Cacheable(value = "singlegame-analysis", key = "#gameId + ':' + #memberId + ':cache'", sync = true)
+	public AnalysisResponse getAnalysis(long gameId, Long memberId) {
 		SingleGameEntity game = singleGameRepository.findById(gameId)
 				.orElseThrow(() -> new BaseException(ErrorCode.SINGLEGAME_GAME_NOT_FOUND));
 
 		List<SingleGameDetailEntity> details = singleGameDetailRepository
 				.findByGameIdOrderBySequenceAsc(gameId);
 
-		int N = details.size();
-		List<Integer> clickCourses = details.stream().map(SingleGameDetailEntity::getTClickCourse).toList();
-		List<Integer> clickYesses = details.stream().map(SingleGameDetailEntity::getTClickYes).toList();
-		List<Integer> clickOks = details.stream().map(SingleGameDetailEntity::getTClickOk).toList();
-		List<Integer> totals = details.stream().map(d -> d.getTClickCourse() + d.getTClickYes() + d.getTClickOk()).toList();
 		int totalCourses = game.getTotalCourses();
 
-		double myAvgClickCourse = clickCourses.stream().mapToInt(Integer::intValue).average().orElse(0);
-		double myAvgBurst = 0;
-		for (int i = 0; i < N; i++) {
-			myAvgBurst += clickYesses.get(i) + clickOks.get(i);
-		}
-		myAvgBurst = N > 0 ? myAvgBurst / N : 0;
-		int myT1Total = N > 0 ? totals.get(0) : 0;
+		boolean isOwner = game.getMemberId().equals(memberId);
+		Member gameOwner = memberRepository.findById(game.getMemberId()).orElse(null);
+		boolean isMember = gameOwner != null && gameOwner.getRole() != Member.Role.GUEST;
 
-		double myAvgTotal = totals.stream().mapToInt(Integer::intValue).average().orElse(0);
-		Double initialSprint = null;
-		if (N >= 3) {
-			double laterAvg = totals.subList(1, N).stream().mapToInt(Integer::intValue).average().orElse(0);
-			initialSprint = totals.get(0) - laterAvg;
-		}
+		RankingSummary ranking = buildRankingSummary(game, memberId);
 
-		double myPaceStddev = 0;
-		if (N >= 3) {
-			double mean = myAvgTotal;
-			double variance = totals.stream().mapToDouble(t -> Math.pow(t - mean, 2)).sum() / N;
-			myPaceStddev = Math.sqrt(variance);
-		}
+		Map<Integer, double[]> globalSeqStats = loadSeqPercentileStats(totalCourses);
+		double[] globalEntryStats = loadEnterMainPercentileStats(totalCourses);
 
-		Map<Integer, double[]> percentileStats = new HashMap<>();
-		List<Object[]> viewRows = singleGameRepository.findSequencePercentileStats(totalCourses);
-		for (Object[] row : viewRows) {
-			int seq = toInt(row[1]);
-			double[] stats = new double[20];
-			for (int i = 0; i < 20 && i + 2 < row.length; i++) {
-				stats[i] = toDouble(row[i + 2]);
+		String myDept = null;
+		Map<Integer, double[]> deptSeqStats = null;
+		double[] deptEntryStats = null;
+		if (isMember && gameOwner != null) {
+			myDept = gameOwner.getDepartment();
+			if (myDept != null && !myDept.isBlank()) {
+				deptSeqStats = loadDeptSeqPercentileStats(totalCourses, myDept);
+				deptEntryStats = loadDeptEnterMainPercentileStats(totalCourses, myDept);
 			}
-			percentileStats.put(seq, stats);
 		}
 
-		List<AnalysisDetail> analysisDetails = new ArrayList<>();
-		for (int i = 0; i < N; i++) {
-			int seq = details.get(i).getSequence();
-			double[] stats = percentileStats.getOrDefault(seq, new double[20]);
+		List<BasicEvent> basic = buildBasicEvents(game, details);
+		List<DetailEvent> detail = buildDetailEvents(game, details, globalSeqStats, globalEntryStats, deptSeqStats, deptEntryStats);
 
-			analysisDetails.add(AnalysisDetail.builder()
-					.sequence(seq)
-					.mine(DataBucket.builder()
-							.clickCourse(clickCourses.get(i))
-							.clickYes(clickYesses.get(i))
-							.clickOk(clickOks.get(i))
-							.total(totals.get(i))
-							.build())
-					.p10(DataBucket.builder()
-							.clickCourse((int) stats[0]).clickYes((int) stats[5]).clickOk((int) stats[10]).total((int) stats[15])
-							.build())
-					.p30(DataBucket.builder()
-							.clickCourse((int) stats[1]).clickYes((int) stats[6]).clickOk((int) stats[11]).total((int) stats[16])
-							.build())
-					.p50(DataBucket.builder()
-							.clickCourse((int) stats[2]).clickYes((int) stats[7]).clickOk((int) stats[12]).total((int) stats[17])
-							.build())
-					.p70(DataBucket.builder()
-							.clickCourse((int) stats[3]).clickYes((int) stats[8]).clickOk((int) stats[13]).total((int) stats[18])
-							.build())
-					.p100(DataBucket.builder()
-							.clickCourse((int) stats[4]).clickYes((int) stats[9]).clickOk((int) stats[14]).total((int) stats[19])
-							.build())
-					.build());
-		}
+		List<double[]> allAggregates = loadAllAggregates(totalCourses);
+		var feedbacks = buildFeedbacks(game, details, allAggregates);
 
+		return AnalysisResponse.builder()
+				.gameId(gameId)
+				.isOwner(isOwner)
+				.isMember(isMember)
+				.totalCourses(totalCourses)
+				.totalTime(game.getTTotal())
+				.ranking(ranking)
+				.basic(basic)
+				.detail(detail)
+				.feedbacks(feedbacks)
+				.build();
+	}
+
+	private RankingSummary buildRankingSummary(SingleGameEntity game, Long memberId) {
+		int totalCourses = game.getTotalCourses();
 		int globalRank = computeRank(totalCourses, game.getTTotal());
 		long totalPlayers = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(totalCourses);
 		double globalPercentile = totalPlayers > 0 ? (double) (globalRank - 1) / totalPlayers * 100 : 0;
 
+		RankDetail globalDetail = RankDetail.builder()
+				.rank(globalRank)
+				.totalParticipants((int) totalPlayers)
+				.percentile(Math.round(globalPercentile * 10.0) / 10.0)
+				.build();
+
+		RankDetail deptDetail = null;
+		if (memberId != null) {
+			Member member = memberRepository.findById(memberId).orElse(null);
+			String myDept = member != null ? member.getDepartment() : null;
+			if (myDept != null && !myDept.isBlank()) {
+				List<Long> deptRanked = singleGameRepository
+						.findDeptRankedGameIds(totalCourses, myDept);
+				int deptPlayers = deptRanked.size();
+				int deptRank = 0;
+				for (int i = 0; i < deptRanked.size(); i++) {
+					if (deptRanked.get(i).equals(game.getId())) {
+						deptRank = i + 1;
+						break;
+					}
+				}
+				double deptPercentile = deptPlayers > 0 ? (double) (deptRank - 1) / deptPlayers * 100 : 0;
+				deptDetail = RankDetail.builder()
+						.rank(deptRank)
+						.totalParticipants(deptPlayers)
+						.percentile(Math.round(deptPercentile * 10.0) / 10.0)
+						.build();
+			}
+		}
+
+		return RankingSummary.builder()
+				.global(globalDetail)
+				.department(deptDetail)
+				.build();
+	}
+
+	private List<BasicEvent> buildBasicEvents(SingleGameEntity game, List<SingleGameDetailEntity> details) {
+		List<BasicEvent> events = new ArrayList<>();
+
+		events.add(BasicEvent.builder()
+				.sequence(0)
+				.type("ENTRY")
+				.label("메인방 진입")
+				.durationMs(game.getTEnterMain())
+				.build());
+
+		for (SingleGameDetailEntity d : details) {
+			int seq = d.getSequence();
+			events.add(BasicEvent.builder()
+					.sequence(seq)
+					.type("AIM")
+					.label(seq + "순위 과목 조준")
+					.durationMs(d.getTClickCourse())
+					.build());
+			events.add(BasicEvent.builder()
+					.sequence(seq)
+					.type("CONFIRM")
+					.label("신청 확인")
+					.durationMs(d.getTClickYes())
+					.build());
+			events.add(BasicEvent.builder()
+					.sequence(seq)
+					.type("COMPLETE")
+					.label("완료 확인")
+					.durationMs(d.getTClickOk())
+					.build());
+		}
+
+		return events;
+	}
+
+	private List<DetailEvent> buildDetailEvents(SingleGameEntity game, List<SingleGameDetailEntity> details,
+			Map<Integer, double[]> globalSeqStats, double[] globalEntryStats,
+			Map<Integer, double[]> deptSeqStats, double[] deptEntryStats) {
+		List<DetailEvent> events = new ArrayList<>();
+
+		double entryP = computeEnterMainPercentile(game.getTotalCourses(), game.getTEnterMain());
+
+		PopulationStats entryGlobalPop = null;
+		if (globalEntryStats != null) {
+			entryGlobalPop = PopulationStats.builder()
+					.p10((int) globalEntryStats[0])
+					.p30((int) globalEntryStats[1])
+					.p50((int) globalEntryStats[2])
+					.p70((int) globalEntryStats[3])
+					.build();
+		}
+
+		PopulationStats entryDeptPop = null;
+		if (deptEntryStats != null) {
+			entryDeptPop = PopulationStats.builder()
+					.p10((int) deptEntryStats[0])
+					.p30((int) deptEntryStats[1])
+					.p50((int) deptEntryStats[2])
+					.p70((int) deptEntryStats[3])
+					.build();
+		}
+
+		events.add(DetailEvent.builder()
+				.sequence(0)
+				.type("ENTRY")
+				.label("메인방 진입")
+				.durationMs(game.getTEnterMain())
+				.percentile(Math.round(entryP * 10.0) / 10.0)
+				.grade(computeGrade(entryP))
+				.globalPopulation(entryGlobalPop)
+				.departmentPopulation(entryDeptPop)
+				.build());
+
+		for (SingleGameDetailEntity d : details) {
+			int seq = d.getSequence();
+			double[] gStats = globalSeqStats.getOrDefault(seq, new double[20]);
+			double[] dStats = deptSeqStats != null ? deptSeqStats.getOrDefault(seq, new double[16]) : null;
+
+			events.add(buildDetailEvent(seq, "AIM", seq + "순위 과목 조준", d.getTClickCourse(),
+					gStats, 0, 1, 2, 3, dStats, 0, 1, 2, 3));
+			events.add(buildDetailEvent(seq, "CONFIRM", "신청 확인", d.getTClickYes(),
+					gStats, 4, 5, 6, 7, dStats, 4, 5, 6, 7));
+			events.add(buildDetailEvent(seq, "COMPLETE", "완료 확인", d.getTClickOk(),
+					gStats, 8, 9, 10, 11, dStats, 8, 9, 10, 11));
+		}
+
+		return events;
+	}
+
+	private DetailEvent buildDetailEvent(int seq, String type, String label, int durationMs,
+			double[] gStats, int gP10, int gP30, int gP50, int gP70,
+			double[] dStats, int dP10, int dP30, int dP50, int dP70) {
+		int gp10 = (int) gStats[gP10];
+		int gp30 = (int) gStats[gP30];
+		int gp50 = (int) gStats[gP50];
+		int gp70 = (int) gStats[gP70];
+		double percentile = interpolatePercentile(durationMs, gp10, gp30, gp50, gp70);
+
+		PopulationStats globalPop = PopulationStats.builder()
+				.p10(gp10).p30(gp30).p50(gp50).p70(gp70)
+				.build();
+
+		PopulationStats deptPop = null;
+		if (dStats != null) {
+			deptPop = PopulationStats.builder()
+					.p10((int) dStats[dP10])
+					.p30((int) dStats[dP30])
+					.p50((int) dStats[dP50])
+					.p70((int) dStats[dP70])
+					.build();
+		}
+
+		return DetailEvent.builder()
+				.sequence(seq)
+				.type(type)
+				.label(label)
+				.durationMs(durationMs)
+				.percentile(Math.round(percentile * 10.0) / 10.0)
+				.grade(computeGrade(percentile))
+				.globalPopulation(globalPop)
+				.departmentPopulation(deptPop)
+				.build();
+	}
+
+	private List<double[]> loadAllAggregates(int totalCourses) {
 		List<Object[]> allDetails = singleGameRepository.findAllDetailsByTotalCourses(totalCourses);
 		Map<Long, List<Object[]>> detailsByGame = new HashMap<>();
 		for (Object[] row : allDetails) {
 			detailsByGame.computeIfAbsent(toLong(row[0]), k -> new ArrayList<>()).add(row);
 		}
 
-		List<Double> allAvgClickCourse = new ArrayList<>();
-		List<Double> allAvgBurst = new ArrayList<>();
-		List<Integer> allT1Total = new ArrayList<>();
-		List<Double> allPaceStddev = new ArrayList<>();
-
+		List<double[]> aggregates = new ArrayList<>();
 		for (List<Object[]> gameDetails : detailsByGame.values()) {
 			gameDetails.sort(Comparator.comparingInt(r -> toInt(r[1])));
 			int gN = gameDetails.size();
-			double sumCC = 0, sumBurst = 0;
+			double sumCC = 0, sumCY = 0, sumCOK = 0;
 			List<Integer> gTotals = new ArrayList<>();
 			for (Object[] d : gameDetails) {
 				int cc = toInt(d[2]), cy = toInt(d[3]), cok = toInt(d[4]);
 				sumCC += cc;
-				sumBurst += cy + cok;
+				sumCY += cy;
+				sumCOK += cok;
 				gTotals.add(cc + cy + cok);
 			}
-			allAvgClickCourse.add(sumCC / gN);
-			allAvgBurst.add(sumBurst / gN);
-			allT1Total.add(gTotals.isEmpty() ? 0 : gTotals.get(0));
-
+			double avgCC = sumCC / gN;
+			double avgCY = sumCY / gN;
+			double avgCOK = sumCOK / gN;
+			double avgBurst = (sumCY + sumCOK) / gN;
+			int t1Total = gTotals.isEmpty() ? 0 : gTotals.get(0);
+			double paceStddev = 0;
+			double initialSprint = 0;
+			double fatigueIndex = 0;
 			if (gN >= 3) {
 				double mean = gTotals.stream().mapToInt(Integer::intValue).average().orElse(0);
 				double variance = gTotals.stream().mapToDouble(t -> Math.pow(t - mean, 2)).sum() / gN;
-				allPaceStddev.add(Math.sqrt(variance));
+				paceStddev = Math.sqrt(variance);
+
+				double laterAvg = gTotals.subList(1, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
+				initialSprint = gTotals.get(0) - laterAvg;
+
+				int half = gN / 2;
+				double firstHalfAvg = gTotals.subList(0, half).stream().mapToInt(Integer::intValue).average().orElse(0);
+				double secondHalfAvg = gTotals.subList(gN - half, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
+				fatigueIndex = secondHalfAvg - firstHalfAvg;
 			}
+			aggregates.add(new double[]{avgCC, avgCY, avgCOK, avgBurst, t1Total, paceStddev, initialSprint, fatigueIndex});
+		}
+		return aggregates;
+	}
+
+	private Map<Integer, double[]> loadSeqPercentileStats(int totalCourses) {
+		Map<Integer, double[]> stats = new HashMap<>();
+		List<Object[]> viewRows = singleGameRepository.findSequencePercentileStats(totalCourses);
+		for (Object[] row : viewRows) {
+			int seq = toInt(row[1]);
+			double[] s = new double[16];
+			for (int i = 0; i < 16 && i + 2 < row.length; i++) {
+				s[i] = toDouble(row[i + 2]);
+			}
+			stats.put(seq, s);
+		}
+		return stats;
+	}
+
+	private Map<Integer, double[]> loadDeptSeqPercentileStats(int totalCourses, String department) {
+		Map<Integer, double[]> stats = new HashMap<>();
+		List<Object[]> viewRows = singleGameRepository.findDeptSequencePercentileStats(totalCourses, department);
+		for (Object[] row : viewRows) {
+			int seq = toInt(row[0]);
+			double[] s = new double[16];
+			for (int i = 0; i < 16 && i + 1 < row.length; i++) {
+				s[i] = toDouble(row[i + 1]);
+			}
+			stats.put(seq, s);
+		}
+		return stats;
+	}
+
+	private double[] loadEnterMainPercentileStats(int totalCourses) {
+		List<Object[]> rows = singleGameRepository.findEnterMainPercentileStats(totalCourses);
+		if (rows.isEmpty()) return null;
+		Object[] row = rows.get(0);
+		return new double[]{toDouble(row[0]), toDouble(row[1]), toDouble(row[2]), toDouble(row[3])};
+	}
+
+	private double[] loadDeptEnterMainPercentileStats(int totalCourses, String department) {
+		List<Object[]> rows = singleGameRepository.findDeptEnterMainPercentileStats(totalCourses, department);
+		if (rows.isEmpty()) return null;
+		Object[] row = rows.get(0);
+		return new double[]{toDouble(row[0]), toDouble(row[1]), toDouble(row[2]), toDouble(row[3])};
+	}
+
+	private double computeEnterMainPercentile(int totalCourses, int tEnterMain) {
+		List<Long> betterOrEqual = singleGameRepository
+				.findGameIdsWithBetterOrEqualEnterMain(totalCourses, tEnterMain);
+		long total = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(totalCourses);
+		if (total == 0) return 0;
+		return Math.max(0, (double) (betterOrEqual.size() - 1) / total * 100);
+	}
+
+	private double interpolatePercentile(int value, int p10, int p30, int p50, int p70) {
+		if (p10 <= 0) return 0;
+		if (value <= p10) return Math.max(0, (double) value / p10 * 10);
+		if (value <= p30) return 10 + (double) (value - p10) / (p30 - p10) * 20;
+		if (value <= p50) return 30 + (double) (value - p30) / (p50 - p30) * 20;
+		if (value <= p70) return 50 + (double) (value - p50) / (p70 - p50) * 20;
+		return 70 + Math.min(30, (double) (value - p70) / p70 * 30);
+	}
+
+	private AnalysisResponse.FeedbacksResponse buildFeedbacks(SingleGameEntity game,
+			List<SingleGameDetailEntity> details, List<double[]> allAggregates) {
+		int N = details.size();
+		double myAvgCC = details.stream().mapToInt(SingleGameDetailEntity::getTClickCourse).average().orElse(0);
+		double myAvgCY = details.stream().mapToInt(SingleGameDetailEntity::getTClickYes).average().orElse(0);
+		double myAvgCOK = details.stream().mapToInt(SingleGameDetailEntity::getTClickOk).average().orElse(0);
+		double myAvgBurst = myAvgCY + myAvgCOK;
+		List<Integer> totals = details.stream()
+				.map(d -> d.getTClickCourse() + d.getTClickYes() + d.getTClickOk()).toList();
+		double myAvgTotal = totals.stream().mapToInt(Integer::intValue).average().orElse(0);
+
+		double aimP = computePercentileFromAggregates(allAggregates, myAvgCC, 0, false);
+		double burstP = computePercentileFromAggregates(allAggregates, myAvgBurst, 3, false);
+		double eP = computeEnterMainPercentile(game.getTotalCourses(), game.getTEnterMain());
+		double startP = computePercentileFromAggregates(allAggregates,
+				N > 0 ? (double) totals.get(0) : 0, 4, false);
+		double paceP = 0;
+		double paceStddev = 0;
+		if (N >= 3) {
+			double mean = myAvgTotal;
+			double variance = totals.stream().mapToDouble(t -> Math.pow(t - mean, 2)).sum() / N;
+			paceStddev = Math.sqrt(variance);
+			List<Double> allPaceDevs = allAggregates.stream()
+					.filter(a -> a[5] > 0).map(a -> a[5]).toList();
+			paceP = computePercentileDouble(allPaceDevs, paceStddev);
 		}
 
-		double aimP = computePercentileDouble(allAvgClickCourse, myAvgClickCourse);
-		double burstP = computePercentileDouble(allAvgBurst, myAvgBurst);
-		double eP = computeEnterMainPercentile(totalCourses, game.getTEnterMain());
-		double startP = computePercentileInt(allT1Total, myT1Total);
-		double paceP = N >= 3 ? computePercentileDouble(allPaceStddev, myPaceStddev) : 0;
-
-		SingleGameFeedbackEngine.FeedbackResult feedback = feedbackEngine.determineFeedback(aimP, burstP, eP, startP, paceP, N,
-				totals, myAvgTotal, myPaceStddev);
-
-		AnalysisSummary summary = AnalysisSummary.builder()
-				.totalTime(game.getTTotal())
-				.globalRank(globalRank)
-				.globalPercentile(Math.round(globalPercentile * 10.0) / 10.0)
-				.purePhysicalAverage((int) Math.round(myAvgTotal))
-				.entryPrecision(game.getTEnterMain())
-				.initialSprintSpeed(initialSprint != null ? initialSprint.intValue() : null)
-				.paceDeviation(N >= 3 ? Math.round(myPaceStddev * 100.0) / 100.0 : null)
-				.feedbackCode(feedback.code())
-				.feedbackMessage(feedback.message())
-				.build();
-
-		return AnalysisResponse.builder()
-				.gameId(gameId)
-				.totalCourses(totalCourses)
-				.completed(game.isCompleted())
-				.summary(summary)
-				.details(analysisDetails)
-				.build();
+		return feedbackEngine.determineFeedbacks(aimP, burstP, eP, startP, paceP, N, totals, myAvgTotal, paceStddev);
 	}
 
 	private MyRecordResponse buildMyRecordResponse(SingleGameEntity g, String myDept) {
 		int globalRank = computeRank(g.getTotalCourses(), g.getTTotal());
 		long totalPlayers = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(g.getTotalCourses());
-
 		double globalPercentile = totalPlayers > 0 ? (double) (globalRank - 1) / totalPlayers * 100 : 0;
 
-		int deptRank = 0;
-		int deptPlayers = 0;
-		double deptPercentile = 0;
-		if (myDept != null) {
+		RankInfo globalInfo = RankInfo.builder()
+				.rank(globalRank)
+				.totalParticipants((int) totalPlayers)
+				.percentile(Math.round(globalPercentile * 10.0) / 10.0)
+				.build();
+
+		RankInfo deptInfo = null;
+		if (myDept != null && !myDept.isBlank()) {
 			List<Long> deptRanked = singleGameRepository
 					.findDeptRankedGameIds(g.getTotalCourses(), myDept);
-			deptPlayers = deptRanked.size();
+			int deptPlayers = deptRanked.size();
+			int deptRank = 0;
 			for (int i = 0; i < deptRanked.size(); i++) {
 				if (deptRanked.get(i).equals(g.getId())) {
 					deptRank = i + 1;
 					break;
 				}
 			}
-			deptPercentile = deptPlayers > 0 ? (double) (deptRank - 1) / deptPlayers * 100 : 0;
+			double deptPercentile = deptPlayers > 0 ? (double) (deptRank - 1) / deptPlayers * 100 : 0;
+			deptInfo = RankInfo.builder()
+					.rank(deptRank)
+					.totalParticipants(deptPlayers)
+					.percentile(Math.round(deptPercentile * 10.0) / 10.0)
+					.build();
 		}
 
 		return MyRecordResponse.builder()
@@ -487,22 +707,22 @@ public class SingleGameService {
 				.tEnterMain(g.getTEnterMain())
 				.createdAt(g.getCreatedAt())
 				.ranking(RecordRanking.builder()
-						.global(RankInfo.builder()
-								.rank(globalRank)
-								.totalParticipants((int) totalPlayers)
-								.percentile(Math.round(globalPercentile * 10.0) / 10.0)
-								.build())
-						.department(RankInfo.builder()
-								.rank(deptRank)
-								.totalParticipants(deptPlayers)
-								.percentile(Math.round(deptPercentile * 10.0) / 10.0)
-								.build())
+						.global(globalInfo)
+						.department(deptInfo)
 						.build())
 				.build();
 	}
 
 	private RecordCacheDto toRecordCacheDto(SingleGameEntity g, String myDept) {
 		MyRecordResponse response = buildMyRecordResponse(g, myDept);
+		RecordCacheDto.RankInfo cacheDept = null;
+		if (response.getRanking().getDepartment() != null) {
+			cacheDept = RecordCacheDto.RankInfo.builder()
+					.rank(response.getRanking().getDepartment().getRank())
+					.totalParticipants(response.getRanking().getDepartment().getTotalParticipants())
+					.percentile(response.getRanking().getDepartment().getPercentile())
+					.build();
+		}
 		return RecordCacheDto.builder()
 				.gameId(response.getGameId())
 				.totalCourses(response.getTotalCourses())
@@ -516,16 +736,20 @@ public class SingleGameService {
 								.totalParticipants(response.getRanking().getGlobal().getTotalParticipants())
 								.percentile(response.getRanking().getGlobal().getPercentile())
 								.build())
-						.department(RecordCacheDto.RankInfo.builder()
-								.rank(response.getRanking().getDepartment().getRank())
-								.totalParticipants(response.getRanking().getDepartment().getTotalParticipants())
-								.percentile(response.getRanking().getDepartment().getPercentile())
-								.build())
+						.department(cacheDept)
 						.build())
 				.build();
 	}
 
 	private MyRecordResponse toMyRecordResponse(RecordCacheDto dto) {
+		MyRecordResponse.RankInfo deptInfo = null;
+		if (dto.getRanking().getDepartment() != null) {
+			deptInfo = RankInfo.builder()
+					.rank(dto.getRanking().getDepartment().getRank())
+					.totalParticipants(dto.getRanking().getDepartment().getTotalParticipants())
+					.percentile(dto.getRanking().getDepartment().getPercentile())
+					.build();
+		}
 		return MyRecordResponse.builder()
 				.gameId(dto.getGameId())
 				.totalCourses(dto.getTotalCourses())
@@ -539,11 +763,7 @@ public class SingleGameService {
 								.totalParticipants(dto.getRanking().getGlobal().getTotalParticipants())
 								.percentile(dto.getRanking().getGlobal().getPercentile())
 								.build())
-						.department(RankInfo.builder()
-								.rank(dto.getRanking().getDepartment().getRank())
-								.totalParticipants(dto.getRanking().getDepartment().getTotalParticipants())
-								.percentile(dto.getRanking().getDepartment().getPercentile())
-								.build())
+						.department(deptInfo)
 						.build())
 				.build();
 	}
@@ -552,6 +772,10 @@ public class SingleGameService {
 		Cache cache = cacheManager.getCache("singlegame-rank");
 		if (cache != null) {
 			cache.clear();
+		}
+		Cache analysisCache = cacheManager.getCache("singlegame-analysis");
+		if (analysisCache != null) {
+			analysisCache.clear();
 		}
 	}
 
@@ -562,7 +786,16 @@ public class SingleGameService {
 		}
 	}
 
-
+	private double computePercentileFromAggregates(List<double[]> aggregates, double myValue, int idx,
+			boolean isEnterMain) {
+		if (aggregates.isEmpty()) return 0;
+		if (isEnterMain) {
+			long betterOrEqual = aggregates.stream().filter(a -> a[idx] <= myValue).count();
+			return Math.max(0, (double) (betterOrEqual - 1) / aggregates.size() * 100);
+		}
+		long lessOrEqual = aggregates.stream().filter(a -> a[idx] <= myValue).count();
+		return Math.max(0, (double) (lessOrEqual - 1) / aggregates.size() * 100);
+	}
 
 	private double computePercentileDouble(List<Double> allValues, double myValue) {
 		if (allValues.isEmpty()) return 0;
@@ -570,24 +803,25 @@ public class SingleGameService {
 		return Math.max(0, (double) (lessOrEqual - 1) / allValues.size() * 100);
 	}
 
-	private double computePercentileInt(List<Integer> allValues, int myValue) {
-		if (allValues.isEmpty()) return 0;
-		long lessOrEqual = allValues.stream().filter(v -> v <= myValue).count();
-		return Math.max(0, (double) (lessOrEqual - 1) / allValues.size() * 100);
-	}
-
-	private double computeEnterMainPercentile(int totalCourses, int myEnterMain) {
-		List<Long> betterOrEqual = singleGameRepository
-				.findGameIdsWithBetterOrEqualEnterMain(totalCourses, myEnterMain);
-		long total = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(totalCourses);
-		if (total == 0) return 0;
-		return Math.max(0, (double) (betterOrEqual.size() - 1) / total * 100);
+	private String computeGrade(double percentile) {
+		if (percentile <= 5) return "S";
+		if (percentile <= 30) return "A";
+		if (percentile < 70) return "B";
+		if (percentile < 95) return "C";
+		return "D";
 	}
 
 	private int computeRank(int totalCourses, int tTotal) {
 		List<Long> betterOrEqual = singleGameRepository
 				.findGameIdsWithBetterOrEqualTTotal(totalCourses, tTotal);
 		return betterOrEqual.size();
+	}
+
+	private String maskName(String name) {
+		if (name == null || name.isEmpty()) return name;
+		int len = name.length();
+		if (len == 1) return "*";
+		return "*".repeat(len - 1) + name.charAt(len - 1);
 	}
 
 	private long toLong(Object o) {

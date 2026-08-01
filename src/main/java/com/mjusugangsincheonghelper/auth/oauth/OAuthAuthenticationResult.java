@@ -12,7 +12,6 @@ public class OAuthAuthenticationResult {
 	private final boolean newUser;
 	private final boolean mergeRequired;
 	private final String mergeTicket;
-	private final String googleSubId;
 
 	public static OAuthAuthenticationResult success(AuthenticatedIdentity identity, boolean newUser) {
 		return OAuthAuthenticationResult.builder()
@@ -22,11 +21,10 @@ public class OAuthAuthenticationResult {
 				.build();
 	}
 
-	public static OAuthAuthenticationResult mergeRequired(String mergeTicket, String googleSubId) {
+	public static OAuthAuthenticationResult mergeRequired(String mergeTicket) {
 		return OAuthAuthenticationResult.builder()
 				.mergeRequired(true)
 				.mergeTicket(mergeTicket)
-				.googleSubId(googleSubId)
 				.build();
 	}
 }

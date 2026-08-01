@@ -13,8 +13,8 @@ public class MergeTicketService {
 
 	private final TokenProvider tokenProvider;
 
-	public String createTicket(Long guestMemberId, String googleSubId) {
-		return tokenProvider.createMergeTicket(guestMemberId, googleSubId);
+	public String createTicket(Long guestMemberId, Long targetMemberId) {
+		return tokenProvider.createMergeTicket(guestMemberId, targetMemberId);
 	}
 
 	public MergeTicketClaims consume(String ticket) {
@@ -26,10 +26,10 @@ public class MergeTicketService {
 		}
 		return new MergeTicketClaims(
 				Long.parseLong(claims.getSubject()),
-				claims.get("googleSubId", String.class)
+				claims.get("targetMemberId", Long.class)
 		);
 	}
 
-	public record MergeTicketClaims(Long guestMemberId, String googleSubId) {
+	public record MergeTicketClaims(Long guestMemberId, Long targetMemberId) {
 	}
 }

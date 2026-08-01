@@ -52,15 +52,48 @@
 
 ### 프론트 처리
 ```
-[ FCM Push Server ]
-        │
-        ├──> 1. 백그라운드 / 앱 종료 상태
-        │    └─> Service Worker (sw.js) <= vue-pwa-plugin
-        │         ├─> OS 알림 (브라우저가 자동 노출)
-        │         └─> IndexedDB 저장
-        │
-        └──> 2. 포그라운드 (Vue 앱이 켜져 있는 상태)
-             └─> Vue 메인 앱 (App.vue)
-                  ├─> OS 알림 (new Notification()으로 OS 알림 배너 호출)
-                  └─> IndexedDB 저장
+vue + vue-pwa plugin 환경
+    [ FCM Push Server (백엔드 / Google FCM) ]
+      │
+      └── 📦 FCM Web Push Payload 전송 (title, body, path, type, timestamp)
+            │
+            ├── 1. 🌙 백그라운드 / 앱 종료 상태 (Background / Tab Inactive)
+            │     │
+            │     └── ⚙️ Service Worker (src/sw.js)
+            │           ├── ① 수신: onBackgroundMessage(messaging, callback)
+            │           │
+            │           ├── ② OS 알림 배너 노출: self.registration.showNotification(title, options)
+            │           │     ├── 브라우저/OS 알림 센터에 팝업 노출
+            │           │     └── icon & badge 경로 포함 (/icons/icon-192x192.png)
+            │           │
+            │           ├── ③ 로컬 DB 이력 저장: IndexedDB ('mju_notification_db')
+            │           │     └── 앱이 꺼져 있어도 독립적으로 알림 수신 내역 백그라운드 기록
+            │           │
+            │           └── ④ 클릭 이벤트 핸들러: self.addEventListener('notificationclick')
+            │                 ├── 닫기: event.notification.close()
+            │                 └── 창 제어: 기존 탭 포커스 또는 openWindow(path)로 이동
+            │
+            └── 2. ☀️ 포그라운드 상태 (Foreground / Vue App Active)
+                  │
+                  └── 💻 Vue 메인 앱 (src/App.vue)
+                        ├── ① 수신: onForegroundMessage(callback)
+                        │     └── src/shared/services/firebase.ts 의 onMessage() 구독
+                        │
+                        ├── ② OS 알림 배너 노출: new Notification(title, options)
+                        │     ├── 메인 윈도우 스코프에서 즉시 OS 팝업 배너 생성
+                        │     └── 동기식(Sync) 렌더링으로 딜레이 없이 100% 노출 보장
+                        │
+                        ├── ③ 로컬 DB 이력 저장: saveNotificationToDB()
+                        │     └── IndexedDB 비동기 저장을 통해 알림 센터 페이지에 수신 이력 보관
+                        │
+                        └── ④ 클릭 이벤트 핸들러: notification.onclick
+                              ├── 브라우저 윈도우 포커스: window.focus()
+                              └── 페이지 이동: window.location.href = path
+```
+
+```
+new Notification("Mac Chrome 테스트 알림", {
+      body: "OS 알림 배너 정상 작동 테스트입니다.",
+      icon: window.location.origin + "/icons/icon-192x192.png"
+    });
 ```

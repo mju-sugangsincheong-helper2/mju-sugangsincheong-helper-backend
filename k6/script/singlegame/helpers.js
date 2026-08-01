@@ -4,20 +4,44 @@ import { check } from 'k6';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 
 // ============================================================
+// Random Value Generators
+// ============================================================
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// 유저 반응속도 시뮬레이션 (정규분포 형태)
+function randomReactionTime(min, max, peak) {
+  const range = max - min;
+  const normalized = (Math.random() + Math.random() + Math.random()) / 3;
+  return Math.floor(min + range * normalized * (peak / 100));
+}
+
+// ============================================================
 // Game Save API
 // ============================================================
 
 export function saveGame(token, options = {}) {
   const totalCourses = options.totalCourses || 6;
-  const tEnterMain = options.tEnterMain || 1000;
+  
+  // 정각 진입 반응속도: 200~3000ms (대부분 500~1500ms)
+  const tEnterMain = options.tEnterMain || randomReactionTime(200, 3000, 60);
 
   const details = [];
   for (let i = 1; i <= totalCourses; i++) {
+    // 과목 조준 시간: 100~2000ms (대부분 300~800ms)
+    const tClickCourse = randomReactionTime(100, 2000, 50);
+    // 팝업 확인 시간: 50~800ms (대부분 100~400ms)
+    const tClickYes = randomReactionTime(50, 800, 40);
+    // 완료 확인 시간: 50~800ms (대부분 100~400ms)
+    const tClickOk = randomReactionTime(50, 800, 40);
+    
     details.push({
       sequence: i,
-      tClickCourse: 300,
-      tClickYes: 200,
-      tClickOk: 200,
+      tClickCourse,
+      tClickYes,
+      tClickOk,
     });
   }
 
@@ -92,6 +116,10 @@ export function getAnalysis(token, gameId) {
   check(res, {
     'get analysis status is 200/404': (r) => r.status === 200 || r.status === 404,
     'has valid analysis response': (r) => r.status === 404 || r.json('data') !== undefined,
+    'has basic': (r) => r.status === 404 || r.json('data.basic') !== undefined,
+    'has detail': (r) => r.status === 404 || r.json('data.detail') !== undefined,
+    'has feedbacks': (r) => r.status === 404 || r.json('data.feedbacks') !== undefined,
+    'has ranking': (r) => r.status === 404 || r.json('data.ranking') !== undefined,
   });
   return res;
 }

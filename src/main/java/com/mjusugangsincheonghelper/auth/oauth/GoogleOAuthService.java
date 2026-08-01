@@ -74,41 +74,45 @@ public class GoogleOAuthService {
 
 	private OAuthAuthenticationResult authenticateOrCreateMember(String googleSubId, ParsedName parsedName, Long guestMemberId) {
 		Optional<MemberAuth> existingAuth = memberAuthRepository.findByAuthKeyAndAuthType(googleSubId, AuthType.GOOGLE);
+
+		Long targetMemberId;
+		boolean newUser;
+
 		if (existingAuth.isPresent()) {
 			var member = memberRepository.findById(existingAuth.get().getMemberId())
 					.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 			existingAuth.get().updateLastLoginAt();
-
 			member.promoteToMember(parsedName.name(), parsedName.position(), parsedName.department());
 			memberRepository.save(member);
+			targetMemberId = member.getId();
+			newUser = false;
+		} else {
+			Member member = Member.builder()
+					.role(Role.MEMBER)
+					.name(parsedName.name())
+					.position(parsedName.position())
+					.department(parsedName.department())
+					.build();
+			member = memberRepository.save(member);
 
-			if (guestMemberId != null) {
-				String mergeTicket = mergeTicketService.createTicket(guestMemberId, googleSubId);
-				return OAuthAuthenticationResult.mergeRequired(mergeTicket, googleSubId);
-			}
-
-			return OAuthAuthenticationResult.success(
-					AuthenticatedIdentity.builder().memberId(member.getId()).build(), false);
+			MemberAuth memberAuth = MemberAuth.builder()
+					.memberId(member.getId())
+					.authType(AuthType.GOOGLE)
+					.authKey(googleSubId)
+					.build();
+			memberAuth.updateLastLoginAt();
+			memberAuthRepository.save(memberAuth);
+			targetMemberId = member.getId();
+			newUser = true;
 		}
 
-		Member member = Member.builder()
-				.role(Role.MEMBER)
-				.name(parsedName.name())
-				.position(parsedName.position())
-				.department(parsedName.department())
-				.build();
-		member = memberRepository.save(member);
-
-		MemberAuth memberAuth = MemberAuth.builder()
-				.memberId(member.getId())
-				.authType(AuthType.GOOGLE)
-				.authKey(googleSubId)
-				.build();
-		memberAuth.updateLastLoginAt();
-		memberAuthRepository.save(memberAuth);
+		if (guestMemberId != null) {
+			String mergeTicket = mergeTicketService.createTicket(guestMemberId, targetMemberId);
+			return OAuthAuthenticationResult.mergeRequired(mergeTicket);
+		}
 
 		return OAuthAuthenticationResult.success(
-				AuthenticatedIdentity.builder().memberId(member.getId()).build(), true);
+				AuthenticatedIdentity.builder().memberId(targetMemberId).build(), newUser);
 	}
 
 	private String exchangeCodeForIdToken(String code) {

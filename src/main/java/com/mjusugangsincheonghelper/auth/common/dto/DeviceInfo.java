@@ -20,4 +20,5 @@ public class DeviceInfo {
 	private String product;
 	private String description;
 	private String ua;
+	private String fcmToken;
 }

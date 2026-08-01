@@ -58,30 +58,12 @@ UI를 모방하는 기능에서 나아가 사용자의 클릭 반응 속도를 �
 
 ---
 
-### 정량 분석 지표 정의
+### 등수 및 백분위 (Ranking & Percentile)
 
-전체 과목 수 N, 과목 순서 인덱스 i, 각 순서에서의 순수 소요 시간 합산 T_i는 다음과 같이 정의된다.
+동일한 `totalCourses` 종목의 전체 완료 게임 중 `totalTime` 기준으로 순위와 백분위를 산출한다.
 
-$$T_i = \text{t\_click\_course}_i + \text{t\_click\_yes}_i + \text{t\_click\_ok}_i$$
-
-이 합산값을 기초로 분석 페이지에서 하단 4대 지표를 산출한다.
-
-#### ① 메인 방 진입 정밀도 (Entry Precision)
-* **수식:** $\text{Entry Precision} = \text{t\_enter\_main}$ (ms)
-* **의미:** 정각을 기준으로 유저가 얼마나 신속하게 진입했는지를 평가한다. 0ms에 가까울수록 진입 타이밍이 정교함을 뜻한다.
-
-#### ② 초반 스퍼트 속도 (Initial Sprint Speed)
-* **수식 (N ≥ 3 일 때):** $\text{Initial Sprint Speed} = T_1 - \frac{1}{N-1} \sum_{i=2}^{N} T_i$ (ms)
-* **수식 (N = 1 일 때):** 측정 제외
-* **의미:** 경쟁이 가장 치열한 1순위 과목을 후순위 과목들에 비해 얼마나 압도적인 속도로 처리했는지 평가한다. 마이너스(-) 값이 커질수록 초반 집중력이 높았음을 의미한다.
-
-#### ③ 페이스 유지도 (Pace Deviation)
-* **수식 (N ≥ 3 일 때, 표준편차 σ):** $\sigma = \sqrt{\frac{1}{N} \sum_{i=1}^{N} (T_i - \mu)^2}$ (ms) (단, μ는 T_i의 평균값)
-* **수식 (N = 1 일 때):** 측정 제외
-* **의미:** 첫 과목부터 마지막 과목까지 일정한 페이스를 유지했는지를 측정한다. 값이 0에 수렴할수록 실수가 없는 기계적인 연타를 성공했음을 의미하며, 값이 클수록 특정 과목에서 지체되거나 기복이 심했음을 의미한다.
-
-#### ④ 전체 등수 및 과별 등수 (Ranking Status)
-* 동일한 과목 수 종목의 전체 시도 판수 중 t_total 기준으로 본인의 석차와 백분위를 산출하고, 동일 학과 유저들과의 상대적 위치를 비교한다.
+- **백분위 공식:** $Percentile = \frac{rank - 1}{totalParticipants} \times 100$ (0% = 최고, 100% = 최하)
+- `detail`의 각 이벤트는 `percentile` 값을 포함하여 전체 유저 대비 자신의 위치를 제공한다.
 
 ---
 
@@ -110,7 +92,7 @@ $$T_i = \text{t\_click\_course}_i + \text{t\_click\_yes}_i + \text{t\_click\_ok}
 | 4순위 | `SLOW_AIM` | 위 조건에 해당하지 않으며, $Aim_{p} > Burst_{p}$ | 팝업 연타 속도에 비해 리스트에서 다음 과목을 찾아 조준하는 에임(Aim) 속도가 상대적으로 지체됩니다. 다음 마우스 위치를 미리 예측하세요! |
 | 5순위 | `SLOW_BURST` | 위 1~4순위 조건에 모두 해당하지 않는 나머지 | 과목 조준은 안정적이지만, 팝업창을 처리하는 연타 반응이 상대적으로 아쉽습니다. 엔터키나 마우스 좌클릭을 더 빠르게 누르는 감각을 익혀보세요. |
 
-#### 2. 진입 및 초반 포지셔닝 (Entry & Start) - *대기방 진입 정밀도와 1순위 과목 선점력 평가*
+#### 2. 진입 및 초반 (Entry & Start) - *대기방 진입 속도와 1순위 과목 선점력 평가*
 
 **지표 정의:**
 * $E_{p}$: 메인방 진입 반응속도의 상위 백분위 (%)
@@ -159,13 +141,22 @@ $$T_i = \text{t\_click\_course}_i + \text{t\_click\_yes}_i + \text{t\_click\_ok}
 
 ### 측정 지표
 
-| 지표 | 설명 | 단위 |
-|------|------|------|
-| `tEnterMain` | 메인방 진입까지의 반응 시간 | ms |
-| `tClickCourse` | 과목 리스트에서 과목 클릭까지의 시간 | ms |
-| `tClickYes` | 팝업에서 "예" 버튼 클릭까지의 시간 | ms |
-| `tClickOk` | 확인 팝업에서 "확인" 클릭까지의 시간 | ms |
-| `tTotal` | 전체 게임 소요 시간 (모든 측정값의 합) | ms |
+4가지 원시 측정값은 사용자의 게임 경험 단위(진입 → 과목별 조준 → 확인 → 완료)를 그대로 반영한다.
+분석 화면에서 사용자에게 보여줄 때는 내부 필드명(`tEnterMain`) 대신 **사용자향 표시명(`entrySpeed`)** 을 사용한다.
+
+| 내부 필드명 | 사용자향 표시명 | 설명 | 게임 내 발생 위치 | 측정 횟수 | 단위 |
+|------------|---------------|------|----------------|----------|------|
+| `tEnterMain` | `entrySpeed` | 메인방 진입 반응 속도 | 게임 시작 직후, 진입 버튼 클릭 | 전체 1회 | ms |
+| `tClickCourse` | `aimSpeed` | 과목 찾아서 클릭하는 조준 속도 | 과목 리스트에서 '신청' 버튼 클릭 | 과목별 1회 (총 N회) | ms |
+| `tClickYes` | `confirmSpeed` | '수강신청 하시겠습니까?' 팝업 반응 속도 | 1차 확인 팝업 '예' 버튼 클릭 | 과목별 1회 (총 N회) | ms |
+| `tClickOk` | `completeSpeed` | '수강신청 되었습니다' 팝업 반응 속도 | 2차 완료 팝업 '확인' 버튼 클릭 | 과목별 1회 (총 N회) | ms |
+
+**보조 메트릭:**
+
+| 메트릭 | 설명 | 산출 방식 | 단위 |
+|--------|------|----------|------|
+| `totalTime` | 게임 전체 순수 플레이 시간 | `tEnterMain` + 모든 과목의 (tClickCourse + tClickYes + tClickOk) 합계 (의도적 지연 제외) | ms |
+| `purePhysicalAverage` | 과목당 평균 피지컬 소요 시간 | 과목별 (tClickCourse + tClickYes + tClickOk)의 평균값 | ms |
 
 ---
 
@@ -205,6 +196,29 @@ SingleGameEntity (1) ──────< (N) SingleGameDetailEntity
      │                              │
      └── Cascade Delete ────────────┘
 ```
+
+> **참고:** `department`(학과) 정보는 `SingleGameEntity`에 직접 저장되지 않으며, `Member` 엔티티를 통해 조회한다.
+> 게스트 회원의 경우 `department`는 `null`이므로 DEPARTMENT 랭킹 집계 및 조회에서 제외된다.
+
+---
+
+## 회원 유형별 동작 차이
+
+회원은 **인증 회원(명지대 구글 로그인, 학과 정보 있음)** 과 **게스트(학과 정보 없음)** 으로 구분된다.
+게스트는 학과 정보가 없으므로 DEPARTMENT 관련 기능에 제한이 있으며, 아래 표에 따라 동작한다.
+
+| 기능 | 인증 회원 (학과 O) | 게스트 (학과 NULL) |
+|------|-------------------|-------------------|
+| GLOBAL 랭킹 참여 | ⭕ 정상 집계 | ⭕ 정상 집계 |
+| DEPARTMENT 랭킹 참여 | ⭕ 소속 학과에 집계 | ❌ 집계 제외 |
+| 학과 목록 조회 | ⭕ 전체 학과 목록 조회 가능 | ⭕ 전체 학과 목록 조회 가능 |
+| DEPARTMENT 랭킹 조회 | ⭕ 본인 학과 기준 조회 가능 | ❌ 불가 (에러 응답 또는 GLOBAL fallback 권장) |
+| 내 기록/분석의 `ranking.department` | ⭕ 제공 | ❌ `null` 반환 |
+
+**처리 원칙:**
+1. 게스트의 게임 데이터는 `SingleGameEntity`에 정상 저장되며 GLOBAL 랭킹 집계에 포함된다.
+2. 게스트의 `department`는 `null`이므로 DEPARTMENT 랭킹에서 제외된다. (`WHERE department IS NOT NULL`)
+3. 클라이언트는 게스트 여부를 사전에 알 수 없으므로, 서버는 각 API 호출 시점에 요청한 회원의 유형을 감지하여 적절히 응답해야 한다.
 
 ---
 
@@ -258,6 +272,7 @@ GET /api/{version}/singlegame/departments
 ```
 
 **설명:** 싱글게임 데이터에 존재하는 모든 학과 목록을 조회합니다. DEPARTMENT 랭킹 조회 시 사용할 학과명을 확인할 수 있습니다.
+> 게스트(department = null)의 게임 데이터는 학과 목록에서 제외된다.
 
 **응답 구조:**
 ```json
@@ -317,8 +332,9 @@ GET /api/{version}/singlegame/rank?totalCourses={totalCourses}&scope={scope}&dep
 **처리 절차:**
 1. 캐시 확인 (키: `{totalCourses}:{scope}:cache`)
 2. 캐시 미스 시 DB 조회
-   - `GLOBAL`: 전체 완료 게임 조회
+   - `GLOBAL`: 전체 완료 게임 조회 (게스트 포함)
    - `DEPARTMENT`: 현재 사용자의 학과와 동일한 게임만 조회
+     - **게스트 요청 시:** `department = null`이므로 DEPARTMENT 조회가 불가능하다. 게스트에게 DEPARTMENT 랭킹을 제공할 수 없음을 응답하고 GLOBAL 랭킹을 대신 반환하거나 에러 응답을 반환한다.
 3. 랭킹 계산 (tTotal 기준 오름차순)
 4. 상위 20개 랭킹 추출
 5. 내 최신 완료 게임의 랭킹 확인
@@ -373,6 +389,9 @@ GET /api/{version}/singlegame/my?page={page}&size={size}
 4. 퍼센타일 계산: `(rank - 1) / totalParticipants * 100`
 5. 결과 반환
 
+> **게스트 처리:** 게스트의 경우 `ranking.department`는 `null`로 응답한다.
+> 프론트는 `department`가 `null`일 때 "명지대 구글 로그인시 학과내 랭킹도 볼 수 있어요"와 같은 안내를 표시할 수 있다.
+
 ---
 
 ### 5. 게임 상세 분석
@@ -381,56 +400,116 @@ GET /api/{version}/singlegame/my?page={page}&size={size}
 GET /api/{version}/singlegame/{gameId}/analysis
 ```
 
+**설명:**
+응답은 `basic`(자신의 기록), `detail`(상세 분석), `feedbacks`(피드백) 3개 영역으로 구성된다.
+
+| 응답 영역 | 설명 |
+|----------|------|
+| `basic` | 게임 전체 흐름을 플랫한 이벤트 배열로 표현 (sequence, type, label, durationMs) |
+| `detail` | 각 이벤트별 percentile, grade, population 통계 포함 |
+| `feedbacks` | 종합 평가 코드 및 메시지 (primary, secondary) |
+
 **응답 구조:**
 ```json
 {
   "gameId": 1234,
+  "isOwner": true,
+  "isMember": true,
   "totalCourses": 6,
-  "completed": true,
-  "summary": {
-    "totalTime": 8500,
-    "globalRank": 42,
-    "globalPercentile": 4.2,
-    "purePhysicalAverage": 1200,
-    "entryPrecision": 1500,
-    "initialSprintSpeed": 200,
-    "paceDeviation": 150.5,
-    "feedbackCode": "GOD_TIER_PHYSICAL",
-    "feedbackMessage": "압도적이고 완벽한 피지컬! ..."
+  "totalTime": 8500,
+  "ranking": {
+    "global": { "rank": 42, "totalParticipants": 1000, "percentile": 4.2 },
+    "department": { "rank": 3, "totalParticipants": 50, "percentile": 4.0 }
   },
-  "details": [
+
+  "basic": [
+    { "sequence": 0, "type": "ENTRY",   "label": "메인방 진입",  "durationMs": 1500 },
+    { "sequence": 1, "type": "AIM",     "label": "1순위 과목 조준", "durationMs": 800 },
+    { "sequence": 1, "type": "CONFIRM", "label": "신청 확인",    "durationMs": 200 },
+    { "sequence": 1, "type": "COMPLETE","label": "완료 확인",    "durationMs": 150 },
+    { "sequence": 2, "type": "AIM",     "label": "2순위 과목 조준", "durationMs": 350 },
+    { "sequence": 2, "type": "CONFIRM", "label": "신청 확인",    "durationMs": 180 },
+    { "sequence": 2, "type": "COMPLETE","label": "완료 확인",    "durationMs": 140 }
+  ],
+
+  "detail": [
     {
-      "sequence": 1,
-      "mine": {
-        "clickCourse": 800,
-        "clickYes": 200,
-        "clickOk": 150,
-        "total": 1150
-      },
-      "p10": { ... },
-      "p30": { ... },
-      "p50": { ... },
-      "p70": { ... },
-      "p100": { ... }
+      "sequence": 0, "type": "ENTRY", "label": "메인방 진입", "durationMs": 1500,
+      "percentile": 15.2, "grade": "A",
+      "global_population":     { "p10": 800, "p30": 1200, "p50": 1600, "p70": 2200 },
+      "department_population": { "p10": 900, "p30": 1300, "p50": 1700, "p70": 2400 }
+    },
+    {
+      "sequence": 1, "type": "AIM", "label": "1순위 과목 조준", "durationMs": 800,
+      "percentile": 22.0, "grade": "A",
+      "global_population":     { "p10": 400, "p30": 600, "p50": 850, "p70": 1200 },
+      "department_population": { "p10": 450, "p30": 650, "p50": 900, "p70": 1300 }
+    },
+    {
+      "sequence": 1, "type": "CONFIRM", "label": "신청 확인", "durationMs": 200,
+      "percentile": 60.0, "grade": "B",
+      "global_population":     { "p10": 100, "p30": 150, "p50": 210, "p70": 300 },
+      "department_population": { "p10": 110, "p30": 160, "p50": 220, "p70": 320 }
+    },
+    {
+      "sequence": 1, "type": "COMPLETE", "label": "완료 확인", "durationMs": 150,
+      "percentile": 55.0, "grade": "B",
+      "global_population":     { "p10": 80, "p30": 120, "p50": 160, "p70": 220 },
+      "department_population": { "p10": 90, "p30": 130, "p50": 170, "p70": 240 }
     }
-  ]
+  ],
+
+  "feedbacks": {
+    "primary": {
+      "code": "SLOW_BURST",
+      "message": "과목 조준은 안정적이지만, 팝업창을 처리하는 연타 반응이 상대적으로 아쉽습니다.",
+      "axis": "PHYSICAL"
+    },
+    "secondary": {
+      "code": "WEAK_FINISHER",
+      "message": "후반부로 갈수록 집중력이 떨어지는 페이스 저하가 보입니다.",
+      "axis": "PACE"
+    }
+  }
 }
 ```
 
-**분석 지표 계산:**
+**필드 설명:**
+- `isOwner`: 요청한 사람이 이 게임의 소유자인지 여부
+- `isMember`: 게임 소유주가 인증 회원인지 여부. `false`면 게스트의 게임
 
-| 지표 | 계산 방법 |
-|------|-----------|
-| `purePhysicalAverage` | 과목별 평균 순수 처리 시간 (clickCourse + clickYes + clickOk) |
-| `entryPrecision` | 메인방 진입 시간 (tEnterMain) |
-| `initialSprintSpeed` | 첫 과목 시간 - 나머지 과목 평균 시간 (N>=3인 경우) |
-| `paceDeviation` | 과목별 시간의 표준편차 (N>=3인 경우) |
-| `globalRank` | 동일 totalCourses 완료 게임 중 순위 |
-| `globalPercentile` | `(rank - 1) / totalPlayers * 100` |
+**`basic` 배열 규칙:**
+- `sequence = 0`: ENTRY (메인방 진입, 전체 1개)
+- `sequence = 1..N`: 각 과목별 AIM → CONFIRM → COMPLETE (과목 수 = totalCourses)
+- 총 이벤트 수: `1 + (totalCourses * 3)`
 
-**퍼센타일 통계:**
-- 각 과목 순서(sequence)별로 전체 사용자의 p10, p30, p50, p70, p100 값 제공
-- 클릭 시간(clickCourse, clickYes, clickOk, total)별 통계
+**`detail` 배열 규칙:**
+- `basic`과 동일한 순서/개수
+- 각 이벤트에 `percentile`, `grade`, `global_population`, `department_population` 추가
+- `department_population`: 게스트(department = null)인 경우 `null`
+
+**grade 산출 기준 (percentile 기반):**
+
+| 등급 | percentile 범위 |
+|------|----------------|
+| S | ≤ 5 |
+| A | 5 < x ≤ 30 |
+| B | 30 < x < 70 |
+| C | 70 ≤ x < 95 |
+| D | ≥ 95 |
+
+**population percentiles:**
+- `p10`: 전체(또는 학과) 하위 10%의 값
+- `p30`: 하위 30%의 값
+- `p50`: 중앙값
+- `p70`: 하위 70%의 값
+
+**피드백:**
+- `primary`: 가장 우선순위가 높은 축의 피드백 (1순위)
+- `secondary`: 1순위 축 다음으로 우선순위가 높은 축의 피드백 (2순위)
+- 최대 2개 반환
+
+> **게스트 처리:** 게스트의 경우 `ranking.department`, `detail[].department_population` 모두 `null`이다.
 
 ---
 

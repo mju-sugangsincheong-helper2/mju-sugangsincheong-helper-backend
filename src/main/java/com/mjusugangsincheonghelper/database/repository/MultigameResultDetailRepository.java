@@ -6,10 +6,19 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MultigameResultDetailRepository extends JpaRepository<MultigameResultDetailEntity, Long> {
+
+	@Modifying(clearAutomatically = true)
+	@Query("DELETE FROM MultigameResultDetailEntity d WHERE d.memberId = :oldMemberId AND d.startTime IN (SELECT d2.startTime FROM MultigameResultDetailEntity d2 WHERE d2.memberId = :newMemberId)")
+	void deleteConflicting(@Param("oldMemberId") Long oldMemberId, @Param("newMemberId") Long newMemberId);
+
+	@Modifying(clearAutomatically = true)
+	@Query("UPDATE MultigameResultDetailEntity d SET d.memberId = :newMemberId WHERE d.memberId = :oldMemberId")
+	void updateMemberId(@Param("oldMemberId") Long oldMemberId, @Param("newMemberId") Long newMemberId);
 
 	List<MultigameResultDetailEntity> findByStartTime(String startTime);
 

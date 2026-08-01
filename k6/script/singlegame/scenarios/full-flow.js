@@ -24,25 +24,41 @@ export default function (data) {
   const token = guestLogin() || data?.token;
   if (!token) return;
 
-  // 1. 게임 결과 저장
-  const saveResult = saveGame(token, { totalCourses: 6 });
-  sleep(1);
+  // 다양한 과목 수로 게임 저장 (실제 유저 패턴 시뮬레이션)
+  const courseOptions = [1, 3, 6, 6, 6, 7, 8]; // 6과목이 가장 많음
+  const totalCourses = courseOptions[Math.floor(Math.random() * courseOptions.length)];
+  
+  const saveResult = saveGame(token, { totalCourses });
+  sleep(randomSleep(0.5, 2));
 
-  // 2. 전체 랭킹 확인
-  getRankings(token, 6, 'GLOBAL');
-  sleep(1);
+  // 전체 랭킹 확인 (다양한 과목 수 조회)
+  const rankCourseOptions = [1, 3, 6, 7, 8];
+  const rankCourses = rankCourseOptions[Math.floor(Math.random() * rankCourseOptions.length)];
+  getRankings(token, rankCourses, 'GLOBAL');
+  sleep(randomSleep(0.3, 1));
 
-  // 3. 학과 랭킹 확인
-  getRankings(token, 6, 'DEPARTMENT');
-  sleep(0.5);
+  // 학과 랭킹 확인
+  getRankings(token, rankCourses, 'DEPARTMENT');
+  sleep(randomSleep(0.3, 1));
 
-  // 4. 내 기록 확인
-  getMyRecords(token, 0, 10);
-  sleep(0.5);
+  // 내 기록 확인 (다양한 페이지)
+  const page = Math.floor(Math.random() * 3); // 0, 1, 2 페이지
+  getMyRecords(token, page, 10);
+  sleep(randomSleep(0.3, 1));
 
-  // 5. 방금 저장한 게임 분석 (gameId가 있으면)
+  // 방금 저장한 게임 상세 분석 (3영역: basic, detail, feedbacks)
   if (saveResult && saveResult.gameId) {
-    getAnalysis(token, saveResult.gameId);
+    const analysisRes = getAnalysis(token, saveResult.gameId);
+    if (analysisRes.status === 200) {
+      const analysisData = analysisRes.json('data');
+      if (analysisData) {
+        console.log(`Analysis: totalTime=${analysisData.totalTime}ms, feedbacks.primary=${analysisData.feedbacks?.primary?.code}`);
+      }
+    }
   }
+}
+
+function randomSleep(min, max) {
+  return min + Math.random() * (max - min);
 }
 

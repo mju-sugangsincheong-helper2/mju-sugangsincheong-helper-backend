@@ -6,9 +6,8 @@ import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.AnalysisDetail;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.AnalysisSummary;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.DataBucket;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.FeedbackItem;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.FeedbacksResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RankInfo;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RecordRanking;
@@ -38,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -198,33 +198,22 @@ class SingleGameControllerTest {
 		@DisplayName("게임 분석 결과를 반환한다")
 		void it_returns_analysis() throws Exception {
 			AnalysisResponse serviceResponse = AnalysisResponse.builder()
-					.gameId(1L).totalCourses(6).completed(true)
-					.summary(AnalysisSummary.builder()
-							.totalTime(12000).globalRank(5).globalPercentile(4.0)
-							.purePhysicalAverage(3000).entryPrecision(2000)
-							.initialSprintSpeed(500).paceDeviation(100.0)
-							.feedbackCode("GOD_TIER_PHYSICAL")
-							.feedbackMessage("압도적이고 완벽한 피지컬! 에이밍과 팝업 연타 모두 최상위권입니다. 수강신청 실패는 당신의 사전에 없습니다.")
+					.gameId(1L).totalCourses(6)
+					.totalTime(12000)
+					.feedbacks(FeedbacksResponse.builder()
+							.primary(FeedbackItem.builder()
+									.code("GOD_TIER_PHYSICAL")
+									.message("압도적이고 완벽한 피지컬! 에이밍과 팝업 연타 모두 최상위권입니다. 수강신청 실패는 당신의 사전에 없습니다.")
+									.axis("PHYSICAL")
+									.build())
 							.build())
-					.details(List.of(
-							AnalysisDetail.builder()
-									.sequence(1)
-									.mine(DataBucket.builder().clickCourse(3000).clickYes(1000).clickOk(500).total(4500).build())
-									.p10(DataBucket.builder().clickCourse(0).clickYes(0).clickOk(0).total(0).build())
-									.p30(DataBucket.builder().clickCourse(0).clickYes(0).clickOk(0).total(0).build())
-									.p50(DataBucket.builder().clickCourse(0).clickYes(0).clickOk(0).total(0).build())
-									.p70(DataBucket.builder().clickCourse(0).clickYes(0).clickOk(0).total(0).build())
-									.p100(DataBucket.builder().clickCourse(0).clickYes(0).clickOk(0).total(0).build())
-									.build()
-					))
 					.build();
-			given(singleGameService.getAnalysis(1L)).willReturn(serviceResponse);
+			given(singleGameService.getAnalysis(eq(1L), anyLong())).willReturn(serviceResponse);
 
 			mockMvc.perform(get("/api/v1/singlegame/1/analysis"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.gameId").value(1))
-					.andExpect(jsonPath("$.data.summary.feedbackCode").value("GOD_TIER_PHYSICAL"))
-					.andExpect(jsonPath("$.data.details[0].sequence").value(1))
+					.andExpect(jsonPath("$.data.feedbacks.primary.code").value("GOD_TIER_PHYSICAL"))
 					.andExpect(jsonPath("$.meta").exists());
 		}
 	}

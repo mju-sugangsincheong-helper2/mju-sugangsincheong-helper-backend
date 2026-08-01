@@ -3,10 +3,11 @@ package com.mjusugangsincheonghelper.auth.merge;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
 import com.mjusugangsincheonghelper.database.entity.Member;
-import com.mjusugangsincheonghelper.database.entity.MemberAuth;
 import com.mjusugangsincheonghelper.database.entity.MemberAuth.AuthType;
 import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
+import com.mjusugangsincheonghelper.database.repository.MultigameResultDetailRepository;
+import com.mjusugangsincheonghelper.database.repository.MultigameReservationRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
@@ -22,6 +23,8 @@ public class MergeService {
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
 	private final SingleGameRepository singleGameRepository;
+	private final MultigameResultDetailRepository multigameResultDetailRepository;
+	private final MultigameReservationRepository multigameReservationRepository;
 	private final DeviceSessionService deviceSessionService;
 	private final MergeTicketService mergeTicketService;
 
@@ -29,19 +32,24 @@ public class MergeService {
 	public AuthenticatedIdentity merge(String mergeTicket) {
 		MergeTicketService.MergeTicketClaims claims = mergeTicketService.consume(mergeTicket);
 
-		MemberAuth googleAuth = memberAuthRepository.findByAuthKeyAndAuthType(claims.googleSubId(), AuthType.GOOGLE)
-				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
+		Long guestId = claims.guestMemberId();
+		Long targetId = claims.targetMemberId();
 
-		Member targetMember = memberRepository.findById(googleAuth.getMemberId())
-				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
+		if (guestId.equals(targetId)) {
+			throw new BaseException(ErrorCode.AUTH_MERGE_TICKET_EXPIRED);
+		}
 
-		Member guestMember = memberRepository.findById(claims.guestMemberId())
+		Member guestMember = memberRepository.findById(guestId)
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_GUEST_NOT_FOUND));
 
-		Long guestId = guestMember.getId();
-		Long targetId = targetMember.getId();
+		memberRepository.findById(targetId)
+				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 
 		singleGameRepository.updateMemberId(guestId, targetId);
+		multigameResultDetailRepository.deleteConflicting(guestId, targetId);
+		multigameResultDetailRepository.updateMemberId(guestId, targetId);
+		multigameReservationRepository.deleteConflicting(guestId, targetId);
+		multigameReservationRepository.updateMemberId(guestId, targetId);
 
 		memberAuthRepository.findByMemberIdAndAuthType(guestId, AuthType.GUEST_KEY)
 				.ifPresent(memberAuthRepository::delete);
