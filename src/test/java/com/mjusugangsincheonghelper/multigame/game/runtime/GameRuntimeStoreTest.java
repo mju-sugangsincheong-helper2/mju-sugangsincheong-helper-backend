@@ -27,7 +27,6 @@ import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -73,6 +72,11 @@ class GameRuntimeStoreTest {
 		given(redis.opsForSet()).willReturn(setOps);
 		given(redis.opsForHash()).willReturn(hashOps);
 		given(redis.opsForList()).willReturn(listOps);
+	}
+
+	@SuppressWarnings("unchecked")
+	private static ArgumentCaptor<Collection<String>> collectionCaptor() {
+		return ArgumentCaptor.forClass(Collection.class);
 	}
 
 	// ---------------------------------------------------------------------
@@ -128,17 +132,17 @@ class GameRuntimeStoreTest {
 		}
 
 		@Test
-		@DisplayName("removeExpiredHeartbeatsAndCount는 3초 이전 데이터를 제거하고 카운트한다")
+		@DisplayName("removeExpiredHeartbeatsAndCount는 4초 이전 데이터를 제거하고 카운트한다")
 		void removesExpiredAndCounts() {
-			given(redis.execute(any(DefaultRedisScript.class), anyList(), any(Object[].class))).willReturn(4L);
+			given(redis.execute(any(), anyList(), any(Object[].class))).willReturn(4L);
 
 			long count = store.removeExpiredHeartbeatsAndCount(Instant.ofEpochMilli(1_000_005));
 
 			assertThat(count).isEqualTo(4);
 			ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
-			verify(redis).execute(any(DefaultRedisScript.class), anyList(), argsCaptor.capture());
-			// now - 3초 경계값이 ARGV로 전달된다
-			assertThat(argsCaptor.getValue()).containsExactly("997005");
+			verify(redis).execute(any(), anyList(), argsCaptor.capture());
+			// now - 4초 경계값이 ARGV로 전달된다
+			assertThat(argsCaptor.getValue()).containsExactly("996005");
 		}
 	}
 
@@ -185,7 +189,7 @@ class GameRuntimeStoreTest {
 		void initializesSeatsAndProgressState() {
 			store.startProgress(5);
 
-			ArgumentCaptor<Collection<String>> keysCaptor = ArgumentCaptor.forClass(Collection.class);
+			ArgumentCaptor<Collection<String>> keysCaptor = collectionCaptor();
 			verify(redis).delete(keysCaptor.capture());
 			// 문서(Layer 1 progressCron)와 정합: heartbeat와 waiting_count는 이 시점에 지우지 않는다.
 			assertThat(keysCaptor.getValue()).containsExactlyInAnyOrder(
@@ -218,11 +222,11 @@ class GameRuntimeStoreTest {
 		}
 
 		@Test
-		@DisplayName("leave는 참여자 집합과 대기열에서 함께 제거한다")
-		void removesFromParticipantsAndQueue() {
+		@DisplayName("leave는 참여자 집합과 유저의 모든 과목별 대기 항목을 제거한다")
+		void removesFromParticipantsAndAllSubjectQueues() {
 			store.leave(7);
 			verify(setOps).remove(PARTICIPANTS, "7");
-			verify(zSetOps).remove(QUEUE, "7");
+			verify(zSetOps).remove(QUEUE, "7:1", "7:2", "7:3", "7:4", "7:5", "7:6");
 		}
 
 		@Test
@@ -284,7 +288,7 @@ class GameRuntimeStoreTest {
 		void deletesAllGlobalKeys() {
 			store.clear();
 
-			ArgumentCaptor<Collection<String>> keysCaptor = ArgumentCaptor.forClass(Collection.class);
+			ArgumentCaptor<Collection<String>> keysCaptor = collectionCaptor();
 			verify(redis).delete(keysCaptor.capture());
 			assertThat(keysCaptor.getValue()).containsExactlyInAnyOrder(
 					STATE, HEARTBEAT, WAITING_COUNT, PARTICIPANTS, QUEUE,

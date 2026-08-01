@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS multigame_round_member (
     subject_id  INT         NOT NULL,
     status      VARCHAR(20) NOT NULL,
     created_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    CONSTRAINT  uk_multigame_round_member_start_time_member_id UNIQUE (start_time, member_id)
+    CONSTRAINT  uk_multigame_round_member_start_time_member_subject UNIQUE (start_time, member_id, subject_id)
 );
 
 CREATE TABLE IF NOT EXISTS multigame_round_log (

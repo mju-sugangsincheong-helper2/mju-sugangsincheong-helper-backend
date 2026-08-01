@@ -4,44 +4,16 @@ import { check } from 'k6';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 
 // ============================================================
-// Reservation API
+// Session API (대기방 + 진입/이탈 + 과목 신청)
 // ============================================================
 
-export function createReservation(token, multigameId) {
-  const res = http.post(
-    `${BASE_URL}/api/v1/multigame/reservations`,
-    JSON.stringify({ multigameId }),
-    {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      tags: { name: 'POST_reservations' },
-    }
-  );
-  check(res, {
-    'reservation created': (r) => r.status === 200 || r.status === 201 || r.status === 409,
-  });
-  return res;
-}
-
-export function getMyReservations(token) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/reservations/my`, {
-    headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_reservations_my' },
-  });
-  check(res, { 'my reservations fetched': (r) => r.status === 200 });
-  return res;
-}
-
-// ============================================================
-// Session API (대기방 + 게임 신청)
-// ============================================================
-
+// GET /api/v1/multigame/session/waiting-room
 export function enterWaitingRoom(token) {
   const res = http.get(`${BASE_URL}/api/v1/multigame/session/waiting-room`, {
     headers: { Authorization: `Bearer ${token}` },
     tags: { name: 'GET_waiting_room' },
   });
-  const success = res.status === 200 || res.status === 410;
-  check(res, { 'waiting room entered': success });
+  check(res, { 'waiting room entered': (r) => r.status === 200 });
 
   try {
     const json = res.json();
@@ -55,16 +27,49 @@ export function enterWaitingRoom(token) {
   }
 }
 
+// POST /api/v1/multigame/session/enter
+export function enterGame(token) {
+  const res = http.post(`${BASE_URL}/api/v1/multigame/session/enter`, null, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'POST_game_enter' },
+  });
+  // PROGRESS가 아니면 409, 최소 인원 미달 취소면 410 — 예상된 에러
+  check(res, { 'game entered': (r) => r.status === 200 || r.status === 409 || r.status === 410 });
+
+  try {
+    const json = res.json();
+    return {
+      multigameId: json?.data?.multigameId,
+      state: json?.data?.state,
+      participation: json?.data?.participation,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// POST /api/v1/multigame/session/leave
+export function leaveGame(token) {
+  const res = http.post(`${BASE_URL}/api/v1/multigame/session/leave`, null, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'POST_game_leave' },
+  });
+  check(res, { 'game left': (r) => r.status === 200 });
+  return res;
+}
+
+// POST /api/v1/multigame/session/apply?subjectId=
+// status: BLOCKED / PENDING(재시도 필요) / SUCCESS / FAIL_SOLDOUT / FAIL_DUPLICATE
 export function requestGame(token, subjectId) {
   const res = http.post(
-    `${BASE_URL}/api/v1/multigame/session/request?subjectId=${subjectId}`,
+    `${BASE_URL}/api/v1/multigame/session/apply?subjectId=${subjectId}`,
     null,
     {
       headers: { Authorization: `Bearer ${token}` },
-      tags: { name: 'POST_game_request' },
+      tags: { name: 'POST_game_apply' },
     }
   );
-  check(res, { 'game request sent': (r) => r.status === 200 });
+  check(res, { 'game apply sent': (r) => r.status === 200 });
 
   try {
     const json = res.json();
@@ -73,6 +78,7 @@ export function requestGame(token, subjectId) {
       seq: json?.data?.seq,
       limit: json?.data?.limit,
       subjectId: json?.data?.subjectId,
+      remaining: json?.data?.remaining,
     };
   } catch (e) {
     return null;
@@ -80,50 +86,10 @@ export function requestGame(token, subjectId) {
 }
 
 // ============================================================
-// Lifecycle Control API (dev 환경 전용)
+// Result API (결과 상세 + 내 참여 기록 + 랭킹)
 // ============================================================
 
-/**
- * 게임 상태 수동 전이 (dev 환경 전용)
- * ADMIN 권한이 필요하며, dev 프로파일에서만 동작합니다.
- */
-export function transitionGameState(adminToken, multigameId, targetState) {
-  const res = http.post(
-    `${BASE_URL}/api/v1/multigame/lifecycle/transition/${multigameId}?targetState=${targetState}`,
-    null,
-    {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      tags: { name: 'POST_lifecycle_transition' },
-    }
-  );
-  check(res, { 'state transitioned': (r) => r.status === 200 });
-  return res;
-}
-
-/**
- * 게임 상태 조회 (dev 환경 전용)
- */
-export function getGameState(adminToken, multigameId) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/lifecycle/state/${multigameId}`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    tags: { name: 'GET_lifecycle_state' },
-  });
-  check(res, { 'game state fetched': (r) => r.status === 200 });
-
-  try {
-    const json = res.json();
-    return json?.data;
-  } catch (e) {
-    return null;
-  }
-}
-
-// ============================================================
-// Result API
-// ============================================================
-
-// 결과 상세(분석서 + 내 결과 + 내 신청 로그 통합) 조회
-// GET /api/v1/multigame/results/{multigameId}
+// GET /api/v1/multigame/results/{multigameId} — 라운드 상세(분석서 + 내 결과 + 내 신청 타임라인)
 export function getGameResult(token, multigameId) {
   const res = http.get(`${BASE_URL}/api/v1/multigame/results/${multigameId}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -133,12 +99,7 @@ export function getGameResult(token, multigameId) {
   return res;
 }
 
-// ============================================================
-// My History API
-// ============================================================
-
-// 내 참여 이력 목록 (페이징)
-// GET /api/v1/multigame/me/results?page=&size=
+// GET /api/v1/multigame/me/results?page=&size= — 라운드 단위 + 과목별 results 배열
 export function getMyHistory(token, page = 0, size = 10) {
   const res = http.get(`${BASE_URL}/api/v1/multigame/me/results?page=${page}&size=${size}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -148,43 +109,13 @@ export function getMyHistory(token, page = 0, size = 10) {
   return res;
 }
 
-export function getMyStats(token) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/my/stats`, {
+// GET /api/v1/multigame/rankings — 학과별 참가 수 + 상위 70% 성공률 순위
+export function getRankings(token) {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/rankings`, {
     headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_my_stats' },
+    tags: { name: 'GET_rankings' },
   });
-  check(res, { 'my stats fetched': (r) => r.status === 200 });
-  return res;
-}
-
-// ============================================================
-// Dashboard & Stats API
-// ============================================================
-
-export function getDashboard(token) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/dashboard`, {
-    headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_dashboard' },
-  });
-  check(res, { 'dashboard fetched': (r) => r.status === 200 });
-  return res;
-}
-
-export function getDepartmentParticipationStats(token) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/stats/department/participation`, {
-    headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_dept_participation' },
-  });
-  check(res, { 'dept participation fetched': (r) => r.status === 200 });
-  return res;
-}
-
-export function getDepartmentSuccessRateStats(token) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/stats/department/success-rate`, {
-    headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_dept_success_rate' },
-  });
-  check(res, { 'dept success rate fetched': (r) => r.status === 200 });
+  check(res, { 'rankings fetched': (r) => r.status === 200 });
   return res;
 }
 
@@ -193,21 +124,13 @@ export function getDepartmentSuccessRateStats(token) {
 // ============================================================
 
 /**
- * 예약 가능한 게임 ID 계산 (현재 시각 + 10분 이후의 다음 10분 마크)
- * 예약은 게임 시작 10분 전까지 생성 가능하므로,
- * 최소 10분 이후의 10분 마크를 반환합니다.
+ * 서버 RoundTime.currentMark(now)와 동일한 로직으로 현재 10분 윈도우의 라운드 ID(T)를 계산.
+ * 라운드 T는 T:00 ~ T:00:30에 진행되고 T+30s에 결과가 영속화되므로,
+ * 종료 후 GET /results/{T}로 해당 라운드 결과를 조회할 수 있다.
  */
-export function computeReservableMultigameId() {
+export function computeActiveMultigameId() {
   const now = new Date();
-  // 최소 10분 이후이므로, 현재 + 10분에서 다음 10분 마크를 계산
-  now.setMinutes(now.getMinutes() + 10);
-  const minutes = now.getMinutes();
-  const tenMark = Math.ceil(minutes / 10) * 10;
-  if (tenMark > minutes) {
-    now.setMinutes(tenMark);
-  } else {
-    now.setMinutes(tenMark + 10);
-  }
+  now.setMinutes(now.getMinutes() - (now.getMinutes() % 10));
   now.setSeconds(0);
   now.setMilliseconds(0);
 
@@ -215,24 +138,17 @@ export function computeReservableMultigameId() {
 }
 
 /**
- * 서버의 computeActiveGameT()와 동일한 로직으로 현재 액티브 게임의 T를 계산.
- * minute % 10 >= 5: 다음 10분 마크 (ceiling) — [T-5m, T) 구간
- * minute % 10 < 5:  현재 10분 마크 (floor)   — [T, T+5m) 구간
+ * 1~6 과목 중 랜덤 셔플 후 count개 선택.
+ * 한 라운드에서 유저는 과목별로 각각 성공할 수 있으므로(최대 6개),
+ * 시나리오에서는 여러 과목을 독립적으로 신청한다.
  */
-export function computeActiveMultigameId() {
-  const now = new Date();
-  const minutes = now.getMinutes();
-  const tenMark = Math.floor(minutes / 10) * 10;
-
-  if (minutes % 10 >= 5) {
-    now.setMinutes(tenMark + 10);
-  } else {
-    now.setMinutes(tenMark);
+export function getRandomSubjectIds(count = 3) {
+  const subjects = [1, 2, 3, 4, 5, 6];
+  for (let i = subjects.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [subjects[i], subjects[j]] = [subjects[j], subjects[i]];
   }
-  now.setSeconds(0);
-  now.setMilliseconds(0);
-
-  return formatMultigameId(now);
+  return subjects.slice(0, Math.min(count, subjects.length));
 }
 
 function formatMultigameId(date) {
@@ -242,8 +158,4 @@ function formatMultigameId(date) {
   const hour = String(date.getHours()).padStart(2, '0');
   const min = String(date.getMinutes()).padStart(2, '0');
   return `${year}${month}${day}${hour}${min}00`;
-}
-
-export function getRandomSubjectId() {
-  return Math.floor(Math.random() * 6) + 1;
 }

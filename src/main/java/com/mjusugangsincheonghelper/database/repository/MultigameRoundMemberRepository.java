@@ -1,6 +1,7 @@
 package com.mjusugangsincheonghelper.database.repository;
 
 import com.mjusugangsincheonghelper.database.entity.MultigameRoundMemberEntity;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -12,9 +13,28 @@ import org.springframework.data.repository.query.Param;
 
 public interface MultigameRoundMemberRepository extends JpaRepository<MultigameRoundMemberEntity, Long> {
 
-	Optional<MultigameRoundMemberEntity> findByStartTimeAndMemberId(String startTime, Long memberId);
+	/** 한 라운드에서 과목별로 각각 결과 레코드를 가질 수 있으므로 List로 조회한다. */
+	List<MultigameRoundMemberEntity> findByStartTimeAndMemberIdOrderBySubjectIdAsc(String startTime, Long memberId);
 
-	Page<MultigameRoundMemberEntity> findByMemberIdOrderByStartTimeDesc(Long memberId, Pageable pageable);
+	/**
+	 * 내가 최종 결과를 가진 라운드(start_time) 목록을 최신순으로 페이징 조회한다.
+	 * 홈 "최신 N회차"의 페이지네이션 단위는 행(subject)이 아니라 라운드여야 한다.
+	 */
+	@Query(value = """
+			SELECT DISTINCT member.startTime
+			FROM MultigameRoundMemberEntity member
+			WHERE member.memberId = :memberId
+			ORDER BY member.startTime DESC
+			""", countQuery = """
+			SELECT COUNT(DISTINCT member.startTime)
+			FROM MultigameRoundMemberEntity member
+			WHERE member.memberId = :memberId
+			""")
+	Page<String> findDistinctStartTimesByMemberId(@Param("memberId") Long memberId, Pageable pageable);
+
+	/** 라운드 단위 페이지의 과목별 행들을 한 번에 조회한다. */
+	List<MultigameRoundMemberEntity> findByStartTimeInAndMemberIdOrderByStartTimeDescSubjectIdAsc(
+			Collection<String> startTimes, Long memberId);
 
 	@Query("""
 			SELECT member.subjectId, COUNT(member),
@@ -29,7 +49,7 @@ public interface MultigameRoundMemberRepository extends JpaRepository<MultigameR
 	@Query("""
 			SELECT member.memberId, memberDepartment.department,
 			       SUM(CASE WHEN member.status = 'SUCCESS' THEN 1 ELSE 0 END),
-			       COUNT(member)
+			       COUNT(DISTINCT member.startTime)
 			FROM MultigameRoundMemberEntity member
 			JOIN Member memberDepartment ON memberDepartment.id = member.memberId
 			WHERE memberDepartment.department IS NOT NULL AND memberDepartment.department <> ''

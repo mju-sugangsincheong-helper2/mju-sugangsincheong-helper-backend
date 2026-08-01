@@ -5,6 +5,7 @@ import com.mjusugangsincheonghelper.database.repository.MultigameRoundLogReposit
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundEvent;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement;
+import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement.MemberSubject;
 import java.sql.Timestamp;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,10 +32,10 @@ public class RoundSettlementService {
 		roundRepository.flush();
 
 		jdbcTemplate.batchUpdate("""
-				INSERT INTO multigame_round_member (start_time, member_id, subject_id, status)
-				VALUES (?, ?, ?, ?)
-				ON CONFLICT (start_time, member_id)
-				DO UPDATE SET subject_id = EXCLUDED.subject_id, status = EXCLUDED.status
+				INSERT INTO multigame_round_member (start_time, member_id, subject_id, status, created_at)
+				VALUES (?, ?, ?, ?, now())
+				ON CONFLICT (start_time, member_id, subject_id)
+				DO UPDATE SET status = EXCLUDED.status
 				""", settlement.finalMembers().entrySet(), 100,
 				(statement, entry) -> bindMember(statement, settlement.startTime(), entry.getKey(), entry.getValue(), settlement));
 
@@ -56,11 +57,11 @@ public class RoundSettlementService {
 		statement.setTimestamp(7, Timestamp.from(event.attemptedAt()));
 	}
 
-	private void bindMember(java.sql.PreparedStatement statement, String startTime, long memberId, RoundEvent event,
-			RoundSettlement settlement) throws java.sql.SQLException {
+	private void bindMember(java.sql.PreparedStatement statement, String startTime, MemberSubject key,
+			RoundEvent event, RoundSettlement settlement) throws java.sql.SQLException {
 		statement.setString(1, startTime);
-		statement.setLong(2, memberId);
-		statement.setInt(3, event.subjectId());
+		statement.setLong(2, key.memberId());
+		statement.setInt(3, key.subjectId());
 		statement.setString(4, settlement.finalStatus(event));
 	}
 }

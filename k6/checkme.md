@@ -33,10 +33,9 @@ k6/
     │   ├── load-profiles.js        # Multigame 전용 VU stage & threshold 프로필
     │   ├── helpers.js              # Multigame API 호출 래퍼
     │   └── scenarios/
-    │       ├── session.js          # 실시간 대기방 폴링 + 게임 수강신청
-    │       ├── reservation.js      # 7일~10분 전 사전 예약 CRUD
-    │       ├── result.js           # 내 게임 기록 & 통계 조회
-    │       └── full-flow.js        # 전체 세션 라이프사이클 통합 시나리오
+    │       ├── session.js          # 실시간 대기방 폴링 + 진입 + 과목별 신청
+    │       ├── result.js           # 내 참여 기록 & 랭킹 & 라운드 상세 조회
+    │       └── full-flow.js        # 전체 세션 + 결과 조회 통합 시나리오
     ├── exchange/
     │   ├── load-profiles.js
     │   ├── helpers.js
@@ -54,21 +53,26 @@ k6/
 최신 백엔드 아키텍처([`docs/multigame.md`](file:///Users/shinnk/source/project/mju-sugangsincheong-heler/mju-sugangsincheong-helper-backend/docs/multigame.md))와 1:1로 대응되는 시나리오 및 성능 지표입니다.
 
 ### 3.1 세션 및 실시간 게임 신청 (`scenarios/session.js`)
-- **도메인 특징**: 
-  - `T` 10분 마크 세션 (`:00`, `:10`, `:20` ...)
-  - 3초 폴링 대기방 (`GET /api/v1/multigame/session/waiting-room`) → Heartbeat 갱신 (TTL 6s)
-  - 20초간 공급 엔진 진행 시 통합 수강신청 API (`POST /api/v1/multigame/session/request`) 지속 연타
+- **도메인 특징**:
+  - `T` 10분 마크 세션 (`:00`, `:10`, `:20` ...), 게임은 `T:00 ~ T:00:30` 진행 후 `T+30s`에 정산
+  - 대기방 폴링 (`GET /api/v1/multigame/session/waiting-room`) → Heartbeat 갱신
+  - `PROGRESS` 상태에서 메인 방 진입 (`POST /api/v1/multigame/session/enter`) 후 과목별 신청
+    (`POST /api/v1/multigame/session/apply?subjectId=1~6`)
+  - 한 라운드에서 유저는 **과목별로 각각 성공 가능(최대 6개)** — 랜덤 3개 과목을 독립적으로 신청
 - **SLA Thresholds**:
-  - 대기방 폴링: `http_req_duration: ['p(95)<300']` (300ms 이내)
-  - 수강신청: `http_req_duration: ['p(95)<200']` (200ms 이내 - Lua 스크립트 처리)
-  - 에러율: `http_req_failed: ['rate<0.01']` (1% 미만)
+  - `http_req_duration: ['p(95)<800']` (대기방 폴링 + 신청 반복)
+  - `http_req_failed: ['rate<0.30']` (게임이 WAITING/READY/CANCELLED이면 예상 에러 발생)
 
-### 3.2 사전 예약 (`scenarios/reservation.js`)
-- **도메인 특징**: 게임 7일 전 ~ 10분 전 DB 사전 예약 CRUD (`MULTIGAME_RESERVATION` 테이블)
-- **SLA Thresholds**: `http_req_duration: ['p(95)<500']`
+### 3.2 결과 조회 및 랭킹 (`scenarios/result.js`)
+- **도메인 특징**:
+  - 내 참여 기록 (`GET /api/v1/multigame/me/results`) — 라운드 단위 + 과목별 `results` 배열
+  - 학과 랭킹 (`GET /api/v1/multigame/rankings`) — 참가 수 + 상위 70% 평균 성공률
+  - 라운드 상세 (`GET /api/v1/multigame/results/{multigameId}`) — 게임 진행 중이면 404 허용
 
-### 3.3 정산 및 통계 (`scenarios/result.js`)
-- **도메인 특징**: 내 참여 기록 조회 (`GET /api/v1/multigame/my/history`) 및 통계 조회 (`GET /api/v1/multigame/my/stats`)
+### 3.3 전체 플로우 (`scenarios/full-flow.js`)
+- 대기방 → 진입 → 과목별 신청 → 이탈 → 라운드 상세/내 기록/랭킹 조회 통합.
+- 구 설계의 예약(reservation)·대시보드·lifecycle API는 제거되어 더 이상 존재하지 않으며,
+  dev 환경에서도 스케줄러가 10분 주기로 동작하므로 상태를 수동 전이하지 않는다.
 
 ---
 
@@ -114,18 +118,18 @@ export default function (data) {
 
   const state = waitRes.json('data.state');
 
-  // 3. PROGRESS 상태 전이 시 수강신청 연타
+  // 3. PROGRESS 상태 전이 시 과목 신청 (과목 ID는 query 파라미터)
   if (state === 'PROGRESS') {
     const requestParams = {
       ...params,
-      tags: { name: 'POST_GameRequest' },
+      tags: { name: 'POST_GameApply' },
     };
-    const payload = JSON.stringify({ subjectId: Math.floor(Math.random() * 6) + 1 });
+    const subjectId = Math.floor(Math.random() * 6) + 1;
     
-    const reqRes = http.post(`${BASE_URL}/api/v1/multigame/session/request`, payload, requestParams);
+    const reqRes = http.post(`${BASE_URL}/api/v1/multigame/session/apply?subjectId=${subjectId}`, null, requestParams);
     
     check(reqRes, {
-      'game request handled': (r) => r.status === 200,
+      'game apply handled': (r) => r.status === 200,
     });
   }
 

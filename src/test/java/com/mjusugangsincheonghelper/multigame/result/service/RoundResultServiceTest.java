@@ -3,7 +3,6 @@ package com.mjusugangsincheonghelper.multigame.result.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
@@ -16,6 +15,7 @@ import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundRecordResponse;
+import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundResult;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundDetailResponse;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundSummaryResponse;
 import java.time.Instant;
@@ -120,18 +120,33 @@ class RoundResultServiceTest {
 	class Describe_myRecords {
 
 		@Test
-		@DisplayName("내 라운드 결과를 최신순으로 페이지로 반환한다")
-		void it_returns_my_records() {
-			given(memberRepository.findByMemberIdOrderByStartTimeDesc(eq(1L), any(Pageable.class)))
-					.willReturn(new PageImpl<>(List.of(member())));
+		@DisplayName("라운드 단위로 그룹핑하여 results 배열과 함께 페이지로 반환한다")
+		void it_returns_my_records_grouped_by_round() {
+			given(memberRepository.findDistinctStartTimesByMemberId(eq(1L), any(Pageable.class)))
+					.willReturn(new PageImpl<>(List.of(START_TIME), PageRequest.of(0, 10), 1));
+			given(memberRepository.findByStartTimeInAndMemberIdOrderByStartTimeDescSubjectIdAsc(List.of(START_TIME), 1L))
+					.willReturn(List.of(member()));
 
 			Page<MyRoundRecordResponse> page = service.myRecords(1L, 0, 10);
 
 			assertThat(page.getContent()).hasSize(1);
 			MyRoundRecordResponse response = page.getContent().getFirst();
 			assertThat(response.getMultigameId()).isEqualTo(START_TIME);
-			assertThat(response.getSubjectId()).isEqualTo(2);
-			assertThat(response.getStatus()).isEqualTo("SUCCESS");
+			assertThat(response.getResults()).hasSize(1);
+			MyRoundResult result = response.getResults().getFirst();
+			assertThat(result.getSubjectId()).isEqualTo(2);
+			assertThat(result.getStatus()).isEqualTo("SUCCESS");
+		}
+
+		@Test
+		@DisplayName("참여 라운드가 없으면 빈 페이지를 반환한다")
+		void it_returns_empty_page_when_no_rounds() {
+			given(memberRepository.findDistinctStartTimesByMemberId(eq(1L), any(Pageable.class)))
+					.willReturn(Page.empty(PageRequest.of(0, 10)));
+
+			Page<MyRoundRecordResponse> page = service.myRecords(1L, 0, 10);
+
+			assertThat(page.getContent()).isEmpty();
 		}
 	}
 
@@ -158,7 +173,7 @@ class RoundResultServiceTest {
 		@DisplayName("과목 1~6 집계와 경쟁률을 반환하고 범위 밖 과목은 무시한다")
 		void it_builds_subject_stats() {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(round()));
-			given(memberRepository.findByStartTimeAndMemberId(START_TIME, 1L)).willReturn(Optional.empty());
+			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L)).willReturn(List.of());
 			// {subjectId, applied, succeeded}
 			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of(
 					new Object[]{1, 10, 8},
@@ -188,7 +203,7 @@ class RoundResultServiceTest {
 		void it_returns_zero_competition_when_capacity_zero() {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(
 					MultigameRoundEntity.builder().startTime(START_TIME).participantCount(0).capacity(0).build()));
-			given(memberRepository.findByStartTimeAndMemberId(START_TIME, 1L)).willReturn(Optional.empty());
+			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L)).willReturn(List.of());
 			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of(
 					new Object[]{1, 5, 2}));
 
@@ -199,10 +214,11 @@ class RoundResultServiceTest {
 		}
 
 		@Test
-		@DisplayName("참여한 라운드면 participated=true와 내 결과, 내 로그를 반환한다")
+		@DisplayName("참여한 라운드면 participated=true와 내 결과 목록, 내 로그를 반환한다")
 		void it_returns_my_result_and_logs_when_participated() {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(round()));
-			given(memberRepository.findByStartTimeAndMemberId(START_TIME, 1L)).willReturn(Optional.of(member()));
+			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L))
+					.willReturn(List.of(member()));
 			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of(
 					new Object[]{1, 10, 8}));
 			given(logRepository.findByStartTimeAndMemberIdOrderByAttemptedAtAsc(START_TIME, 1L))
@@ -211,28 +227,29 @@ class RoundResultServiceTest {
 			RoundDetailResponse response = service.roundDetail(START_TIME, 1L);
 
 			assertThat(response.isParticipated()).isTrue();
-			RoundDetailResponse.MyRoundResult myResult = response.getMyResult();
-			assertThat(myResult).isNotNull();
+			assertThat(response.getMyResults()).hasSize(1);
+			MyRoundResult myResult = response.getMyResults().getFirst();
 			assertThat(myResult.getSubjectId()).isEqualTo(2);
 			assertThat(myResult.getStatus()).isEqualTo("SUCCESS");
 			assertThat(response.getMyLog()).hasSize(1);
 			RoundDetailResponse.AttemptLog attempt = response.getMyLog().getFirst();
 			assertThat(attempt.getStatus()).isEqualTo("ENQUEUED");
+			assertThat(attempt.getSubjectId()).isEqualTo(2);
 			assertThat(attempt.getSeq()).isEqualTo(3);
 			assertThat(attempt.getLimit()).isEqualTo(1);
 		}
 
 		@Test
-		@DisplayName("미참여 라운드면 participated=false, myResult=null, myLog=[] 를 반환한다")
+		@DisplayName("미참여 라운드면 participated=false, myResults=[], myLog=[] 를 반환한다")
 		void it_returns_no_my_info_when_not_participated() {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(round()));
-			given(memberRepository.findByStartTimeAndMemberId(START_TIME, 1L)).willReturn(Optional.empty());
+			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L)).willReturn(List.of());
 			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of());
 
 			RoundDetailResponse response = service.roundDetail(START_TIME, 1L);
 
 			assertThat(response.isParticipated()).isFalse();
-			assertThat(response.getMyResult()).isNull();
+			assertThat(response.getMyResults()).isEmpty();
 			assertThat(response.getMyLog()).isEmpty();
 		}
 	}

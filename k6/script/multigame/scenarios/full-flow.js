@@ -1,28 +1,26 @@
 /**
  * Multigame - Full Flow 시나리오
  *
- * 예약 → 대기방 → 게임 신청 → 결과 조회 전체 플로우.
+ * 대기방 → 진입 → 과목별 신청 → 이탈 → 결과 조회 전체 플로우.
  * 실제 유저 행동을 가장 가까이 시뮬레이션.
  *
- * dev 환경에서는 lifecycle API를 사용하여 게임 상태를 수동으로 전이합니다.
+ * (주의) 구 설계의 lifecycle API(수동 상태 전이)는 제거되어 더 이상 존재하지 않는다.
+ * dev 환경에서도 스케줄러가 10분 주기로 동작하므로, 시나리오는 현재 게임 상태에 따라
+ * PROGRESS면 신청 단계를 수행하고, 그 외 상태면 폴링만 하며 결과/랭킹 조회는 항상 수행한다.
  */
 import { sleep } from 'k6';
-import http from 'k6/http';
-import { guestLogin, adminLogin } from '../../common/login.js';
+import { guestLogin } from '../../common/login.js';
 import { profiles, thresholds } from '../load-profiles.js';
 import {
-  createReservation,
-  getMyReservations,
   enterWaitingRoom,
+  enterGame,
+  leaveGame,
   requestGame,
   getGameResult,
   getMyHistory,
-  getDashboard,
+  getRankings,
   computeActiveMultigameId,
-  computeReservableMultigameId,
-  getRandomSubjectId,
-  transitionGameState,
-  getGameState,
+  getRandomSubjectIds,
 } from '../helpers.js';
 
 const tier = __ENV.LOAD_TIER || 'small';
@@ -31,85 +29,50 @@ export const options = {
   thresholds: thresholds['full-flow'],
 };
 
-/**
- * setup: 테스트 시작 전 게임 상태를 PROGRESS로 전이
- * dev 환경에서는 스케줄러가 비활성화되어 있으므로 lifecycle API를 사용합니다.
- */
-export function setup() {
-  const adminToken = adminLogin();
-  if (!adminToken) {
-    console.warn('ADMIN 로그인 실패. 상태 전이를 건너뜁니다.');
-    return { adminToken: null };
-  }
-
-  const multigameId = computeReservableMultigameId();
-  console.log(`Setup: 게임 ${multigameId} 상태를 PROGRESS로 전이합니다.`);
-
-  // 예약 생성 (참여자 확보를 위해)
-  const guestToken = guestLogin();
-  if (guestToken) {
-    createReservation(guestToken, multigameId);
-  }
-
-  // 상태 전이: WAITING → READY → PROGRESS
-  const currentState = getGameState(adminToken, multigameId);
-  console.log(`Setup: 현재 상태 = ${currentState}`);
-
-  if (currentState === 'WAITING') {
-    transitionGameState(adminToken, multigameId, 'READY');
-    sleep(0.5);
-    transitionGameState(adminToken, multigameId, 'PROGRESS');
-    sleep(0.5);
-  } else if (currentState === 'READY') {
-    transitionGameState(adminToken, multigameId, 'PROGRESS');
-    sleep(0.5);
-  }
-
-  const finalState = getGameState(adminToken, multigameId);
-  console.log(`Setup: 최종 상태 = ${finalState}`);
-
-  return { adminToken, multigameId };
-}
-
-export default function (data) {
+export default function () {
   const token = guestLogin();
   if (!token) return;
 
-  // 예약은 최소 10분 이후의 게임에 대해 생성
-  const reservableMultigameId = computeReservableMultigameId();
-  // 대기방/게임 신청은 setup에서 PROGRESS로 전이한 게임 대상
-  const activeMultigameId = data.multigameId || computeActiveMultigameId();
+  // 1. 대기방 입장 (heartbeat 갱신 + 상태 확인)
+  const waitingResult = enterWaitingRoom(token);
+  if (!waitingResult) return;
 
-  // 1. 예약 생성
-  createReservation(token, reservableMultigameId);
-  sleep(0.5);
+  if (waitingResult.state === 'PROGRESS') {
+    // 2. 메인 방 진입
+    const enterResult = enterGame(token);
+    if (!enterResult) return;
 
-  // 2. 내 예약 확인
-  getMyReservations(token);
-  sleep(0.5);
-
-  // 3. 대기방 입장 (PROGRESS로 전이된 게임)
-  const waitingRoomResult = enterWaitingRoom(token);
-  if (!waitingRoomResult) return;
-
-  // 4. 게임 상태에 따른 분기
-  if (waitingRoomResult.state === 'PROGRESS') {
-    const subjectId = getRandomSubjectId();
-    const gameResult = requestGame(token, subjectId);
-
-    if (gameResult && (gameResult.status === 'SUCCESS' || gameResult.status === 'FAIL_SOLDOUT')) {
-      sleep(0.5);
-      // 5. 결과 상세 조회 (분석서 + 내 결과 + 내 신청 로그)
-      getGameResult(token, activeMultigameId);
+    // 3. 과목별 신청 (최대 6개 중 랜덤 3개, 과목별 독립 성공 — 폴링 재시도 포함)
+    const subjectIds = getRandomSubjectIds(3);
+    for (const subjectId of subjectIds) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const gameResult = requestGame(token, subjectId);
+        if (!gameResult) break;
+        if (gameResult.status === 'SUCCESS'
+          || gameResult.status === 'FAIL_SOLDOUT'
+          || gameResult.status === 'FAIL_DUPLICATE') {
+          break;
+        }
+        sleep(0.5); // PENDING/BLOCKED → 재시도
+      }
+      sleep(0.2);
     }
-  } else if (waitingRoomResult.state === 'WAITING' || waitingRoomResult.state === 'READY') {
+
+    // 4. 이탈
+    leaveGame(token);
+  } else if (waitingResult.state === 'WAITING' || waitingResult.state === 'READY') {
     // 대기 중: 폴링 시뮬레이션
     sleep(3);
   }
 
-  // 6. 부가 정보 조회
+  // 5. 마지막 종료 라운드 상세 조회 (게임 진행 중이면 404 허용)
   sleep(1);
+  const multigameId = computeActiveMultigameId();
+  getGameResult(token, multigameId);
+  sleep(0.3);
+
+  // 6. 내 참여 기록 + 학과 랭킹
   getMyHistory(token, 0, 5);
-  sleep(0.5);
-  getDashboard(token);
+  sleep(0.3);
+  getRankings(token);
 }

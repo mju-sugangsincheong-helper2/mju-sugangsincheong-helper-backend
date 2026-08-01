@@ -66,7 +66,6 @@ class GameLifecycleSchedulerTest {
 		given(properties.getEndClose()).willReturn(java.time.LocalTime.of(5, 0));
 		// TransactionTemplate.executeWithoutResult가 실제로 Consumer를 실행하도록 한다
 		doAnswer(invocation -> {
-			@SuppressWarnings("unchecked")
 			Consumer<TransactionStatus> action = invocation.getArgument(0);
 			action.accept(null);
 			return null;

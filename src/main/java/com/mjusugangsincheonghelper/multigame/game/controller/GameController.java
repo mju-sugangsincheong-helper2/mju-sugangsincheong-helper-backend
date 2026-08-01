@@ -40,7 +40,7 @@ public class GameController {
 			multigameId(T, yyyyMMddHHmmss 14자리)와 최종 판정 상태 state(WAITING/READY/STARTING/
 			PROGRESS/ENDED/CLOSED/CANCELLED), 참여 인원 participation이 반환됩니다.
 			WAITING 또는 READY 상태일 때만 서버가 사용자의 heartbeat를 갱신해 대기 인원으로
-			집계하므로, 클라이언트는 1초 간격으로 폴링하며 PROGRESS 상태에서 진입 API
+			집계하므로, 클라이언트는 2초 간격으로 폴링하며 PROGRESS 상태에서 진입 API
 			(POST /enter)를 호출할 수 있습니다. 새벽 2시~5시에는 CLOSED가 반환됩니다.
 			비즈니스 예외는 발생하지 않으며 서버 오류 시에만 500(GLOBAL_004)이 반환됩니다.
 			""", responses = @ApiResponse(responseCode = "200", description = "대기방 상태 — multigameId(T), state(WAITING/READY/STARTING/PROGRESS/ENDED/CLOSED/CANCELLED), participation(대기/진행 참여 인원)"))

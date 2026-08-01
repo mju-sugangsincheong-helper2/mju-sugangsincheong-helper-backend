@@ -214,9 +214,9 @@ class ExchangeIntegrationTest {
 			Member memberB = memberRepository.save(Member.builder().role(Member.Role.MEMBER).name("B").department("B").build());
 			Member memberC = memberRepository.save(Member.builder().role(Member.Role.MEMBER).name("C").department("C").build());
 
-			ExchangeIntentEntity intentA = intentRepository.save(ExchangeIntentEntity.builder()
+			intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(memberA.getId()).giveCourseNo("10001").wantCourseNo("10002").build());
-			ExchangeIntentEntity intentB = intentRepository.save(ExchangeIntentEntity.builder()
+			intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(memberB.getId()).giveCourseNo("10002").wantCourseNo("10003").build());
 
 			// When: C가 등록하여 사이클 완성 (10003 -> 10001)
@@ -254,7 +254,7 @@ class ExchangeIntegrationTest {
 			// Given
 			String term = systemConfigService.getCurrentTerm();
 
-			ExchangeIntentEntity intent1 = intentRepository.save(ExchangeIntentEntity.builder()
+			intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(testMember.getId()).giveCourseNo("10001").wantCourseNo("10002").build());
 			ExchangeIntentEntity intent2 = intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(testMember.getId()).giveCourseNo("10002").wantCourseNo("10001").build());
@@ -451,7 +451,7 @@ class ExchangeIntegrationTest {
 			Member memberA = memberRepository.save(Member.builder().role(Member.Role.MEMBER).name("A").department("A").build());
 			Member memberB = memberRepository.save(Member.builder().role(Member.Role.MEMBER).name("B").department("B").build());
 
-			ExchangeIntentEntity intentA = intentRepository.save(ExchangeIntentEntity.builder()
+			intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(memberA.getId()).giveCourseNo("10023").wantCourseNo("40101").build());
 			ExchangeIntentEntity intentB = intentRepository.save(ExchangeIntentEntity.builder()
 					.term(term).memberId(memberB.getId()).giveCourseNo("40101").wantCourseNo("10023").build());

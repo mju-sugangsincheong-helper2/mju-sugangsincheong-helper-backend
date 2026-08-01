@@ -13,8 +13,11 @@ class SupplyCalculatorTest {
 	}
 
 	@Test
-	void neverOpensMoreSlotsThanEnteredParticipants() {
-		assertThat(SupplyCalculator.nextLimit(20, 23, 80, 20)).isEqualTo(23);
+	void neverOpensMoreAttemptSlotsThanSixTimesTheEnteredParticipants() {
+		// P=23, 상한 6×23=138. supply = ceil(80/4) = 20 → 20+20=40
+		assertThat(SupplyCalculator.nextLimit(20, 23, 80, 20)).isEqualTo(40);
+		// 상한(138)에 도달하면 더 이상 올리지 않는다
+		assertThat(SupplyCalculator.nextLimit(130, 23, 80, 20)).isEqualTo(138);
 	}
 
 	@Test

@@ -15,6 +15,7 @@ import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
+import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundResult;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundDetailResponse;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundSummaryResponse;
 import com.mjusugangsincheonghelper.multigame.result.service.RoundResultService;
@@ -111,12 +112,13 @@ class RoundResultControllerTest {
 							.participantCount(50)
 							.capacity(5)
 							.participated(true)
-							.myResult(RoundDetailResponse.MyRoundResult.builder()
+							.myResults(List.of(MyRoundResult.builder()
 									.subjectId(2)
 									.status("SUCCESS")
 									.createdAt(Instant.parse("2026-08-01T12:01:00Z"))
-									.build())
+									.build()))
 							.myLog(List.of(RoundDetailResponse.AttemptLog.builder()
+									.subjectId(2)
 									.status("ENQUEUED")
 									.seq(3)
 									.limit(1)
@@ -131,8 +133,9 @@ class RoundResultControllerTest {
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.multigameId").value("20260801120000"))
 					.andExpect(jsonPath("$.data.participated").value(true))
-					.andExpect(jsonPath("$.data.myResult.subjectId").value(2))
-					.andExpect(jsonPath("$.data.myResult.status").value("SUCCESS"))
+					.andExpect(jsonPath("$.data.myResults[0].subjectId").value(2))
+					.andExpect(jsonPath("$.data.myResults[0].status").value("SUCCESS"))
+					.andExpect(jsonPath("$.data.myLog[0].subjectId").value(2))
 					.andExpect(jsonPath("$.data.myLog[0].status").value("ENQUEUED"))
 					.andExpect(jsonPath("$.data.myLog[0].seq").value(3))
 					.andExpect(jsonPath("$.data.subjects[0].subjectId").value(1))
@@ -141,7 +144,7 @@ class RoundResultControllerTest {
 		}
 
 		@Test
-		@DisplayName("미참여 라운드는 participated=false와 myResult=null로 반환한다")
+		@DisplayName("미참여 라운드는 participated=false와 myResults=[]로 반환한다")
 		void it_returns_detail_without_participation() throws Exception {
 			given(roundResultService.roundDetail("20260801120000", 1L))
 					.willReturn(RoundDetailResponse.builder()
@@ -149,6 +152,7 @@ class RoundResultControllerTest {
 							.participantCount(50)
 							.capacity(5)
 							.participated(false)
+							.myResults(List.of())
 							.myLog(List.of())
 							.subjects(List.of())
 							.build());
@@ -156,7 +160,8 @@ class RoundResultControllerTest {
 			mockMvc.perform(get("/api/v1/multigame/results/20260801120000"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.participated").value(false))
-					.andExpect(jsonPath("$.data.myResult").isEmpty())
+					.andExpect(jsonPath("$.data.myResults").isArray())
+					.andExpect(jsonPath("$.data.myResults").isEmpty())
 					.andExpect(jsonPath("$.data.myLog").isArray());
 		}
 

@@ -24,6 +24,9 @@ public class RankingService {
 	private final MultigameRoundMemberRepository roundMemberRepository;
 	private final MemberRepository memberRepository;
 
+	/** 한 라운드에서 취득할 수 있는 최대 과목 수 (과목 1~6). */
+	private static final int SUBJECT_COUNT_PER_ROUND = 6;
+
 	public MultigameRankingResponse rankings(long memberId) {
 		Map<String, List<Double>> ratesByDepartment = collectSuccessRatesByDepartment();
 
@@ -53,8 +56,11 @@ public class RankingService {
 		for (Object[] row : roundMemberRepository.aggregateByMemberDepartment()) {
 			String department = (String) row[1];
 			long successCount = ((Number) row[2]).longValue();
-			long totalCount = ((Number) row[3]).longValue();
-			double successRate = totalCount > 0 ? successCount * 100.0 / totalCount : 0.0;
+			long roundsPlayed = ((Number) row[3]).longValue();
+			// 성공률 = 성공 과목 수 / (참여 라운드 수 × 6). 라운드당 최대 6과목 중 몇 개를
+			// 쟁취했는지(평균 취득률)를 고정 분모로 측정한다. 신청하지 않은 라운드는 집계 대상이
+			// 아니므로(멤버 레코드 없음), 진입만 한 유저는 성적 집계에서 제외된다.
+			double successRate = roundsPlayed > 0 ? successCount * 100.0 / (roundsPlayed * SUBJECT_COUNT_PER_ROUND) : 0.0;
 			ratesByDepartment.computeIfAbsent(department, key -> new ArrayList<>()).add(successRate);
 		}
 		return ratesByDepartment;

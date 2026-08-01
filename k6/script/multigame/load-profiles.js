@@ -41,10 +41,6 @@ export const profiles = {
  * 이러한 예상된 에러는 전체 요청의 일정 비율을 차지할 수 있습니다.
  */
 export const thresholds = {
-  reservation: {
-    http_req_duration: ['p(95)<500'],
-    http_req_failed: ['rate<0.01'],
-  },
   session: {
     // 대기방 폴링(3초) + 게임 신청(반복)이므로 p95 기준 느슨하게
     // 게임이 WAITING/READY/CANCELLED 상태이면 예상된 에러 발생

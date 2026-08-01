@@ -61,11 +61,11 @@ class RankingServiceTest {
 		@Test
 		@DisplayName("학과별 참가 수와 상위 70% 성공률 순위를 반환한다")
 		void it_returns_department_rankings() {
-			// {memberId, department, successCount, totalCount}
+			// {memberId, department, successCount, roundsPlayed} → 성공률 = success / (rounds × 6)
 			aggregateRows(
-					new Object[]{1L, "컴퓨터공학과", 8L, 10L}, // 80.0
-					new Object[]{2L, "컴퓨터공학과", 2L, 10L}, // 20.0
-					new Object[]{3L, "전자공학과", 1L, 2L});   // 50.0
+					new Object[]{1L, "컴퓨터공학과", 3L, 1L}, // 3/(1×6) = 50.0
+					new Object[]{2L, "컴퓨터공학과", 3L, 5L}, // 3/(5×6) = 10.0
+					new Object[]{3L, "전자공학과", 3L, 2L});  // 3/(2×6) = 25.0
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member("컴퓨터공학과")));
 
 			MultigameRankingResponse response = service.rankings(1L);
@@ -76,11 +76,11 @@ class RankingServiceTest {
 			assertThat(response.getParticipation()).extracting(MultigameRankingResponse.ParticipationEntry::getParticipantCount)
 					.containsExactly(2, 1);
 
-			// 성적: 컴퓨터공학과(80,20)→50.0 / 전자공학과(50)→50.0 → 동점 시 참가자 수 많은 학과 우선
+			// 성적: 컴퓨터공학과(50,10)→30.0 / 전자공학과(25)→25.0
 			assertThat(response.getPerformance()).extracting(MultigameRankingResponse.PerformanceEntry::getDepartment)
 					.containsExactly("컴퓨터공학과", "전자공학과");
 			assertThat(response.getPerformance()).extracting(MultigameRankingResponse.PerformanceEntry::getTop70AvgSuccessRate)
-					.containsExactly(50.0, 50.0);
+					.containsExactly(30.0, 25.0);
 
 			// 내 학과: 참가 1위, 성적 1위
 			assertThat(response.getMyDepartment()).isNotNull();
@@ -88,15 +88,15 @@ class RankingServiceTest {
 			assertThat(response.getMyDepartment().getParticipationRank()).isEqualTo(1);
 			assertThat(response.getMyDepartment().getPerformanceRank()).isEqualTo(1);
 			assertThat(response.getMyDepartment().getParticipantCount()).isEqualTo(2);
-			assertThat(response.getMyDepartment().getTop70AvgSuccessRate()).isEqualTo(50.0);
+			assertThat(response.getMyDepartment().getTop70AvgSuccessRate()).isEqualTo(30.0);
 		}
 
 		@Test
 		@DisplayName("성공률이 다른 학과는 성공률 내림차순으로 정렬된다")
 		void it_sorts_by_success_rate() {
 			aggregateRows(
-					new Object[]{1L, "경영학과", 9L, 10L},   // 90.0
-					new Object[]{2L, "전자공학과", 1L, 10L}); // 10.0
+					new Object[]{1L, "경영학과", 6L, 1L},   // 6/(1×6) = 100.0
+					new Object[]{2L, "전자공학과", 6L, 5L}); // 6/(5×6) = 20.0
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member("경영학과")));
 
 			MultigameRankingResponse response = service.rankings(1L);
@@ -141,7 +141,7 @@ class RankingServiceTest {
 		@Test
 		@DisplayName("기록이 없는 유저는 성공률 0으로 참가자 수에 포함된다")
 		void it_counts_failed_only_users_as_participants() {
-			// totalCount = 0 → 성공률 0 (0으로 나누기 방지)
+			// roundsPlayed = 0 → 성공률 0 (0으로 나누기 방지)
 			aggregateRows(new Object[]{1L, "경영학과", 0L, 0L});
 			given(memberRepository.findById(anyLong())).willReturn(Optional.of(member("경영학과")));
 

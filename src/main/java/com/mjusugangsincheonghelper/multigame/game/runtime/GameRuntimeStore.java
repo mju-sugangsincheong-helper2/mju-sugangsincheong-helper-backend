@@ -48,7 +48,7 @@ public class GameRuntimeStore {
 	}
 
 	public long removeExpiredHeartbeatsAndCount(Instant now) {
-		Long count = redis.execute(ACTIVE_WAITING_COUNT, List.of(HEARTBEAT), String.valueOf(now.minusSeconds(3).toEpochMilli()));
+		Long count = redis.execute(ACTIVE_WAITING_COUNT, List.of(HEARTBEAT), String.valueOf(now.minusSeconds(4).toEpochMilli()));
 		return count == null ? 0 : count;
 	}
 
@@ -84,7 +84,9 @@ public class GameRuntimeStore {
 	public void leave(long memberId) {
 		String member = String.valueOf(memberId);
 		redis.opsForSet().remove(PARTICIPANTS, member);
-		redis.opsForZSet().remove(QUEUE, member);
+		// 대기열 키는 (유저, 과목) 단위이므로, 해당 유저의 모든 과목별 대기 항목을 제거한다
+		redis.opsForZSet().remove(QUEUE, member + ":1", member + ":2", member + ":3",
+				member + ":4", member + ":5", member + ":6");
 	}
 
 	public long participants() {

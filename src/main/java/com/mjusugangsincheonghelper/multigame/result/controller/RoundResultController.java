@@ -53,9 +53,9 @@ public class RoundResultController {
 			특정 라운드의 상세 정보를 조회합니다. 라운드 메타(참여자 수 participantCount, 좌석 수 capacity,
 			결과 영속화 시각 createdAt)와 과목 1~6 각각의 신청 수(applied), 성공 수(succeeded),
 			경쟁률(competitionRate = applied / capacity)을 반환하며, 현재 로그인한 사용자가 해당 라운드에
-			참여했는지(participated)와 참여했다면 내 최종 결과(myResult: subjectId/status/createdAt)와
-			신청 시도 타임라인(myLog: ENQUEUED/SUCCESS/FAIL_SOLDOUT/FAIL_DUPLICATE)을 함께 반환합니다.
-			미참여 라운드는 participated=false, myResult=null, myLog=[] 로 반환되어 프론트에서 자신의 결과를
+			참여했는지(participated)와 참여했다면 내 최종 결과 목록(myResults: 과목별 subjectId/status/createdAt)과
+			신청 시도 타임라인(myLog: 과목별 ENQUEUED/SUCCESS/FAIL_SOLDOUT/FAIL_DUPLICATE)을 함께 반환합니다.
+			미참여 라운드는 participated=false, myResults=[], myLog=[] 로 반환되어 프론트에서 자신의 결과를
 			특별히 처리할 수 있습니다. 개인 식별 정보(memberId)는 본인 데이터 외 포함되지 않으며,
 			존재하지 않는 라운드면 404(MULTIGAME_004)를 반환합니다.
 			""", responses = @ApiResponse(responseCode = "200", description = "라운드 상세 (메타 + 분석서 + 내 참여 정보)"))

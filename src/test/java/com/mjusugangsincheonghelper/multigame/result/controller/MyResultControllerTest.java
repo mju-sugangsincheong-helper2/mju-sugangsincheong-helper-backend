@@ -14,6 +14,7 @@ import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
 import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundRecordResponse;
+import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundResult;
 import com.mjusugangsincheonghelper.multigame.result.service.RoundResultService;
 import java.time.Instant;
 import java.util.List;
@@ -78,9 +79,12 @@ class MyResultControllerTest {
 			given(roundResultService.myRecords(anyLong(), eq(0), eq(10)))
 					.willReturn(new PageImpl<>(List.of(MyRoundRecordResponse.builder()
 							.multigameId("20260801120000")
-							.subjectId(2)
-							.status("SUCCESS")
 							.createdAt(Instant.parse("2026-08-01T12:01:00Z"))
+							.results(List.of(MyRoundResult.builder()
+									.subjectId(2)
+									.status("SUCCESS")
+									.createdAt(Instant.parse("2026-08-01T12:01:00Z"))
+									.build()))
 							.build()), PageRequest.of(0, 10), 1));
 
 			mockMvc.perform(get("/api/v1/multigame/me/results")
@@ -88,8 +92,8 @@ class MyResultControllerTest {
 							.param("size", "10"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data[0].multigameId").value("20260801120000"))
-					.andExpect(jsonPath("$.data[0].subjectId").value(2))
-					.andExpect(jsonPath("$.data[0].status").value("SUCCESS"))
+					.andExpect(jsonPath("$.data[0].results[0].subjectId").value(2))
+					.andExpect(jsonPath("$.data[0].results[0].status").value("SUCCESS"))
 					.andExpect(jsonPath("$.page.pageNumber").value(0));
 		}
 	}

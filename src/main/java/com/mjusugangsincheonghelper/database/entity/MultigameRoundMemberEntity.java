@@ -19,7 +19,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
 @Table(name = "multigame_round_member",
-		uniqueConstraints = @UniqueConstraint(columnNames = {"start_time", "member_id"}),
+		uniqueConstraints = @UniqueConstraint(columnNames = {"start_time", "member_id", "subject_id"}),
 		indexes = @Index(name = "idx_multigame_round_member_member_id", columnList = "member_id"))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

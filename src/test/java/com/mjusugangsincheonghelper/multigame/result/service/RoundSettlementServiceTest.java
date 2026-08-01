@@ -18,6 +18,7 @@ import com.mjusugangsincheonghelper.database.repository.MultigameRoundLogReposit
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundEvent;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement;
+import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement.MemberSubject;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.util.Collection;
@@ -73,8 +74,7 @@ class RoundSettlementServiceTest {
 	 * 두 개의 batchUpdate(멤버 업서트 / 로그 삽입)를 SQL 문자열로 구분하여
 	 * 각각의 ParameterizedPreparedStatementSetter를 캡처한다.
 	 */
-	@SuppressWarnings("unchecked")
-	private void captureSetters(AtomicReference<ParameterizedPreparedStatementSetter<Map.Entry<Long, RoundEvent>>> memberSetter,
+	private void captureSetters(AtomicReference<ParameterizedPreparedStatementSetter<Map.Entry<MemberSubject, RoundEvent>>> memberSetter,
 			AtomicReference<ParameterizedPreparedStatementSetter<RoundEvent>> eventSetter) {
 		doAnswer(invocation -> {
 			String sql = invocation.getArgument(0);
@@ -139,11 +139,25 @@ class RoundSettlementServiceTest {
 		}
 
 		@Test
-		@DisplayName("멤버 업서트는 최종 상태와 신청 과목을 바인딩한다")
+		@DisplayName("같은 유저가 과목별로 여러 레코드를 가지면 각각 업서트한다")
+		void it_batches_multi_subject_member_upserts() {
+			given(roundRepository.findById(START_TIME)).willReturn(Optional.empty());
+			RoundSettlement settlement = RoundSettlement.from(START_TIME, 2, 1, List.of(
+					"1:SUCCESS:1:1:1:1", "1:SUCCESS:2:2:2:1", "2:ENQUEUED:3:3:3:0"));
+
+			service.save(settlement);
+
+			ArgumentCaptor<Collection<?>> membersCaptor = ArgumentCaptor.forClass(Collection.class);
+			verify(jdbcTemplate).batchUpdate(argThat(sql -> sql.contains("multigame_round_member")), membersCaptor.capture(), anyInt(), any());
+			assertThat(membersCaptor.getValue()).hasSize(3);
+		}
+
+		@Test
+		@DisplayName("멤버 업서트는 최종 상태와 과목별 키를 바인딩한다")
 		void it_binds_member_upsert_parameters() throws Exception {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.empty());
 			RoundSettlement settlement = settlement();
-			AtomicReference<ParameterizedPreparedStatementSetter<Map.Entry<Long, RoundEvent>>> memberSetter = new AtomicReference<>();
+			AtomicReference<ParameterizedPreparedStatementSetter<Map.Entry<MemberSubject, RoundEvent>>> memberSetter = new AtomicReference<>();
 			AtomicReference<ParameterizedPreparedStatementSetter<RoundEvent>> eventSetter = new AtomicReference<>();
 			captureSetters(memberSetter, eventSetter);
 
@@ -152,18 +166,18 @@ class RoundSettlementServiceTest {
 			assertThat(memberSetter.get()).isNotNull();
 			PreparedStatement ps = mock(PreparedStatement.class);
 
-			Map.Entry<Long, RoundEvent> successEntry = settlement.finalMembers().entrySet().stream()
-					.filter(entry -> entry.getKey() == 1L)
+			Map.Entry<MemberSubject, RoundEvent> successEntry = settlement.finalMembers().entrySet().stream()
+					.filter(entry -> entry.getKey().memberId() == 1L)
 					.findFirst()
 					.orElseThrow();
 			memberSetter.get().setValues(ps, successEntry);
 			verify(ps).setString(1, START_TIME);
 			verify(ps).setLong(2, 1L);
-			verify(ps).setInt(3, 1); // SUCCESS 유저의 subjectId
+			verify(ps).setInt(3, successEntry.getKey().subjectId()); // SUCCESS 유저의 subjectId
 			verify(ps).setString(4, "SUCCESS");
 
-			Map.Entry<Long, RoundEvent> queuedEntry = settlement.finalMembers().entrySet().stream()
-					.filter(entry -> entry.getKey() == 2L)
+			Map.Entry<MemberSubject, RoundEvent> queuedEntry = settlement.finalMembers().entrySet().stream()
+					.filter(entry -> entry.getKey().memberId() == 2L)
 					.findFirst()
 					.orElseThrow();
 			memberSetter.get().setValues(ps, queuedEntry);
@@ -188,7 +202,7 @@ class RoundSettlementServiceTest {
 		void it_binds_event_parameters() throws Exception {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.empty());
 			RoundSettlement settlement = settlement();
-			AtomicReference<ParameterizedPreparedStatementSetter<Map.Entry<Long, RoundEvent>>> memberSetter = new AtomicReference<>();
+			AtomicReference<ParameterizedPreparedStatementSetter<Map.Entry<MemberSubject, RoundEvent>>> memberSetter = new AtomicReference<>();
 			AtomicReference<ParameterizedPreparedStatementSetter<RoundEvent>> eventSetter = new AtomicReference<>();
 			captureSetters(memberSetter, eventSetter);
 

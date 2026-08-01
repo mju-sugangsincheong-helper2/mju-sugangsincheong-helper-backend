@@ -21,19 +21,19 @@ public class RoundDetailResponse {
 	private int capacity;
 	private Instant createdAt;
 	private boolean participated;
-	private MyRoundResult myResult;
+	private List<MyRoundResult> myResults;
 	private List<AttemptLog> myLog;
 	private List<SubjectStat> subjects;
 
 	public static RoundDetailResponse from(MultigameRoundEntity round, List<Object[]> aggregateRows,
-			MultigameRoundMemberEntity myRecord, List<MultigameRoundLogEntity> myLogs) {
+			List<MultigameRoundMemberEntity> myRecords, List<MultigameRoundLogEntity> myLogs) {
 		return RoundDetailResponse.builder()
 				.multigameId(round.getStartTime())
 				.participantCount(round.getParticipantCount())
 				.capacity(round.getCapacity())
 				.createdAt(round.getCreatedAt())
-				.participated(myRecord != null)
-				.myResult(myRecord != null ? MyRoundResult.from(myRecord) : null)
+				.participated(!myRecords.isEmpty())
+				.myResults(myRecords.stream().map(MyRoundResult::from).toList())
 				.myLog(myLogs.stream().map(AttemptLog::from).toList())
 				.subjects(buildSubjectStats(round.getCapacity(), aggregateRows))
 				.build();
@@ -69,25 +69,8 @@ public class RoundDetailResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class MyRoundResult {
-		private int subjectId;
-		private String status;
-		private Instant createdAt;
-
-		public static MyRoundResult from(MultigameRoundMemberEntity member) {
-			return MyRoundResult.builder()
-					.subjectId(member.getSubjectId())
-					.status(member.getStatus())
-					.createdAt(member.getCreatedAt())
-					.build();
-		}
-	}
-
-	@Getter
-	@Builder
-	@NoArgsConstructor
-	@AllArgsConstructor
 	public static class AttemptLog {
+		private int subjectId;
 		private String status;
 		private long seq;
 		private int limit;
@@ -95,6 +78,7 @@ public class RoundDetailResponse {
 
 		public static AttemptLog from(MultigameRoundLogEntity log) {
 			return AttemptLog.builder()
+					.subjectId(log.getSubjectId())
 					.status(log.getAttemptStatus())
 					.seq(log.getAttemptSeq())
 					.limit(log.getCurrentLimit())

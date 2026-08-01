@@ -37,8 +37,8 @@ erDiagram
         bigint id PK
         char(14) start_time FK "T (MULTIGAME_ROUND 참조)"
         bigint member_id FK
-        int subject_id "1~6 중 게임 중 신청한 과목 (하드코딩)"
-        varchar(20) status "SUCCESS, FAIL_SOLDOUT"
+        int subject_id "1~6 중 신청/성공한 과목 (하드코딩). 유저당 과목별 최대 6개 레코드 가능"
+        varchar(20) status "SUCCESS, FAIL_SOLDOUT (과목별 최종 상태)"
         timestamp created_at "결과 영속화 시각"
     }
 
@@ -60,11 +60,11 @@ erDiagram
    - `endingCron`이 게임 종료 시점(`T+30s`)에 생성합니다.
    - 해당 게임(`T`)의 최종 참여자 수(`participant_count`, P 기준)와 **실제 운영된 과목별 좌석(`capacity`, readyCron의 W 기준 `round(W / 2)`)**을 스냅샷으로 저장합니다. (게임 시작 시점에 좌석으로 깔린 값 그대로 기록 — 종료 시점의 P로 다시 계산하지 않으므로, 이후 로그 분석 시 "그 게임의 좌석은 몇 개였는가"가 명확합니다.)
    - 게임당 단 1개의 레코드만 가지며, 식별자는 `start_time`(T)입니다.
-2. **MULTIGAME_ROUND_MEMBER (유저별 최종 결과)**
-   - `endingCron`이 Redis의 이벤트 로그를 분석하여 유저당 **최종 상태** 1건만 Upsert 했던 테이블입니다.
+2. **MULTIGAME_ROUND_MEMBER (유저·과목별 최종 결과)**
+   - `endingCron`이 Redis의 이벤트 로그를 분석하여 **(유저, 과목) 단위** 최종 상태를 Upsert 하는 테이블입니다. 한 라운드에서 한 유저는 과목별로 각각 성공할 수 있어 **최대 6개 레코드**(과목 1~6 각각 1건)를 가질 수 있습니다.
    - `MULTIGAME_ROUND`의 `start_time`을 외래키로 참조합니다.
-   - `start_time`(T), `member_id`를 복합 유니크 키로 사용하여 멱등성을 보장합니다.
-   - `status`는 `SUCCESS`, `FAIL_SOLDOUT`만 기록됩니다. (중복 수강 실패인 `FAIL_DUPLICATE`는 이미 성공한 유저에게만 발생하므로, 유저의 최종 상태는 항상 `SUCCESS`가 됩니다. 시간 내 처리되지 못하고 큐에 남은 유저는 `FAIL_SOLDOUT`으로 처리됩니다.)
+   - `start_time`(T), `member_id`, `subject_id`를 복합 유니크 키로 사용하여 멱등성을 보장합니다.
+   - `status`는 `SUCCESS`, `FAIL_SOLDOUT`만 기록됩니다. (같은 과목 중복 신청 실패인 `FAIL_DUPLICATE`는 해당 과목에 이미 성공한 유저에게만 발생하므로, 과목별 최종 상태는 `SUCCESS` 또는 `FAIL_SOLDOUT`이 됩니다. 시간 내 처리되지 못하고 큐에 남은 시도는 `FAIL_SOLDOUT`으로 처리됩니다.)
 3. **MULTIGAME_ROUND_LOG (모든 신청 시도 기록)**
    - `endingCron`이 Redis의 `event_log:stream`에 쌓인 모든 이벤트를 읽어 Batch Insert 하는 로그 테이블입니다.
    - 폴링(PENDING)으로 인한 무의미한 로그는 기록되지 않으며, 상태가 전이되는 시점(최초 진입, 성공, 실패)의 이벤트만 보관됩니다.
@@ -96,7 +96,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 
 1. **W = wating_participants (대기방 참여자 수)**
    - 대기방 API 폴링 시 `heartbeat` ZSET에 현재 타임스탬프와 함께 갱신된 유저의 수입니다.
-   - `readyCron`(T-5s) 시점에 만료된(3초 이상 경과) 데이터를 삭제(`ZREMRANGEBYSCORE`)한 후 `ZCARD`를 통해 카운트되며, 게임 개최 여부(2명 이상) 및 Supply Engine의 **초기 공급량** 산정에 사용됩니다.
+   - `readyCron`(T-5s) 시점에 만료된(4초 이상 경과) 데이터를 삭제(`ZREMRANGEBYSCORE`)한 후 `ZCARD`를 통해 카운트되며, 게임 개최 여부(2명 이상) 및 Supply Engine의 **초기 공급량** 산정에 사용됩니다.
 2. **P = progress_participants (진행 참여자 수)**
    - `PROGRESS` 상태에서 유저가 직접 **진입 API**를 호출하여 메인 방에 들어온 실시간 참여자 수입니다.
    - Supply Engine은 이 값을 **총 공급의 상한선**으로 사용합니다.
@@ -180,7 +180,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
   4. `LRANGE multigame:round:event_log:stream 0 -1` 을 통해 모든 신청 이벤트 로그를 조회합니다.
   5. Java 애플리케이션에서 로그를 순회하며 두 가지 작업을 수행합니다.
      - **`MULTIGAME_ROUND_LOG` 테이블:** 전체 로그를 JDBC Batch Insert 합니다.
-     - **`MULTIGAME_ROUND_MEMBER` 테이블:** 유저 ID를 키로 하는 Map을 만들어 최종 상태(우선순위: SUCCESS > FAIL_SOLDOUT > FAIL_DUPLICATE > ENQUEUED)로 덮어쓴 뒤 Upsert 합니다. 단, 최종적으로 큐에 남아 처리되지 못한 유저는 `FAIL_SOLDOUT`으로 기록합니다. (중복 수강 실패인 `FAIL_DUPLICATE`는 이미 성공한 유저에게만 발생하므로, 유저의 최종 상태는 항상 `SUCCESS`가 됩니다.)
+     - **`MULTIGAME_ROUND_MEMBER` 테이블:** **(유저, 과목) 키**를 갖는 Map을 만들어 과목별 최종 상태(우선순위: SUCCESS > FAIL_SOLDOUT > FAIL_DUPLICATE > ENQUEUED)로 덮어쓴 뒤 Upsert 합니다. 단, 최종적으로 큐에 남아 처리되지 못한 시도는 `FAIL_SOLDOUT`으로 기록합니다. (같은 과목 중복 신청 실패인 `FAIL_DUPLICATE`는 해당 과목에 이미 성공한 유저에게만 발생하므로, 과목별 최종 상태는 `SUCCESS` 또는 `FAIL_SOLDOUT`이 됩니다.) 한 유저가 여러 과목에 성공하면 과목 수만큼 레코드가 생성됩니다.
   6. `MULTIGAME_ROUND` 테이블에 메타 정보(participant_count=P, capacity=실제 운영 좌석 `round(W / 2)`)를 Upsert 합니다.
   7. **[데이터 정리]** `runtimeStore.clear()`가 현재 게임의 **전체 전역 키**(`state`, `heartbeat`, `waiting_count`, `participants`, `queue`, `seq`, `limit`, `seats`, `success_members`, `event_log`)를 `DEL`로 초기화합니다. 대기방 heartbeat도 이 시점에 정리됩니다. 이후 시간이 흘러 다음 게임 대기 시간대(T+1m)에 진입하면 자동으로 대기 상태가 됩니다.
 
@@ -206,7 +206,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 
 ### Layer 2-1: 대기방 (Waiting)
 
-- **목적:** 게임 시작 전 클라이언트가 대기하며 접속을 유지하는 공간. 프론트엔드는 1초 간격으로 폴링합니다.
+- **목적:** 게임 시작 전 클라이언트가 대기하며 접속을 유지하는 공간. 프론트엔드는 2초 간격으로 폴링합니다.
 - **API:** `GET /api/v1/multigame/session/waiting-room`
 - **동작:** 서버는 현재 시각 기준 타겟 T를 계산하여 **Time Phase**를 도출합니다. `READY_PHASE`와 `PROGRESS_PHASE` 구간에서는 Redis를 조회하여 최종 판정 상태를 반환합니다. `WAITING` 또는 `READY` 상태일 때만 heartbeat를 갱신합니다.
 - **Heartbeat 갱신 방식:** `ZADD multigame:round:heartbeat:ledger {current_timestamp_ms} {userId}` 명령을 통해 단일 ZSET에 유저의 생존을 기록합니다. 만료된 데이터는 TTL이 아닌 `readyCron`에서 `ZREMRANGEBYSCORE`를 통해 주기적으로 청소됩니다.
@@ -215,7 +215,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 
 | 시간 구간 (Phase)         | 최종 상태     | 응답 예시                                                    | 프론트 액션                     |
 | ------------------------- | ------------- | ------------------------------------------------------------ | ------------------------------- |
-| T-9m ~ T-5s (`WAITING`)   | `WAITING`     | `{ "multigameId": "T", "state": "WAITING", "participation": 23 }` | 대기 UI 유지, 1초 하트비트 전송 |
+| T-9m ~ T-5s (`WAITING`)   | `WAITING`     | `{ "multigameId": "T", "state": "WAITING", "participation": 23 }` | 대기 UI 유지, 2초 하트비트 전송 |
 | T-5s ~ T (`READY`)        | `READY`       | `{ "multigameId": "T", "state": "READY", "participation": 23 }` | "곧 시작됩니다" UI 노출         |
 | T ~ T+30s (`PROGRESS`)    | `PROGRESS`    | `{ "multigameId": "T", "state": "PROGRESS", "participation": 23 }` | **"게임 입장하기" 버튼 활성화** |
 | T+30s ~ T+1m (`ENDED`)    | `ENDED`       | `{ "multigameId": "T", "state": "ENDED", "participation": 23 }` | "게임 종료, 다음 대기" UI 노출  |
@@ -228,7 +228,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
   - **동작:** 상태 평가 결과가 `PROGRESS`인지 검문. 맞으면 `multigame:round:participants:ledger` (Set)에 유저 ID 추가하고 메인 방 데이터 반환.
   - **응답:** `200 OK` (메인 방 데이터), `409 ERROR` (게임 진행 중 아님), `410 ERROR` (게임 취소됨)
 - **나가기 API:** `POST /api/v1/multigame/session/leave`
-  - **동작:** `multigame:round:participants:ledger`에서 유저 ID 제거. 대기열(`multigame:round:queue:ledger`)에도 존재하면 함께 제거하여 불필요한 대기/공급을 방지합니다.
+  - **동작:** `multigame:round:participants:ledger`에서 유저 ID 제거. 대기열(`multigame:round:queue:ledger`)에 남아 있는 해당 유저의 **과목별 대기 항목(`{userId}:{subjectId}`) 전부**를 제거하여 불필요한 대기/공급을 방지합니다.
   - **응답:** `200 OK`
 
 ### Layer 2-3: Progress & Request Thread (Lua 1-Trap)
@@ -242,18 +242,18 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 #### 데이터 특성 명확화
 
 - **절댓값 (Absolute):**
-  - `score` (ZSET 점수) = `seq` (유저 순번): 유저가 대기열에 등록된 순간 부여받은 고유 번호
-  - `limit` (진입 허용선): Supply Engine이 누적해서 증가시키는 총 입장 허용 인원
+  - `score` (ZSET 점수) = `seq` (시도 순번): **(유저, 과목) 시도**가 대기열에 등록된 순간 부여받은 고유 번호. 같은 유저라도 과목별로 각각 새 시도로 인식되어 서로 다른 `seq`를 받는다.
+  - `limit` (진입 허용선): Supply Engine이 누적해서 증가시키는 총 입장 허용 시도 수
 - **상댓값 (Relative):**
-  - `L` (큐의 길이): 현재 대기열에 실제로 대기 중인 유저의 수.
+  - `L` (큐의 길이): 현재 대기열에 실제로 대기 중인 **시도**(유저:과목)의 수.
 
 #### Lua 스크립트 (상태 전이 시점에만 이벤트 로깅)
 
 *(주의: 전역 키(Global Key)를 사용하므로, 애플리케이션에서 KEYS 배열에 T가 포함되지 않은 전역 키 문자열을 그대로 넘겨주어야 합니다. PENDING 응답 시에는 로그를 남기지 않아 폴링 노이즈를 제거합니다.)*
 
 ```lua
--- 파라미터: KEYS[1]=state, KEYS[2]=queue, KEYS[3]=seq, 
---           KEYS[4]=limit, KEYS[5]=seats, KEYS[6]=success_members, 
+-- 파라미터: KEYS[1]=state, KEYS[2]=queue, KEYS[3]=seq,
+--           KEYS[4]=limit, KEYS[5]=seats, KEYS[6]=success_members,
 --           KEYS[7]=event_log
 --           ARGV[1]=member(유저ID), ARGV[2]=subject_id(과목 1~6), ARGV[3]=ts(현재 타임스탬프)
 --
@@ -266,48 +266,50 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 
 -- 1. 상태 검문
 local state = redis.call('GET', KEYS[1])
-if state ~= 'PROGRESS' then 
-    return {'BLOCKED', state} 
+if state ~= 'PROGRESS' then
+    return {'BLOCKED', state}
 end
 
 -- 2. 대기열 재진입 및 기존 순번 확인
-local seq = redis.call('ZSCORE', KEYS[2], ARGV[1])
+--    대기열 키는 (유저, 과목) 단위: 한 라운드에서 과목별로 각각 신청/성공이 가능하다
+local attempt = ARGV[1] .. ':' .. ARGV[2]
+local seq = redis.call('ZSCORE', KEYS[2], attempt)
 if not seq then
-    -- 큐에 없으면 신규 등록
+    -- 큐에 없으면 신규 등록 (유저가 과목을 바꿔 신청하면 새로운 시도로 취급)
     seq = redis.call('INCR', KEYS[3])
-    redis.call('ZADD', KEYS[2], seq, ARGV[1])
-    
+    redis.call('ZADD', KEYS[2], seq, attempt)
+
     -- [이벤트 로깅] 최초 대기열 진입 시 1회만 로그를 남김 (상태: ENQUEUED)
     redis.call('RPUSH', KEYS[7], ARGV[1]..':ENQUEUED:'..ARGV[2]..':'..ARGV[3]..':'..seq..':0')
 end
 
 -- 3. 진입 허용선 확인
-local limit = tonumber(redis.call('GET', KEYS[4]))
-if tonumber(seq) > limit then 
+local limit = tonumber(redis.call('GET', KEYS[4]) or '0')
+if tonumber(seq) > limit then
     -- PENDING일 때는 로그를 남기지 않고 바로 반환 (폴링 노이즈 방지)
-    return {'PENDING', seq, limit} 
+    return {'PENDING', seq, limit}
 end
 
--- 4. 중복 수강 검증
-if redis.call('SISMEMBER', KEYS[6], ARGV[1]) == 1 then 
-    redis.call('ZREM', KEYS[2], ARGV[1])
+-- 4. 중복 수강 검증 (같은 과목만 차단. 다른 과목은 별도로 성공 가능)
+if redis.call('SISMEMBER', KEYS[6], attempt) == 1 then
+    redis.call('ZREM', KEYS[2], attempt)
     redis.call('RPUSH', KEYS[7], ARGV[1]..':FAIL_DUPLICATE:'..ARGV[2]..':'..ARGV[3]..':'..seq..':'..limit)
-    return {'FAIL_DUPLICATE', ARGV[2]} 
+    return {'FAIL_DUPLICATE', ARGV[2]}
 end
 
 -- 5. 좌석 차감
 local remaining = redis.call('HINCRBY', KEYS[5], ARGV[2], -1)
 
 if remaining >= 0 then
-    -- 성공
-    redis.call('SADD', KEYS[6], ARGV[1])
-    redis.call('ZREM', KEYS[2], ARGV[1])
+    -- 성공 (유저:과목 쌍을 성공 집합에 기록)
+    redis.call('SADD', KEYS[6], attempt)
+    redis.call('ZREM', KEYS[2], attempt)
     redis.call('RPUSH', KEYS[7], ARGV[1]..':SUCCESS:'..ARGV[2]..':'..ARGV[3]..':'..seq..':'..limit)
     return {'SUCCESS', ARGV[2], remaining}
 else
     -- 정원 초과 (차감 복구)
     redis.call('HINCRBY', KEYS[5], ARGV[2], 1)
-    redis.call('ZREM', KEYS[2], ARGV[1])
+    redis.call('ZREM', KEYS[2], attempt)
     redis.call('RPUSH', KEYS[7], ARGV[1]..':FAIL_SOLDOUT:'..ARGV[2]..':'..ARGV[3]..':'..seq..':'..limit)
     return {'FAIL_SOLDOUT', ARGV[2]}
 end
@@ -322,8 +324,8 @@ end
 - **게임 시간:** 30초 (`T` ~ `T+30s`)
 - **환경 변수 (3가지):**
   1. `W` (wating_participants): `readyCron`(T-5s)에서 저장한 대기방 인원 수 스냅샷. (초기 폭발 공급량 산정)
-  2. `P` (progress_participants): `PROGRESS` 상태에서 진입 API를 호출한 실시간 참여자 수. (총 공급의 상한선 역할)
-  3. `L`: 매초 조회하는 대기열의 길이. (초당 공급 속도 결정)
+  2. `P` (progress_participants): `PROGRESS` 상태에서 진입 API를 호출한 실시간 참여자 수. (총 공급 상한 `6P`의 기반 — 과목별 시도를 고려)
+  3. `L`: 매초 조회하는 대기열의 길이(대기 중인 **시도** 수, 유저:과목 단위). (초당 공급 속도 결정)
 - **목표 (UX):**
   1. 메인 방에 진입한 유저(`P`)는 게임 종료 전까지 **반드시 100% 처리**한다.
   2. 대기자가 많을 경우 초기 20%만 즉시 입장시켜 80%에게 대기 경험을 제공한다.
@@ -344,9 +346,9 @@ end
 
    Supply_t = $\left\lceil \frac{L_t}{4} \right\rceil$
 
-   - **제어 (P의 활용):** 발급된 총 허용량(`limit`)은 현재 메인 방에 실제로 존재하는 총 인원(`P`)을 넘을 필요가 없습니다.
+   - **제어 (P의 활용):** 과목별 신청이 가능하므로, 발급된 총 허용량(`limit`)은 현재 메인 방 유저가 만들 수 있는 **총 시도 수(`6 × P`)** 를 넘을 필요가 없습니다.
 
-   Limit_t = $\min(P_t, Limit_{t-1} + Supply_t)$
+   Limit_t = $\min(6 \cdot P_t, Limit_{t-1} + Supply_t)$
 
    - 단, `L == 0` 일 경우 `Supply_t = 0`으로 하여 불필요한 `limit` 상승을 방지합니다.
 
@@ -356,23 +358,23 @@ end
 
    Supply_t = $\left\lceil \frac{L_t}{R} \right\rceil$
 
-   Limit_t = $\min(P_t, Limit_{t-1} + Supply_t)$
+   Limit_t = $\min(6 \cdot P_t, Limit_{t-1} + Supply_t)$
 
 ### 공급 예시
 
 #### 케이스 1: 대기방에 100명 대기 후 게임 시작 (`W = 100`)
 
 - `t=0`: `W=100`이므로 `Limit_0 = 20`. (20명 즉시 통과, `L=80` 남음)
-- `t=1`: `P=100` (모두 진입 완료 가정), `L=80`. `supply = ceil(80/4) = 20`. `Limit = min(100, 20+20) = 40`.
-- `t=2`: `P=100`, `L=60`. `supply = 15`. `Limit = min(100, 40+15) = 55`.
-- **결과:** 초기 20% 즉시 입장 후, `P`를 상한선으로 4초 이내 처리 원칙 준수.
+- `t=1`: `P=100` (모두 진입 완료 가정), `L=80`. `supply = ceil(80/4) = 20`. `Limit = min(600, 20+20) = 40`.
+- `t=2`: `P=100`, `L=60`. `supply = 15`. `Limit = min(600, 40+15) = 55`.
+- **결과:** 초기 20% 즉시 입장 후, 총 시도 수 상한(`6P=600`) 내에서 4초 이내 처리 원칙 준수.
 
 #### 케이스 2: 트래픽 지연 후반 몰림 (T-5s에는 2명, T+15s에 100명 진입)
 
 - `t=0`: `W=2`이므로 `Limit_0 = 1`.
-- `t=1~14`: `P=2`, `L=1`. `supply = 1`. `Limit`은 `P`에 의해 `2`로 막힘.
-- `t=15`: 100명 진입. `P=100`, `L=99`. `supply = ceil(99/4) = 25`. `Limit = min(100, 2+25) = 27`.
-- **결과:** 극단적 트래픽 지연에도 `P` 상한선 덕분에 자원 낭비 없이 4초 대기 원칙 준수.
+- `t=1~14`: `P=2`, `L=1`. `supply = 1`. 상한 `6P = 12`. `Limit = min(12, 1+t)` → t=11에서 `12`로 막힘. (2명이 만들 수 있는 총 시도 수)
+- `t=15`: 100명 진입. `P=100`, `L=99`. `supply = ceil(99/4) = 25`. `Limit = min(600, 12+25) = 37`.
+- **결과:** 극단적 트래픽 지연에도 `6P` 상한선 덕분에 자원 낭비 없이 4초 대기 원칙 준수.
 
 ### 실행 메커니즘 (ProgressJob 내 루프)
 
@@ -395,7 +397,7 @@ public void executeSupplyEngine(String T) {
         // 4. 현재 메인 방 진입 인원(P = progress_participants) 조회 (전역 키)
         long P = redis.sCard("multigame:round:participants:ledger");
         
-        // 5. 현재 실제 대기자 수(L) 조회 (전역 키)
+        // 5. 현재 실제 대기 시도 수(L) 조회 (전역 키, 유저:과목 단위)
         long L = redis.zCard("multigame:round:queue:ledger"); 
         
         int remainingTime = 30 - t;
@@ -411,8 +413,8 @@ public void executeSupplyEngine(String T) {
             supply = (int) Math.ceil((double) L / 4.0);
         }
         
-        // 6. limit 업데이트 (현재 진입한 총 인원 P를 넘을 수 없음)
-        limit = (int) Math.min(P, limit + supply);
+        // 6. limit 업데이트 (총 시도 수 상한 6×P를 넘을 수 없음)
+        limit = (int) Math.min(6 * P, limit + supply);
         
         // 7. 진입 허용선(절댓값) 업데이트 (전역 키)
         redis.set("multigame:round:limit:control", String.valueOf(limit));
@@ -431,12 +433,12 @@ public void executeSupplyEngine(String T) {
 | Key 이름                                   | Data Type | 설명                                           | 관련 레이어         | 비고                                                                                                                                   |
 | ---------------------------------------- | --------- | -------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `multigame:round:state:control`          | String    | 게임의 현재 상태 (`READY`, `CANCELLED`, `PROGRESS`) | Layer 1        | 시간 기반 평가 후 조회                                                                                                                        |
-| `multigame:round:heartbeat:ledger`       | ZSET      | 대기방 유저 접속 생존 확인                              | Layer 2-1, 1   | **Member: userId, Score: Timestamp(ms)**. 1초 폴링 시 `ZADD` 갱신. `readyCron`에서 만료 데이터(3초 이전) `ZREMRANGEBYSCORE` 삭제 후 `ZCARD`로 카운트(W 산출). |
+| `multigame:round:heartbeat:ledger`       | ZSET      | 대기방 유저 접속 생존 확인                              | Layer 2-1, 1   | **Member: userId, Score: Timestamp(ms)**. 2초 폴링 시 `ZADD` 갱신. `readyCron`에서 만료 데이터(4초 이전) `ZREMRANGEBYSCORE` 삭제 후 `ZCARD`로 카운트(W 산출). |
 | `multigame:round:waiting_count:cache`    | String    | `readyCron` 시점의 W 스냅샷                        | Layer 1        | Supply Engine 초기 폭발량 산정용                                                                                                             |
 | `multigame:round:participants:ledger`    | Set       | 메인 방 진입 실참여자 P 마킹                            | Layer 2-2, 2-4 | 진입 API 추가, 이탈 API 제거. Supply 상한선                                                                                                     |
-| `multigame:round:queue:ledger`           | ZSET      | 실시간 신청 대기열                                   | Layer 2-3      | 완료된 요청은 `ZREM`으로 즉시 제거                                                                                                               |
-| `multigame:round:seq:ledger`             | String    | 유저 고유 순번 발급기                                 | Layer 2-3      | 절댓값                                                                                                                                  |
+| `multigame:round:queue:ledger`           | ZSET      | 실시간 신청 대기열 (유저:과목 단위 시도)                    | Layer 2-3      | **Member: `{userId}:{subjectId}`, Score: seq**. 완료된 요청은 `ZREM`으로 즉시 제거, 이탈 시 유저의 과목별 항목 전부 제거                                              |
+| `multigame:round:seq:ledger`             | String    | 시도 고유 순번 발급기 (유저:과목 단위)                     | Layer 2-3      | 절댓값                                                                                                                                  |
 | `multigame:round:limit:control`          | String    | 입장 허용선                                       | Layer 2-4      | Supply Engine이 매초 업데이트                                                                                                               |
 | `multigame:round:seats:ledger`           | Hash      | 과목별 남은 정원                                    | Layer 2-3      | `HINCRBY` 원자적 차감                                                                                                                     |
-| `multigame:round:success_members:ledger` | Set       | 신청 완료 유저 ID 집합                               | Layer 2-3      | 실시간 중복 수강 검증용 (O(1))                                                                                                                 |
+| `multigame:round:success_members:ledger` | Set       | 신청 완료 (유저:과목) 쌍 집합                          | Layer 2-3      | 실시간 **같은 과목** 중복 신청 검증용 (O(1)). 다른 과목은 별도로 성공 가능                                                                            |
 | `multigame:round:event_log:stream`       | List      | 상태 전이 이벤트 로그 (단일 소스)                         | **Layer 2-3**  | ENQUEUED, SUCCESS, FAIL 시점에만 RPUSH. endingCron에서 Batch Insert 후 삭제                                                                   |
