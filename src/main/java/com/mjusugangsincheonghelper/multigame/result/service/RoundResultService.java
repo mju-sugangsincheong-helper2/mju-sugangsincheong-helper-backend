@@ -1,15 +1,18 @@
 package com.mjusugangsincheonghelper.multigame.result.service;
 
 import com.mjusugangsincheonghelper.database.entity.MultigameRoundEntity;
+import com.mjusugangsincheonghelper.database.entity.MultigameRoundLogEntity;
+import com.mjusugangsincheonghelper.database.entity.MultigameRoundMemberEntity;
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundLogRepository;
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundMemberRepository;
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundLogResponse;
 import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundRecordResponse;
-import com.mjusugangsincheonghelper.multigame.result.dto.RoundAnalysisResponse;
+import com.mjusugangsincheonghelper.multigame.result.dto.RoundDetailResponse;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundSummaryResponse;
+import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -35,16 +38,14 @@ public class RoundResultService {
 				.map(MyRoundRecordResponse::from);
 	}
 
-	public MyRoundLogResponse myLog(String startTime, long memberId) {
-		memberRepository.findByStartTimeAndMemberId(startTime, memberId)
-				.orElseThrow(() -> new BaseException(ErrorCode.MULTIGAME_RESULT_NOT_FOUND));
-		return MyRoundLogResponse.from(startTime,
-				logRepository.findByStartTimeAndMemberIdOrderByAttemptedAtAsc(startTime, memberId));
-	}
-
-	public RoundAnalysisResponse roundAnalysis(String startTime) {
+	public RoundDetailResponse roundDetail(String startTime, long memberId) {
 		MultigameRoundEntity round = roundRepository.findById(startTime)
 				.orElseThrow(() -> new BaseException(ErrorCode.MULTIGAME_RESULT_NOT_FOUND));
-		return RoundAnalysisResponse.from(round, memberRepository.aggregateBySubject(startTime));
+		Optional<MultigameRoundMemberEntity> myRecord = memberRepository.findByStartTimeAndMemberId(startTime, memberId);
+		List<MultigameRoundLogEntity> myLogs = myRecord.isPresent()
+				? logRepository.findByStartTimeAndMemberIdOrderByAttemptedAtAsc(startTime, memberId)
+				: List.of();
+		return RoundDetailResponse.from(round, memberRepository.aggregateBySubject(startTime),
+				myRecord.orElse(null), myLogs);
 	}
 }

@@ -168,31 +168,41 @@ CREATE TABLE IF NOT EXISTS single_game_detail (
     PRIMARY KEY (game_id, sequence)
 );
 
-CREATE TABLE IF NOT EXISTS multigame_reservation (
-    id          BIGSERIAL   PRIMARY KEY,
-    member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
-    start_time  VARCHAR(14) NOT NULL,
-    created_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    CONSTRAINT  uk_multigame_reservation_start_time_member_id UNIQUE (start_time, member_id)
-);
+-- 구 스키마(reservation/result/result_detail)는 운영 전이므로 직접 폐기 후 신규 스키마로 교체 (schema-prod.sql과 동일)
+DROP TABLE IF EXISTS multigame_reservation;
+DROP TABLE IF EXISTS multigame_result_detail;
+DROP TABLE IF EXISTS multigame_result;
 
-CREATE TABLE IF NOT EXISTS multigame_result (
+CREATE TABLE IF NOT EXISTS multigame_round (
     start_time        VARCHAR(14) PRIMARY KEY,
     participant_count INT         NOT NULL,
     capacity          INT         NOT NULL,
-    created_at        TIMESTAMP   NOT NULL DEFAULT now(),
-    finalized_at      TIMESTAMP
+    created_at        TIMESTAMP   NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS multigame_result_detail (
+CREATE TABLE IF NOT EXISTS multigame_round_member (
     id          BIGSERIAL   PRIMARY KEY,
-    start_time  VARCHAR(14) NOT NULL,
+    start_time  VARCHAR(14) NOT NULL REFERENCES multigame_round(start_time) ON DELETE CASCADE,
     member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     subject_id  INT         NOT NULL,
     status      VARCHAR(20) NOT NULL,
     created_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    CONSTRAINT  uk_multigame_result_detail_start_time_member_id UNIQUE (start_time, member_id)
+    CONSTRAINT  uk_multigame_round_member_start_time_member_id UNIQUE (start_time, member_id)
 );
+
+CREATE TABLE IF NOT EXISTS multigame_round_log (
+    id             BIGSERIAL   PRIMARY KEY,
+    start_time     VARCHAR(14) NOT NULL REFERENCES multigame_round(start_time) ON DELETE CASCADE,
+    member_id      BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    subject_id     INT         NOT NULL,
+    attempt_status VARCHAR(20) NOT NULL,
+    attempt_seq    BIGINT      NOT NULL,
+    current_limit  INT         NOT NULL,
+    attempted_at   TIMESTAMP   NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_multigame_round_member_member_id ON multigame_round_member (member_id);
+CREATE INDEX IF NOT EXISTS idx_multigame_round_log_member_id ON multigame_round_log (member_id);
 ```
 
 #### 3. 뷰 (4개)

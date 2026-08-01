@@ -122,32 +122,27 @@ export function getGameState(adminToken, multigameId) {
 // Result API
 // ============================================================
 
+// 결과 상세(분석서 + 내 결과 + 내 신청 로그 통합) 조회
+// GET /api/v1/multigame/results/{multigameId}
 export function getGameResult(token, multigameId) {
   const res = http.get(`${BASE_URL}/api/v1/multigame/results/${multigameId}`, {
     headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_results' },
+    tags: { name: 'GET_round_detail' },
   });
-  check(res, { 'game result fetched': (r) => r.status === 200 || r.status === 404 });
-  return res;
-}
-
-export function getMyResult(token, multigameId) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/results/my?multigameId=${multigameId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_results_my' },
-  });
-  check(res, { 'my result fetched': (r) => r.status === 200 || r.status === 404 });
+  check(res, { 'round detail fetched': (r) => r.status === 200 || r.status === 404 });
   return res;
 }
 
 // ============================================================
-// My History & Stats API
+// My History API
 // ============================================================
 
+// 내 참여 이력 목록 (페이징)
+// GET /api/v1/multigame/me/results?page=&size=
 export function getMyHistory(token, page = 0, size = 10) {
-  const res = http.get(`${BASE_URL}/api/v1/multigame/my/history?page=${page}&size=${size}`, {
+  const res = http.get(`${BASE_URL}/api/v1/multigame/me/results?page=${page}&size=${size}`, {
     headers: { Authorization: `Bearer ${token}` },
-    tags: { name: 'GET_my_history' },
+    tags: { name: 'GET_me_results' },
   });
   check(res, { 'my history fetched': (r) => r.status === 200 });
   return res;

@@ -129,7 +129,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 | `CLOSED_PHASE`   | (조회 안 함)        | **CLOSED**    | "운영 시간 아님"                | `BLOCK`          | NO-OP  |
 | `WAITING_PHASE`  | (조회 안 함)        | **WAITING**   | "대기 모집 중"                 | `BLOCK`          | NO-OP  |
 | `READY_PHASE`    | `CANCELLED`     | **CANCELLED** | "최소인원 미달 취소됨"             | `BLOCK`          | NO-OP  |
-| `READY_PHASE`    | `READY` (또는 없음) | **READY**     | "준비 완료"                   | `BLOCK`          | NO-OP  |
+| `READY_PHASE`    | `READY`          | **READY**     | "준비 완료"                   | `BLOCK`          | NO-OP  |
 | `READY_PHASE`    | `없음` (Cron 지연)  | **STARTING**  | "게임 시작 준비 중. 잠시만 기다려주세요." | `BLOCK`          | NO-OP  |
 | `PROGRESS_PHASE` | `CANCELLED`     | **CANCELLED** | "최소인원 미달 취소됨"             | `BLOCK`          | NO-OP  |
 | `PROGRESS_PHASE` | `PROGRESS`      | **PROGRESS**  | "게임 진행 중"                 | `ALLOW`          | P=P-1  |
@@ -165,7 +165,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
   2. Redis `state` 확인:
      - `CANCELLED`이면 no-op.
      - `READY`가 아니면 (키 없음 등) 비정상이므로 `CANCELLED` 세팅 후 종료.
-  3. **[핵심 초기화]** 전역 키로 운영 중인 게임 데이터 키(`queue`, `seats`, `event_log`, `participants`, `heartbeat` 등)를 `DEL`로 초기화.
+  3. **[핵심 초기화]** `startProgress`가 게임 데이터 키(`participants`, `queue`, `seq`, `limit`, `seats`, `success_members`, `event_log`)를 `DEL`로 지우고 `seq=0`, `limit=0`으로 재세팅. 단, **`heartbeat`와 `waiting_count`는 이 시점에 지우지 않는다** — `waiting_count`(W)는 종료 시점에 `capacity` 재산정용으로 보존되며, `heartbeat`는 `endingCron`의 전역 키 정리(`clear()`)에서 제거된다.
   4. **좌석 초기화:** `seats` Hash의 과목별 정원을 `max(1, round(W / 2))`로 세팅. (W = readyCron이 `waiting_count:cache`에 저장한 대기 인원 스냅샷 — 종료 시 DB `capacity`에도 동일 값이 기록됨)
   5. `state`를 `PROGRESS`로 세팅.
   6. Supply Engine 30초 루프 실행 (매초 `admission_limit` 계산).
@@ -182,7 +182,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
      - **`MULTIGAME_ROUND_LOG` 테이블:** 전체 로그를 JDBC Batch Insert 합니다.
      - **`MULTIGAME_ROUND_MEMBER` 테이블:** 유저 ID를 키로 하는 Map을 만들어 최종 상태(우선순위: SUCCESS > FAIL_SOLDOUT > FAIL_DUPLICATE > ENQUEUED)로 덮어쓴 뒤 Upsert 합니다. 단, 최종적으로 큐에 남아 처리되지 못한 유저는 `FAIL_SOLDOUT`으로 기록합니다. (중복 수강 실패인 `FAIL_DUPLICATE`는 이미 성공한 유저에게만 발생하므로, 유저의 최종 상태는 항상 `SUCCESS`가 됩니다.)
   6. `MULTIGAME_ROUND` 테이블에 메타 정보(participant_count=P, capacity=실제 운영 좌석 `round(W / 2)`)를 Upsert 합니다.
-  7. **[데이터 정리]** 현재 게임의 모든 Redis 전역 키(`state`, `queue`, `seats`, `event_log`, `participants`, `heartbeat` 등)를 `DEL`로 초기화합니다. 이후 시간이 흘러 다음 게임 대기 시간대(T+1m)에 진입하면 자동으로 대기 상태가 됩니다.
+  7. **[데이터 정리]** `runtimeStore.clear()`가 현재 게임의 **전체 전역 키**(`state`, `heartbeat`, `waiting_count`, `participants`, `queue`, `seq`, `limit`, `seats`, `success_members`, `event_log`)를 `DEL`로 초기화합니다. 대기방 heartbeat도 이 시점에 정리됩니다. 이후 시간이 흘러 다음 게임 대기 시간대(T+1m)에 진입하면 자동으로 대기 상태가 됩니다.
 
 ---
 

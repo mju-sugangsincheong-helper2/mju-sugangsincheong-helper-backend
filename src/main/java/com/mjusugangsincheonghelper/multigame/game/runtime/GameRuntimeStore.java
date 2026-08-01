@@ -61,6 +61,11 @@ public class GameRuntimeStore {
 	}
 
 	public void startProgress(int capacity) {
+		// [핵심 초기화] 문서(Layer 1 progressCron)와 정합: 게임 데이터 키(participants, queue, seq, limit, seats,
+		// success_members, event_log)만 DEL로 초기화한다.
+		// HEARTBEAT와 WAITING_COUNT는 이 시점에 지우지 않는다 — waiting_count(W)는 endingCron(T+30s)이
+		// capacity(round(W/2)) 영속화에 여전히 읽어야 하며, heartbeat는 endingCron의 전역 키 정리(clear())에서 제거된다.
+		// WAITING_COUNT는 다음 라운드 readyCron이 다시 덮어쓰므로 별도 정리가 필요 없다.
 		redis.delete(List.of(PARTICIPANTS, QUEUE, SEQUENCE, LIMIT, SEATS, SUCCESS_MEMBERS, EVENT_LOG));
 		redis.opsForValue().set(SEQUENCE, "0");
 		redis.opsForValue().set(LIMIT, "0");

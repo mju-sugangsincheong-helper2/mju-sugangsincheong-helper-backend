@@ -15,7 +15,7 @@ import {
   getMyReservations,
   enterWaitingRoom,
   requestGame,
-  getMyResult,
+  getGameResult,
   getMyHistory,
   getDashboard,
   computeActiveMultigameId,
@@ -99,8 +99,8 @@ export default function (data) {
 
     if (gameResult && (gameResult.status === 'SUCCESS' || gameResult.status === 'FAIL_SOLDOUT')) {
       sleep(0.5);
-      // 5. 결과 조회
-      getMyResult(token, activeMultigameId);
+      // 5. 결과 상세 조회 (분석서 + 내 결과 + 내 신청 로그)
+      getGameResult(token, activeMultigameId);
     }
   } else if (waitingRoomResult.state === 'WAITING' || waitingRoomResult.state === 'READY') {
     // 대기 중: 폴링 시뮬레이션
