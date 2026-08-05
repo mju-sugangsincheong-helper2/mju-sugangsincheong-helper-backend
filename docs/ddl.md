@@ -19,7 +19,7 @@
 **prod** (`defer-datasource-initialization: true`):
 ```
 1. Hibernate ddl-auto: validate     → 엔티티와 테이블 일치 검증만
-2. schema-prod.sql                  → course 파티셔닝 테이블 + 모든 뷰 생성
+2. schema-prod.sql                  → course 및 exchange 파티셔닝 테이블 + 모든 뷰 생성
 ```
 
 ---

@@ -361,7 +361,7 @@ class ExchangeIntegrationTest {
 
 			// Then
 			ExchangeRoomEntity updatedRoom = roomRepository.findById(
-					room.getId()).orElseThrow();
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(updatedRoom.getStatus()).isEqualTo("PARTIAL_DELETE");
 
 			List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, room.getId());
@@ -403,7 +403,7 @@ class ExchangeIntegrationTest {
 
 			// Then
 			ExchangeRoomEntity updatedRoom = roomRepository.findById(
-					room.getId()).orElseThrow();
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(updatedRoom.getStatus()).isEqualTo("PARTIAL_DELETE");
 		}
 	}
@@ -553,7 +553,7 @@ class ExchangeIntegrationTest {
 
 			// Then 1: PARTIAL_DELETE
 			ExchangeRoomEntity afterA = roomRepository.findById(
-					room.getId()).orElseThrow();
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterA.getStatus()).isEqualTo("PARTIAL_DELETE");
 
 			List<ExchangeRoomMessageEntity> msgsAfterA = messageRepository.findAll();
@@ -567,7 +567,7 @@ class ExchangeIntegrationTest {
 
 			// Then 2: PARTIAL_DELETE 유지 및 비활성화 안내 메시지
 			ExchangeRoomEntity afterB = roomRepository.findById(
-					room.getId()).orElseThrow();
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterB.getStatus()).isEqualTo("PARTIAL_DELETE");
 
 			List<ExchangeRoomMessageEntity> msgsAfterB = messageRepository.findAll();
@@ -581,7 +581,7 @@ class ExchangeIntegrationTest {
 
 			// Then 3: ALL_DELETE
 			ExchangeRoomEntity afterC = roomRepository.findById(
-					room.getId()).orElseThrow();
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterC.getStatus()).isEqualTo("ALL_DELETE");
 
 			List<ExchangeRoomMessageEntity> msgsAfterC = messageRepository.findAll();
@@ -627,7 +627,7 @@ class ExchangeIntegrationTest {
 
 			// Then 1: PARTIAL_OFF 및 A의 메인 폴링 시 unreadCount=0, lastMessage=null
 			ExchangeRoomEntity afterOff = roomRepository.findById(
-					room.getId()).orElseThrow();
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterOff.getStatus()).isEqualTo("PARTIAL_OFF");
 
 			cacheService.evictMainCache(term, memberA.getId());
@@ -642,7 +642,7 @@ class ExchangeIntegrationTest {
 
 			// Then 2: ACTIVE 및 A의 메인 폴링 시 unreadCount >= 1, lastMessage 복원
 			ExchangeRoomEntity afterOn = roomRepository.findById(
-					room.getId()).orElseThrow();
+					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterOn.getStatus()).isEqualTo("ACTIVE");
 
 			cacheService.evictMainCache(term, memberA.getId());

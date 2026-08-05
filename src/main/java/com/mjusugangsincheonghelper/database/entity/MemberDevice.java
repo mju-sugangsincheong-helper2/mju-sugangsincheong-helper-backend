@@ -30,8 +30,8 @@ public class MemberDevice {
 	@Column(nullable = false)
 	private Long memberId;
 
-	@Column(nullable = false, unique = true, length = 512)
-	private String refreshToken;
+	@Column(name = "refresh_token_hash", nullable = false, unique = true, length = 64)
+	private String refreshTokenHash;
 
 	@Column(name = "fcm_token", length = 512)
 	private String fcmToken;
@@ -78,14 +78,14 @@ public class MemberDevice {
 	private Instant updatedAt;
 
 	@Builder
-	public MemberDevice(Long memberId, String refreshToken,
+	public MemberDevice(Long memberId, String refreshTokenHash,
 			String platformjsName, String platformjsVersion,
 			String platformjsLayout, String platformjsPrerelease,
 			String platformjsOs, String platformjsManufacturer,
 			String platformjsProduct, String platformjsDescription,
 			String platformjsUa, Instant expiresAt) {
 		this.memberId = memberId;
-		this.refreshToken = refreshToken;
+		this.refreshTokenHash = refreshTokenHash;
 		this.platformjsName = platformjsName;
 		this.platformjsVersion = platformjsVersion;
 		this.platformjsLayout = platformjsLayout;
@@ -99,18 +99,18 @@ public class MemberDevice {
 		this.expiresAt = expiresAt;
 	}
 
-	public void updateRefreshToken(String refreshToken) {
-		this.refreshToken = refreshToken;
+	public void updateRefreshTokenHash(String refreshTokenHash) {
+		this.refreshTokenHash = refreshTokenHash;
 		this.lastAccessedAt = Instant.now();
 	}
 
-	public void updateAccessInfo(String refreshToken,
+	public void updateAccessInfo(String refreshTokenHash,
 			String platformjsName, String platformjsVersion,
 			String platformjsLayout, String platformjsPrerelease,
 			String platformjsOs, String platformjsManufacturer,
 			String platformjsProduct, String platformjsDescription,
 			String platformjsUa) {
-		this.refreshToken = refreshToken;
+		this.refreshTokenHash = refreshTokenHash;
 		this.platformjsName = platformjsName;
 		this.platformjsVersion = platformjsVersion;
 		this.platformjsLayout = platformjsLayout;

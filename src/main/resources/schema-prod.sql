@@ -1,6 +1,6 @@
 -- 운영 환경 전체 DDL
--- 파티셔닝은 전면 제거(너무 과함 + course 자동 파티션 트리거가 동작하지 않는 문제).
--- 전 테이블 일반 테이블, 교환 도메인은 서로게이트 PK(BIGSERIAL)를 사용한다.
+-- course 및 교환(exchange) 도메인 테이블은 학기(term) 기준 LIST 파티셔닝 적용.
+-- 파티셔닝 키(term)를 포함하는 복합 PK 구조 적용.
 
 -- ============================================================
 -- 0. 확장 기능
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS examples (
 );
 
 -- ============================================================
--- 7. course
+-- 7. course (term 기준 LIST 파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS course (
     coursecls   VARCHAR(10) NOT NULL,
@@ -130,10 +130,13 @@ CREATE TABLE IF NOT EXISTS course (
     lecperiod   TEXT,
     created_at  TIMESTAMP   NOT NULL DEFAULT now(),
     updated_at  TIMESTAMP   NOT NULL DEFAULT now(),
-    PRIMARY KEY (coursecls, term)
-);
+    PRIMARY KEY (term, coursecls)
+) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_course_term ON course (term);
+
+-- course 파티션 생성 (default + 신학기 파티션은 하단 "신학기 term 파티션 자동 생성" DO 블록이 생성)
+CREATE TABLE IF NOT EXISTS course_default PARTITION OF course DEFAULT;
 
 -- ============================================================
 -- 8. single_game
@@ -205,6 +208,10 @@ CREATE TABLE IF NOT EXISTS multigame_round_log (
 
 CREATE INDEX IF NOT EXISTS idx_multigame_round_member_member_id ON multigame_round_member (member_id);
 CREATE INDEX IF NOT EXISTS idx_multigame_round_log_member_id ON multigame_round_log (member_id);
+CREATE INDEX IF NOT EXISTS idx_multigame_round_member_start_time
+    ON multigame_round_member (start_time, subject_id);
+CREATE INDEX IF NOT EXISTS idx_multigame_round_log_start_time
+    ON multigame_round_log (start_time, attempted_at);
 
 -- ============================================================
 -- 13. 뷰
@@ -310,98 +317,159 @@ LEFT JOIN v_sequence_percentile_stats vps
     ON vps.total_courses = sg.total_courses AND vps.sequence = sgd.sequence;
 
 -- ============================================================
--- 14. exchange_intent
+-- 14. exchange_intent (term 기준 LIST 파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_intent (
-    id             BIGSERIAL    PRIMARY KEY,
     term           VARCHAR(10)  NOT NULL,
+    id             BIGINT       NOT NULL,
     member_id      BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     give_course_no VARCHAR(20)  NOT NULL,
     want_course_no VARCHAR(20)  NOT NULL,
     is_deleted     BOOLEAN      NOT NULL DEFAULT FALSE,
     created_at     TIMESTAMP    NOT NULL DEFAULT now(),
-    deleted_at     TIMESTAMP
-);
+    deleted_at     TIMESTAMP,
+    PRIMARY KEY (term, id)
+) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_intent_term ON exchange_intent (term);
 CREATE INDEX IF NOT EXISTS idx_intent_member_active
-    ON exchange_intent (member_id)
+    ON exchange_intent (term, member_id)
     WHERE is_deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_intent_matching_pool
-    ON exchange_intent (give_course_no, want_course_no)
+    ON exchange_intent (term, give_course_no, want_course_no)
     WHERE is_deleted = FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_active_intent
     ON exchange_intent (term, member_id, give_course_no, want_course_no)
     WHERE is_deleted = FALSE;
 
+-- exchange_intent 파티션 생성 (기본 파티션만; 학기 파티션은 하단 DO 블록이 생성)
+CREATE TABLE IF NOT EXISTS exchange_intent_default PARTITION OF exchange_intent DEFAULT;
+
 -- ============================================================
--- 15. exchange_room
+-- 15. exchange_room (term 기준 LIST 파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room (
-    id          BIGSERIAL    PRIMARY KEY,
     term        VARCHAR(10)  NOT NULL,
+    id          BIGINT       NOT NULL,
     cycle_hash  VARCHAR(64)  NOT NULL,
     status      VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
     created_at  TIMESTAMP    NOT NULL DEFAULT now(),
+    PRIMARY KEY (term, id),
     CONSTRAINT uniq_term_cycle_hash UNIQUE (term, cycle_hash),
     CONSTRAINT chk_exchange_room_status CHECK (status IN ('ACTIVE', 'PARTIAL_OFF', 'PARTIAL_DELETE', 'ALL_DELETE'))
-);
+) PARTITION BY LIST (term);
+
+-- exchange_room 파티션 생성 (기본 파티션만; 학기 파티션은 하단 DO 블록이 생성)
+CREATE TABLE IF NOT EXISTS exchange_room_default PARTITION OF exchange_room DEFAULT;
 
 -- ============================================================
--- 16. exchange_room_intent
+-- 16. exchange_room_intent (term 기준 LIST 파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room_intent (
     term        VARCHAR(10) NOT NULL,
-    room_id     BIGINT      NOT NULL REFERENCES exchange_room(id) ON DELETE CASCADE,
-    intent_id   BIGINT      NOT NULL REFERENCES exchange_intent(id) ON DELETE CASCADE,
+    room_id     BIGINT      NOT NULL,
+    intent_id   BIGINT      NOT NULL,
     member_id   BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     is_deleted  BOOLEAN     NOT NULL DEFAULT FALSE,
     is_on       BOOLEAN     NOT NULL DEFAULT TRUE,
     joined_at   TIMESTAMP   NOT NULL DEFAULT now(),
-    PRIMARY KEY (term, room_id, intent_id)
-);
+    PRIMARY KEY (term, room_id, intent_id),
+    CONSTRAINT fk_exchange_room_intent_room FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id) ON DELETE CASCADE,
+    CONSTRAINT fk_exchange_room_intent_intent FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id) ON DELETE CASCADE
+) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_room_intent_member
-    ON exchange_room_intent (member_id, room_id)
+    ON exchange_room_intent (term, member_id, room_id)
     WHERE is_on = TRUE;
 CREATE INDEX IF NOT EXISTS idx_room_intent_reverse
-    ON exchange_room_intent (intent_id, room_id);
+    ON exchange_room_intent (term, intent_id, room_id);
+
+-- exchange_room_intent 파티션 생성 (기본 파티션만; 학기 파티션은 하단 DO 블록이 생성)
+CREATE TABLE IF NOT EXISTS exchange_room_intent_default PARTITION OF exchange_room_intent DEFAULT;
 
 -- ============================================================
--- 17. exchange_room_message
+-- 17. exchange_room_message (term 기준 LIST 파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room_message (
-    id            BIGSERIAL    PRIMARY KEY,
     term          VARCHAR(10)  NOT NULL,
-    room_id       BIGINT       NOT NULL REFERENCES exchange_room(id) ON DELETE CASCADE,
+    id            BIGINT       NOT NULL,
+    room_id       BIGINT       NOT NULL,
     member_id     BIGINT       REFERENCES member(id) ON DELETE CASCADE,
-    intent_id     BIGINT       REFERENCES exchange_intent(id) ON DELETE CASCADE,
+    intent_id     BIGINT,
     message_type  VARCHAR(10)  NOT NULL DEFAULT 'TALK',
     content       TEXT         NOT NULL,
     created_at    TIMESTAMP    NOT NULL DEFAULT now(),
+    PRIMARY KEY (term, id),
+    CONSTRAINT fk_exchange_room_message_room FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id) ON DELETE CASCADE,
+    CONSTRAINT fk_exchange_room_message_intent FOREIGN KEY (term, intent_id) REFERENCES exchange_intent(term, id) ON DELETE CASCADE,
     CONSTRAINT chk_exchange_room_message_type CHECK (
         (message_type = 'TALK' AND member_id IS NOT NULL AND intent_id IS NOT NULL) OR
         (message_type = 'SYSTEM' AND member_id IS NULL AND intent_id IS NULL)
     )
-);
+) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_message_room_id_pagination
-    ON exchange_room_message (room_id, id DESC);
+    ON exchange_room_message (term, room_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_message_term
     ON exchange_room_message (term);
 
+-- exchange_room_message 파티션 생성 (기본 파티션만; 학기 파티션은 하단 DO 블록이 생성)
+CREATE TABLE IF NOT EXISTS exchange_room_message_default PARTITION OF exchange_room_message DEFAULT;
+
 -- ============================================================
--- 18. exchange_room_read_status
+-- 18. exchange_room_read_status (term 기준 LIST 파티셔닝)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS exchange_room_read_status (
     term                  VARCHAR(10) NOT NULL,
-    room_id               BIGINT      NOT NULL REFERENCES exchange_room(id) ON DELETE CASCADE,
+    room_id               BIGINT      NOT NULL,
     member_id             BIGINT      NOT NULL REFERENCES member(id) ON DELETE CASCADE,
-    intent_id             BIGINT      NOT NULL REFERENCES exchange_intent(id) ON DELETE CASCADE,
+    intent_id             BIGINT      NOT NULL,
     last_read_message_id  BIGINT      NOT NULL DEFAULT 0,
     last_read_at          TIMESTAMP   NOT NULL DEFAULT now(),
-    PRIMARY KEY (term, room_id, member_id)
-);
+    PRIMARY KEY (term, room_id, member_id),
+    CONSTRAINT fk_exchange_room_read_status_room FOREIGN KEY (term, room_id) REFERENCES exchange_room(term, id) ON DELETE CASCADE
+) PARTITION BY LIST (term);
 
 CREATE INDEX IF NOT EXISTS idx_read_status_member
-    ON exchange_room_read_status (member_id, room_id);
+    ON exchange_room_read_status (term, member_id, room_id);
+
+-- ============================================================
+-- 19. 신학기 term 파티션 자동 생성 (2025~2029, 5년치 미리 생성)
+--     course 와 exchange_* 파티션 테이블 전부 적용. 멱등(재실행 안전).
+--     미리 만들어지지 않은 학기는 default 파티션으로 들어가므로, 학기가 바뀌면
+--     이 블록을 재실행하거나 스케줄러로 주기 실행하면 됨.
+--     (참고: 파티션이 과도하게 많아지면 planner에 부담이 되므로, 필요 시
+--      상한 연도를 줄이거나 pg_partman 같은 관리 도구로 전환 권장)
+-- ============================================================
+DO $$
+DECLARE
+    y    INT;
+    term TEXT;
+    tbl  TEXT;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['course', 'exchange_intent', 'exchange_room',
+                               'exchange_room_intent', 'exchange_room_message',
+                               'exchange_room_read_status'] LOOP
+        FOR y IN 2025 .. 2029 LOOP
+            FOREACH term IN ARRAY ARRAY[lpad(y::text, 4, '0') || '10', lpad(y::text, 4, '0') || '20'] LOOP
+                EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF %I FOR VALUES IN (%L)',
+                               tbl || '_' || term, tbl, term);
+            END LOOP;
+        END LOOP;
+    END LOOP;
+END $$;
+
+-- exchange_room_read_status 파티션 생성 (기본 파티션만; 학기 파티션은 하단 DO 블록이 생성)
+CREATE TABLE IF NOT EXISTS exchange_room_read_status_default PARTITION OF exchange_room_read_status DEFAULT;
+
+-- ============================================================
+-- 20. notice
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notice (
+    id         BIGSERIAL    PRIMARY KEY,
+    type       VARCHAR(20)  NOT NULL,
+    title      VARCHAR(200) NOT NULL,
+    content    TEXT         NOT NULL,
+    created_at TIMESTAMP    NOT NULL DEFAULT now()
+);
+

@@ -44,6 +44,7 @@ logging:
     org.hibernate.SQL: DEBUG
 
 app:
+  instance-id: ${INSTANCE_ID:app}
   auth:
     token-in-response: true
     test-accounts:
@@ -102,4 +103,8 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: health,info,metrics,loggers,logfile,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+      roles: ADMIN

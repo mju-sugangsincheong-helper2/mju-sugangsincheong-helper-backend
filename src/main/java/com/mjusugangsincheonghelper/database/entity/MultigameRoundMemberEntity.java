@@ -20,7 +20,10 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Entity
 @Table(name = "multigame_round_member",
 		uniqueConstraints = @UniqueConstraint(columnNames = {"start_time", "member_id", "subject_id"}),
-		indexes = @Index(name = "idx_multigame_round_member_member_id", columnList = "member_id"))
+		indexes = {
+				@Index(name = "idx_multigame_round_member_member_id", columnList = "member_id"),
+				@Index(name = "idx_multigame_round_member_start_time", columnList = "start_time, subject_id")
+		})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)

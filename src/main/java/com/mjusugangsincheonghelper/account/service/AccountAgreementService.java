@@ -26,13 +26,9 @@ public class AccountAgreementService {
 				.orElseGet(() -> new MemberAgreement(memberId));
 		agreement.agree();
 		memberAgreementRepository.save(agreement);
-		return new ConsentStatus(agreement.isStatus(), toEpochMillis(agreement.getAgreedAt()));
+		return new ConsentStatus(agreement.isStatus(), agreement.getAgreedAt());
 	}
 
-	private static Long toEpochMillis(Instant instant) {
-		return instant == null ? null : instant.toEpochMilli();
-	}
-
-	public record ConsentStatus(boolean status, Long agreedAt) {
+	public record ConsentStatus(boolean status, Instant agreedAt) {
 	}
 }

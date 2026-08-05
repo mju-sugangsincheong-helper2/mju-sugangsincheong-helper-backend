@@ -112,7 +112,11 @@ public enum ErrorCode {
 	/** FCM 알림 전송 실패 (500) */
 	NOTIFICATION_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "NOTIFICATION_001", "Failed to send notification via FCM."),
 	/** FCM 토큰을 찾을 수 없음 (404) */
-	NOTIFICATION_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION_002", "FCM token not found.");
+	NOTIFICATION_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION_002", "FCM token not found."),
+
+	// ========================== 공지 (NOTICE) ==========================
+	/** 공지사항을 찾을 수 없음 (404) */
+	NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTICE_001", "Notice not found.");
 
 	private final HttpStatus status;
 	private final String code;

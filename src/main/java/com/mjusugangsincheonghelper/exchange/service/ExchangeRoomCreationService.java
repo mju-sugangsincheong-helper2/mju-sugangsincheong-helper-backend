@@ -48,7 +48,7 @@ public class ExchangeRoomCreationService {
 		for (ExchangeIntentEntity intent : sortedCycle) {
 			ExchangeIntentEntity locked = entityManager.find(
 					ExchangeIntentEntity.class,
-					intent.getId(),
+					new ExchangeIntentEntity.ExchangeIntentId(intent.getTerm(), intent.getId()),
 					jakarta.persistence.LockModeType.PESSIMISTIC_WRITE
 			);
 			if (locked == null || locked.isDeleted()) {

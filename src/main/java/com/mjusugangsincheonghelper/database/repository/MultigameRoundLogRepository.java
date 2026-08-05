@@ -9,6 +9,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface MultigameRoundLogRepository extends JpaRepository<MultigameRoundLogEntity, Long> {
 
+	List<MultigameRoundLogEntity> findByStartTimeOrderByAttemptedAtAsc(String startTime);
+
 	List<MultigameRoundLogEntity> findByStartTimeAndMemberIdOrderByAttemptedAtAsc(String startTime, Long memberId);
 
 	@Modifying

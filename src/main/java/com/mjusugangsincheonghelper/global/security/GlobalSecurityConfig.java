@@ -40,7 +40,6 @@ public class GlobalSecurityConfig {
 			"/api/*/example/**",
 			"/swagger-ui/**",
 			"/v3/api-docs/**",
-			"/actuator/**",
 			"/*.html",
 			"/*.js"
 	};
@@ -53,7 +52,7 @@ public class GlobalSecurityConfig {
 			"/api/*/course/sections",
 			"/api/*/course/department",
 			"/api/*/exchange/intents/recent",
-			"/api/*/system/configs/notices"
+			"/api/*/notices"
 	};
 
 	public static final String[] PUBLIC_POST_URLS = {};
@@ -106,11 +105,17 @@ public class GlobalSecurityConfig {
 	@Order(2)
 	public SecurityFilterChain securedSecurityFilterChain(HttpSecurity http) throws Exception {
 		http
-				.securityMatchers(matchers -> matchers.requestMatchers("/api/**"))
+				.securityMatchers(matchers -> {
+					matchers.requestMatchers("/api/**");
+					matchers.requestMatchers("/actuator/**");
+				})
 				.csrf(csrf -> csrf.disable())
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+				.authorizeHttpRequests(auth -> auth
+							// Actuator는 관리자 전용 (PUBLIC_URLS에서 제거됨)
+							.requestMatchers("/actuator/**").hasRole("ADMIN")
+							.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterAfter(consentCheckFilter, JwtAuthenticationFilter.class);
 

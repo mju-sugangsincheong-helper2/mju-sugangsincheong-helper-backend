@@ -36,7 +36,7 @@ public class ExchangeCycleDetector {
 	}
 
 	public void detectCyclesAndCreateRooms(String term, Long intentId, Long memberId, String giveCourseNo, String wantCourseNo) {
-		ExchangeIntentEntity triggerIntent = intentRepository.findById(intentId).orElse(null);
+		ExchangeIntentEntity triggerIntent = intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)).orElse(null);
 
 		if (triggerIntent == null || triggerIntent.isDeleted()) {
 			log.debug("Intent {} was deleted before cycle detection, skipping", intentId);

@@ -28,6 +28,7 @@ spring:
       port: ${REDIS_PORT:6379}
 
 app:
+  instance-id: ${INSTANCE_ID:app}
   expose-error-details: false
   performance:
     slow-ms: 1000
@@ -64,3 +65,15 @@ logging:
   level:
     root: INFO
     com.mjusugangsincheonghelper: INFO
+  file:
+    name: logs/${app.instance-id}-application.log
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,loggers,logfile,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+      roles: ADMIN

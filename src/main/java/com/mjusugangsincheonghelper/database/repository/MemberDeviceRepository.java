@@ -4,10 +4,11 @@ import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long> {
 
-	Optional<MemberDevice> findByRefreshToken(String refreshToken);
+	Optional<MemberDevice> findByRefreshTokenHash(String refreshTokenHash);
 
 	Optional<MemberDevice> findByMemberIdAndPlatformjsUaAndFcmToken(Long memberId, String platformjsUa, String fcmToken);
 
@@ -19,7 +20,11 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 
 	Optional<MemberDevice> findFirstByMemberIdOrderByLastAccessedAtDesc(Long memberId);
 
+	/** 전체 사용자의 등록된 FCM 토큰 목록 (broadcast 알림용) */
+	@Query("select d.fcmToken from MemberDevice d where d.fcmToken is not null and d.fcmToken <> ''")
+	List<String> findAllFcmTokens();
+
 	List<MemberDevice> findByMemberIdAndFcmToken(Long memberId, String fcmToken);
 
-	void deleteByRefreshToken(String refreshToken);
+	void deleteByRefreshTokenHash(String refreshTokenHash);
 }

@@ -22,8 +22,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
-
 @Tag(name = "System", description = "시스템 설정 API")
 @RestController
 @PreAuthorize("hasRole('ADMIN')")
@@ -32,26 +30,6 @@ import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
 public class SystemConfigController {
 
 	private final SystemConfigService systemConfigService;
-
-	@GetMapping(value = "/notices", version = "1+")
-	@PreAuthorize("permitAll()")
-	@Operation(
-			summary = "Public notice list",
-			description = "공개 공지사항 목록 조회 API",
-			responses = {
-					@ApiResponse(
-							responseCode = "200",
-							description = "조회 성공"
-					)
-			}
-	)
-	@OperationErrorCodes({
-			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
-	})
-	public ResponseEntity<SingleSuccessResponseEnvelope<Object>> findPublicNotices() {
-		Object notices = SettingDefinition.NOTICES.getFrom(systemConfigService);
-		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(notices));
-	}
 
 	@GetMapping(version = "1+")
 	@Operation(

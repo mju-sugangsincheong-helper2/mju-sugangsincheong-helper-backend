@@ -4,10 +4,13 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
 @Table(name = "member_agreements")
@@ -21,8 +24,8 @@ public class MemberAgreement {
 	@Column(nullable = false)
 	private boolean status;
 
-	@Column(name = "agreed_at")
-	private Long agreedAt;
+	@Column(name = "agreed_at", nullable = false)
+	private Instant agreedAt;
 
 	@Builder
 	public MemberAgreement(Long memberId) {
@@ -34,12 +37,12 @@ public class MemberAgreement {
 	public static MemberAgreement agree(Long memberId) {
 		MemberAgreement agreement = new MemberAgreement(memberId);
 		agreement.status = true;
-		agreement.agreedAt = System.currentTimeMillis();
+		agreement.agreedAt = Instant.now();
 		return agreement;
 	}
 
 	public void agree() {
 		this.status = true;
-		this.agreedAt = System.currentTimeMillis();
+		this.agreedAt = Instant.now();
 	}
 }

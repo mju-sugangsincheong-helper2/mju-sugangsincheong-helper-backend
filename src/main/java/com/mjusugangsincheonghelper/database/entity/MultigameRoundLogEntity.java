@@ -15,7 +15,10 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "multigame_round_log",
-		indexes = @Index(name = "idx_multigame_round_log_member_id", columnList = "member_id"))
+		indexes = {
+				@Index(name = "idx_multigame_round_log_member_id", columnList = "member_id"),
+				@Index(name = "idx_multigame_round_log_start_time", columnList = "start_time, attempted_at")
+		})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class MultigameRoundLogEntity {

@@ -40,6 +40,12 @@ public class SystemConfigService {
 				log.info("Initialized default system config: {}={}", def.getKey(), def.getDefaultValue());
 			}
 		}
+
+		// 공지사항이 전용 notice 테이블로 이전됨. 기존 JSON 기반 notices 키가 남아 있으면 제거한다.
+		if (repository.existsById("notices")) {
+			repository.deleteById("notices");
+			log.info("Removed obsolete system config key: notices (migrated to notice table)");
+		}
 	}
 
 	@Cacheable(value = "system-config", key = "'current_term:cache'")
