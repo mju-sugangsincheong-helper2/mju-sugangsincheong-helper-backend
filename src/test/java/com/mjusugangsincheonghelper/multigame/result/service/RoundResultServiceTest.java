@@ -15,7 +15,6 @@ import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundRecordResponse;
-import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundResult;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundDetailResponse;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundSummaryResponse;
 import java.time.Instant;
@@ -75,10 +74,10 @@ class RoundResultServiceTest {
 				.build();
 	}
 
-	private MultigameRoundLogEntity log() {
+	private MultigameRoundLogEntity logOf(long memberId) {
 		return MultigameRoundLogEntity.builder()
 				.startTime(START_TIME)
-				.memberId(1L)
+				.memberId(memberId)
 				.subjectId(2)
 				.attemptStatus("ENQUEUED")
 				.attemptSeq(3L)
@@ -107,7 +106,6 @@ class RoundResultServiceTest {
 			RoundSummaryResponse response = page.getContent().getFirst();
 			assertThat(response.getMultigameId()).isEqualTo(START_TIME);
 			assertThat(response.getParticipantCount()).isEqualTo(50);
-			assertThat(response.getCapacity()).isEqualTo(5);
 		}
 	}
 
@@ -120,22 +118,21 @@ class RoundResultServiceTest {
 	class Describe_myRecords {
 
 		@Test
-		@DisplayName("라운드 단위로 그룹핑하여 results 배열과 함께 페이지로 반환한다")
+		@DisplayName("라운드 단위로 그룹핑하여 참여자 수와 성공 과목 수를 함께 반환한다")
 		void it_returns_my_records_grouped_by_round() {
 			given(memberRepository.findDistinctStartTimesByMemberId(eq(1L), any(Pageable.class)))
 					.willReturn(new PageImpl<>(List.of(START_TIME), PageRequest.of(0, 10), 1));
 			given(memberRepository.findByStartTimeInAndMemberIdOrderByStartTimeDescSubjectIdAsc(List.of(START_TIME), 1L))
 					.willReturn(List.of(member()));
+			given(roundRepository.findAllById(List.of(START_TIME))).willReturn(List.of(round()));
 
 			Page<MyRoundRecordResponse> page = service.myRecords(1L, 0, 10);
 
 			assertThat(page.getContent()).hasSize(1);
 			MyRoundRecordResponse response = page.getContent().getFirst();
 			assertThat(response.getMultigameId()).isEqualTo(START_TIME);
-			assertThat(response.getResults()).hasSize(1);
-			MyRoundResult result = response.getResults().getFirst();
-			assertThat(result.getSubjectId()).isEqualTo(2);
-			assertThat(result.getStatus()).isEqualTo("SUCCESS");
+			assertThat(response.getParticipantCount()).isEqualTo(50);
+			assertThat(response.getSuccessCount()).isEqualTo(1);
 		}
 
 		@Test
@@ -170,87 +167,70 @@ class RoundResultServiceTest {
 		}
 
 		@Test
-		@DisplayName("과목 1~6 집계와 경쟁률을 반환하고 범위 밖 과목은 무시한다")
-		void it_builds_subject_stats() {
+		@DisplayName("참여한 판이면 participated=true와 함께 내 기록이 mine=true로 표시된 전체 시계열을 반환한다")
+		void it_returns_full_timeline_with_my_entries_marked() {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(round()));
-			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L)).willReturn(List.of());
-			// {subjectId, applied, succeeded}
-			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of(
-					new Object[]{1, 10, 8},
-					new Object[]{7, 3, 1})); // 과목 7은 스킵
+			MultigameRoundLogEntity otherLog = MultigameRoundLogEntity.builder()
+					.startTime(START_TIME)
+					.memberId(2L)
+					.subjectId(3)
+					.attemptStatus("SUCCESS")
+					.attemptSeq(4L)
+					.currentLimit(2)
+					.attemptedAt(Instant.parse("2026-08-01T12:00:02Z"))
+					.build();
+			MultigameRoundLogEntity mySecondLog = MultigameRoundLogEntity.builder()
+					.startTime(START_TIME)
+					.memberId(1L)
+					.subjectId(4)
+					.attemptStatus("FAIL_SOLDOUT")
+					.attemptSeq(5L)
+					.currentLimit(3)
+					.attemptedAt(Instant.parse("2026-08-01T12:00:03Z"))
+					.build();
+			given(logRepository.findByStartTimeOrderByAttemptedAtAsc(START_TIME))
+					.willReturn(List.of(logOf(1L), otherLog, mySecondLog));
 
 			RoundDetailResponse response = service.roundDetail(START_TIME, 1L);
 
 			assertThat(response.getMultigameId()).isEqualTo(START_TIME);
 			assertThat(response.getParticipantCount()).isEqualTo(50);
-			assertThat(response.getSubjects()).hasSize(6);
-
-			RoundDetailResponse.SubjectStat subject1 = response.getSubjects().getFirst();
-			assertThat(subject1.getSubjectId()).isEqualTo(1);
-			assertThat(subject1.getApplied()).isEqualTo(10);
-			assertThat(subject1.getSucceeded()).isEqualTo(8);
-			// competitionRate = round(10 * 10 / 5) / 10 = 2.0
-			assertThat(subject1.getCompetitionRate()).isEqualTo(2.0);
-
-			RoundDetailResponse.SubjectStat subject2 = response.getSubjects().get(1);
-			assertThat(subject2.getSubjectId()).isEqualTo(2);
-			assertThat(subject2.getApplied()).isZero();
-			assertThat(subject2.getCompetitionRate()).isZero();
-		}
-
-		@Test
-		@DisplayName("좌석 수가 0이면 경쟁률을 0으로 계산한다")
-		void it_returns_zero_competition_when_capacity_zero() {
-			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(
-					MultigameRoundEntity.builder().startTime(START_TIME).participantCount(0).capacity(0).build()));
-			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L)).willReturn(List.of());
-			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of(
-					new Object[]{1, 5, 2}));
-
-			RoundDetailResponse response = service.roundDetail(START_TIME, 1L);
-
-			assertThat(response.getSubjects().getFirst().getCompetitionRate()).isZero();
-			assertThat(response.getSubjects().getFirst().getApplied()).isEqualTo(5);
-		}
-
-		@Test
-		@DisplayName("참여한 라운드면 participated=true와 내 결과 목록, 내 로그를 반환한다")
-		void it_returns_my_result_and_logs_when_participated() {
-			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(round()));
-			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L))
-					.willReturn(List.of(member()));
-			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of(
-					new Object[]{1, 10, 8}));
-			given(logRepository.findByStartTimeAndMemberIdOrderByAttemptedAtAsc(START_TIME, 1L))
-					.willReturn(List.of(log()));
-
-			RoundDetailResponse response = service.roundDetail(START_TIME, 1L);
-
+			assertThat(response.getCapacity()).isEqualTo(5);
 			assertThat(response.isParticipated()).isTrue();
-			assertThat(response.getMyResults()).hasSize(1);
-			MyRoundResult myResult = response.getMyResults().getFirst();
-			assertThat(myResult.getSubjectId()).isEqualTo(2);
-			assertThat(myResult.getStatus()).isEqualTo("SUCCESS");
-			assertThat(response.getMyLog()).hasSize(1);
-			RoundDetailResponse.AttemptLog attempt = response.getMyLog().getFirst();
-			assertThat(attempt.getStatus()).isEqualTo("ENQUEUED");
-			assertThat(attempt.getSubjectId()).isEqualTo(2);
-			assertThat(attempt.getSeq()).isEqualTo(3);
-			assertThat(attempt.getLimit()).isEqualTo(1);
+			assertThat(response.getTimeline()).hasSize(3);
+
+			// 등장 순서대로 participantNo가 부여되며, 같은 참여자는 동일한 번호를 유지한다.
+			RoundDetailResponse.TimelineEntry mine = response.getTimeline().getFirst();
+			assertThat(mine.getParticipantNo()).isEqualTo(1);
+			assertThat(mine.isMine()).isTrue();
+			assertThat(mine.getSubjectId()).isEqualTo(2);
+			assertThat(mine.getStatus()).isEqualTo("ENQUEUED");
+			assertThat(mine.getSeq()).isEqualTo(3);
+			assertThat(mine.getLimit()).isEqualTo(1);
+
+			RoundDetailResponse.TimelineEntry other = response.getTimeline().get(1);
+			assertThat(other.getParticipantNo()).isEqualTo(2);
+			assertThat(other.isMine()).isFalse();
+			assertThat(other.getSubjectId()).isEqualTo(3);
+			assertThat(other.getStatus()).isEqualTo("SUCCESS");
+
+			RoundDetailResponse.TimelineEntry mineAgain = response.getTimeline().get(2);
+			assertThat(mineAgain.getParticipantNo()).isEqualTo(1);
+			assertThat(mineAgain.isMine()).isTrue();
 		}
 
 		@Test
-		@DisplayName("미참여 라운드면 participated=false, myResults=[], myLog=[] 를 반환한다")
-		void it_returns_no_my_info_when_not_participated() {
+		@DisplayName("미참여 판이면 participated=false이고 전체 시계열의 mine이 모두 false다")
+		void it_returns_full_timeline_without_my_entries_when_not_participated() {
 			given(roundRepository.findById(START_TIME)).willReturn(Optional.of(round()));
-			given(memberRepository.findByStartTimeAndMemberIdOrderBySubjectIdAsc(START_TIME, 1L)).willReturn(List.of());
-			given(memberRepository.aggregateBySubject(START_TIME)).willReturn(List.<Object[]>of());
+			given(logRepository.findByStartTimeOrderByAttemptedAtAsc(START_TIME))
+					.willReturn(List.of(logOf(2L)));
 
 			RoundDetailResponse response = service.roundDetail(START_TIME, 1L);
 
 			assertThat(response.isParticipated()).isFalse();
-			assertThat(response.getMyResults()).isEmpty();
-			assertThat(response.getMyLog()).isEmpty();
+			assertThat(response.getTimeline()).hasSize(1);
+			assertThat(response.getTimeline().getFirst().isMine()).isFalse();
 		}
 	}
 }

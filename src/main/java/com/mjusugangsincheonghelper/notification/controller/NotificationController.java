@@ -106,12 +106,10 @@ public class NotificationController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<Void>> sendTestNotification(
-			HttpServletRequest httpRequest,
 			@Valid @RequestBody NotificationTestRequest request) {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		Long memberId = (Long) authentication.getPrincipal();
-		Long deviceId = (Long) httpRequest.getAttribute("deviceId");
-		notificationService.sendTestNotification(memberId, deviceId, request);
+		notificationService.sendTestNotification(memberId, request);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.empty());
 	}
 }

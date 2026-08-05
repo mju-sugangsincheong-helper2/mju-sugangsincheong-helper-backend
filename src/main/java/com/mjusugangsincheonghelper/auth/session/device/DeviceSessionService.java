@@ -1,6 +1,7 @@
 package com.mjusugangsincheonghelper.auth.session.device;
 
 import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
+import com.mjusugangsincheonghelper.auth.session.token.RefreshTokenHasher;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
 import java.time.Instant;
@@ -19,13 +20,14 @@ public class DeviceSessionService {
 	@Transactional
 	public MemberDevice upsert(Long memberId, String refreshToken, DeviceInfo deviceInfo, long expiryMs) {
 		final DeviceInfo info = deviceInfo != null ? deviceInfo : DeviceInfo.builder().build();
+		final String refreshTokenHash = RefreshTokenHasher.hash(refreshToken);
 
 		Optional<MemberDevice> existing = findExistingDevice(memberId, info);
 
 		return existing
 				.map(device -> {
 					device.updateAccessInfo(
-							refreshToken,
+							refreshTokenHash,
 							info.getName(),
 							info.getVersion(),
 							info.getLayout(),
@@ -44,7 +46,7 @@ public class DeviceSessionService {
 				.orElseGet(() -> {
 					MemberDevice device = MemberDevice.builder()
 							.memberId(memberId)
-							.refreshToken(refreshToken)
+							.refreshTokenHash(refreshTokenHash)
 							.platformjsName(info.getName())
 							.platformjsVersion(info.getVersion())
 							.platformjsLayout(info.getLayout())
@@ -68,13 +70,16 @@ public class DeviceSessionService {
 			return memberDeviceRepository.findByMemberIdAndPlatformjsUaAndFcmToken(
 					memberId, deviceInfo.getUa(), deviceInfo.getFcmToken());
 		}
+		if (deviceInfo.getUa() == null || deviceInfo.getUa().isBlank()) {
+			return Optional.empty();
+		}
 		return memberDeviceRepository.findByMemberIdAndPlatformjsUa(memberId, deviceInfo.getUa());
 	}
 
 	@Transactional
 	public void deleteByRefreshToken(String refreshToken) {
 		if (refreshToken != null) {
-			memberDeviceRepository.deleteByRefreshToken(refreshToken);
+			memberDeviceRepository.deleteByRefreshTokenHash(RefreshTokenHasher.hash(refreshToken));
 		}
 	}
 

@@ -32,10 +32,9 @@ public class MyResultController {
 	@GetMapping(version = "1+")
 	@Operation(summary = "Get my round results", description = """
 			현재 로그인한 사용자가 참여한 라운드들의 최종 결과를 최신순으로 페이징 조회합니다.
-			페이지네이션 단위는 라운드이며, 한 라운드의 과목별 최종 상태(SUCCESS/FAIL_SOLDOUT)는
-			results 배열(subjectId/status/createdAt)로 묶여 반환됩니다. 결과 화면의 카드 데이터로
-			사용되며, 라운드별 상세(분석서 + 내 결과 + 내 신청 타임라인)는
-			상세 API(GET /results/{multigameId})에서 한 번에 확인할 수 있습니다.
+			페이지네이션 단위는 라운드이며, 각 항목은 게임 시작 시각(multigameId = T), 참여자 수(participantCount),
+			자신이 6개 과목 중 성공한 과목 수(successCount)만 노출합니다. 처리 시계열은
+			상세 API(GET /results/{multigameId})에서 확인할 수 있습니다.
 			""", responses = @ApiResponse(responseCode = "200", description = "내 참여 이력 목록 (최신순, 페이징)"))
 	@OperationErrorCodes({ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR})
 	public ResponseEntity<PagedSuccessResponseEnvelope<MyRoundRecordResponse>> myRecords(

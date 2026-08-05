@@ -243,7 +243,7 @@ class ExchangeServiceTest {
 					.build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
+			given(intentRepository.findById(intentId))
 					.willReturn(Optional.of(intent));
 			given(roomIntentRepository.findByTermAndIntentId(term, intentId)).willReturn(List.of());
 
@@ -265,7 +265,7 @@ class ExchangeServiceTest {
 			Long intentId = 999L;
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
+			given(intentRepository.findById(intentId))
 					.willReturn(Optional.empty());
 
 			// When & Then
@@ -294,7 +294,7 @@ class ExchangeServiceTest {
 					.build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
+			given(intentRepository.findById(intentId))
 					.willReturn(Optional.of(intent));
 
 			// When & Then
@@ -323,7 +323,7 @@ class ExchangeServiceTest {
 			intent.markDeleted();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
+			given(intentRepository.findById(intentId))
 					.willReturn(Optional.of(intent));
 
 			// When & Then
@@ -365,13 +365,13 @@ class ExchangeServiceTest {
 					.build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)))
+			given(intentRepository.findById(intentId))
 					.willReturn(Optional.of(intent));
 			given(roomIntentRepository.findByTermAndIntentId(term, intentId))
 					.willReturn(List.of(roomIntent));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
 					.willReturn(List.of(roomIntent));
-			given(roomRepository.findByIdForUpdate(term, roomId))
+			given(roomRepository.findByIdForUpdate(roomId))
 					.willReturn(Optional.of(room));
 
 			// When
@@ -408,13 +408,13 @@ class ExchangeServiceTest {
 					.term(term).cycleHash("hash").status("ACTIVE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+			given(intentRepository.findById(intentIdA))
 					.willReturn(Optional.of(intentA));
 			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
 					.willReturn(List.of(riA));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
 					.willReturn(List.of(riA, riB));
-			given(roomRepository.findByIdForUpdate(term, roomId))
+			given(roomRepository.findByIdForUpdate(roomId))
 					.willReturn(Optional.of(room));
 
 			// When
@@ -453,13 +453,13 @@ class ExchangeServiceTest {
 					.term(term).cycleHash("hash").status("ACTIVE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+			given(intentRepository.findById(intentIdA))
 					.willReturn(Optional.of(intentA));
 			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
 					.willReturn(List.of(riA));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
 					.willReturn(List.of(riA, riB, riC));
-			given(roomRepository.findByIdForUpdate(term, roomId))
+			given(roomRepository.findByIdForUpdate(roomId))
 					.willReturn(Optional.of(room));
 
 			// When
@@ -488,13 +488,13 @@ class ExchangeServiceTest {
 					.term(term).cycleHash("hash").status("PARTIAL_DELETE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+			given(intentRepository.findById(intentIdA))
 					.willReturn(Optional.of(intentA));
 			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
 					.willReturn(List.of(riA));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
 					.willReturn(List.of(riA));
-			given(roomRepository.findByIdForUpdate(term, roomId))
+			given(roomRepository.findByIdForUpdate(roomId))
 					.willReturn(Optional.of(room));
 
 			// When
@@ -527,13 +527,13 @@ class ExchangeServiceTest {
 					.term(term).cycleHash("hash").status("ACTIVE").build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentIdA)))
+			given(intentRepository.findById(intentIdA))
 					.willReturn(Optional.of(intentA));
 			given(roomIntentRepository.findByTermAndIntentId(term, intentIdA))
 					.willReturn(List.of(riA, riB));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId))
 					.willReturn(List.of(riA, riB));
-			given(roomRepository.findByIdForUpdate(term, roomId))
+			given(roomRepository.findByIdForUpdate(roomId))
 					.willReturn(Optional.of(room));
 
 			// When
@@ -844,7 +844,7 @@ class ExchangeServiceTest {
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of(roomIntent));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(roomIntent));
-			given(roomRepository.findByIdForUpdate(term, roomId)).willReturn(Optional.of(room));
+			given(roomRepository.findByIdForUpdate(roomId)).willReturn(Optional.of(room));
 
 			// When
 			RoomToggleResponse response = exchangeService.toggleRoom(memberId, roomId, request);
@@ -877,7 +877,7 @@ class ExchangeServiceTest {
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberIdA)).willReturn(List.of(riA));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(riA, riB));
-			given(roomRepository.findByIdForUpdate(term, roomId)).willReturn(Optional.of(room));
+			given(roomRepository.findByIdForUpdate(roomId)).willReturn(Optional.of(room));
 
 			// When
 			exchangeService.toggleRoom(memberIdA, roomId, request);
@@ -908,7 +908,7 @@ class ExchangeServiceTest {
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberIdA)).willReturn(List.of(riA));
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(riA, riB));
-			given(roomRepository.findByIdForUpdate(term, roomId)).willReturn(Optional.of(room));
+			given(roomRepository.findByIdForUpdate(roomId)).willReturn(Optional.of(room));
 
 			// When
 			exchangeService.toggleRoom(memberIdA, roomId, request);

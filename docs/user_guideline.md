@@ -517,15 +517,24 @@ public enum ErrorCode {
 
 ---
 
-## 9. Security 경로 등록 규칙
+## 9. Security 공개 경로 등록 규칙
 
-신규 도메인 추가 시 `GlobalSecurityConfig.java`에 permitAll 경로 추가:
+인증 없이 접근 가능한 공개 API 추가 시 `GlobalSecurityConfig.java`의 HTTP 메서드별 배열에 경로를 추가합니다.
 
 ```java
-.requestMatchers("/api/*/domain/**").permitAll()     // {domain} 부분 추가
+// 경로 전체 공개 (모든 HTTP 메서드 허용)
+public static final String[] PUBLIC_URLS = { "/api/*/auth/guest", ... };
+
+// HTTP 메서드별 한정 공개 (특정 메서드만 공개)
+public static final String[] PUBLIC_GET_URLS = { "/api/*/course/sections", ... };
+public static final String[] PUBLIC_POST_URLS = {};
+public static final String[] PUBLIC_PUT_URLS = {};
+public static final String[] PUBLIC_PATCH_URLS = {};
+public static final String[] PUBLIC_DELETE_URLS = {};
 ```
 
-경로 패턴: `/api/*/{domain}/**` (버전 무관하게 허용)
+- **메서드 단위 분리**: 조회용 GET 등 특정 HTTP 메서드만 공개해야 하는 경우, 동일 경로의 POST/DELETE 권한이 영향을 받지 않도록 `PUBLIC_GET_URLS` 등 해당 메서드 배열에 선언합니다.
+- **컨트롤러 표기**: 컨트롤러 메서드에도 `@PreAuthorize("permitAll()")`을 명시하면 코드 가독성에 도움이 됩니다. (단, 클래스 상단에 `@PreAuthorize("hasRole('MEMBER')")` 등 권한이 선언된 컨트롤러에서는 메서드 레벨의 `permitAll()` 명시가 필수입니다.)
 
 ---
 

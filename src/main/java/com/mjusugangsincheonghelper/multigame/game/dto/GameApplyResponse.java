@@ -14,6 +14,7 @@ public class GameApplyResponse {
 	private String currentState;
 	private Long seq;
 	private Long limit;
+	private Long rank;
 	private Integer subjectId;
 	private Integer remaining;
 }

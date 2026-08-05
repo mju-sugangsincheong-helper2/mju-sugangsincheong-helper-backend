@@ -133,7 +133,7 @@ class CourseControllerTest {
 					.takelim("40").listennow("40")
 					.build();
 			given(systemConfigService.getCurrentTerm()).willReturn("202615");
-			given(courseService.findSections("202615")).willReturn(List.of(item));
+			given(courseService.findSections("202615", null, null, null, null)).willReturn(List.of(item));
 
 			mockMvc.perform(get("/api/v1/course/sections"))
 					.andExpect(status().isOk())
@@ -152,12 +152,28 @@ class CourseControllerTest {
 					.profnm("김진옥").cdtnum("2").cdttime("2")
 					.takelim("40").listennow("40")
 					.build();
-			given(courseService.findSections("202615")).willReturn(List.of(item));
+			given(courseService.findSections("202615", null, null, null, null)).willReturn(List.of(item));
 
 			mockMvc.perform(get("/api/v1/course/sections")
 							.param("term", "202615"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data[0].term").value("202615"));
+		}
+
+		@Test
+		@DisplayName("deptcd/keyword/campus/excludeDays 필터를 서비스에 전달한다")
+		void it_passes_filters_to_service() throws Exception {
+			given(courseService.findSections("202615", "15611", "10", "알고리즘", List.of("1", "6")))
+					.willReturn(List.of());
+
+			mockMvc.perform(get("/api/v1/course/sections")
+							.param("term", "202615")
+							.param("deptcd", "15611")
+							.param("campus", "10")
+							.param("keyword", "알고리즘")
+							.param("excludeDays", "1,6"))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data").isEmpty());
 		}
 	}
 }

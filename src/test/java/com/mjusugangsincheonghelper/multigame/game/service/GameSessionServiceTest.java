@@ -257,16 +257,17 @@ class GameSessionServiceTest {
 		}
 
 		@Test
-		@DisplayName("PENDING 결과를 seq와 limit로 매핑한다")
+		@DisplayName("PENDING 결과를 seq, limit, rank(앞 대기 수)로 매핑한다")
 		void it_maps_pending() {
 			resolves(GameStatus.PROGRESS);
-			given(redis.execute(any(), anyList(), any(Object[].class))).willReturn(List.of("PENDING", "5", "10"));
+			given(redis.execute(any(), anyList(), any(Object[].class))).willReturn(List.of("PENDING", "5", "10", "2"));
 
 			GameApplyResponse response = service.apply(7L, 1);
 
 			assertThat(response.getStatus()).isEqualTo("PENDING");
 			assertThat(response.getSeq()).isEqualTo(5);
 			assertThat(response.getLimit()).isEqualTo(10);
+			assertThat(response.getRank()).isEqualTo(2);
 		}
 
 		@Test

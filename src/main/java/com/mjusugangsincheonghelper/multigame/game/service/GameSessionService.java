@@ -100,7 +100,7 @@ public class GameSessionService {
 		String status = String.valueOf(result.getFirst());
 		return switch (status) {
 			case "BLOCKED" -> GameApplyResponse.builder().status(status).currentState(value(result, 1)).build();
-			case "PENDING" -> GameApplyResponse.builder().status(status).seq(number(result, 1)).limit(number(result, 2)).build();
+			case "PENDING" -> GameApplyResponse.builder().status(status).seq(number(result, 1)).limit(number(result, 2)).rank(number(result, 3)).build();
 			case "SUCCESS" -> GameApplyResponse.builder().status(status).subjectId(number(result, 1).intValue()).remaining(number(result, 2).intValue()).build();
 			case "FAIL_SOLDOUT", "FAIL_DUPLICATE" -> GameApplyResponse.builder().status(status).subjectId(number(result, 1).intValue()).build();
 			default -> throw new BaseException(ErrorCode.MULTIGAME_LUA_SCRIPT_ERROR);

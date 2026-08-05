@@ -111,8 +111,7 @@ public class ExchangeService {
 	public IntentDeleteResponse deleteIntent(Long memberId, Long intentId) {
 		String term = systemConfigService.getCurrentTerm();
 
-		ExchangeIntentEntity intent = intentRepository.findById(
-				new ExchangeIntentEntity.ExchangeIntentId(term, intentId))
+		ExchangeIntentEntity intent = intentRepository.findById(intentId)
 				.orElseThrow(() -> new BaseException(ErrorCode.EXCHANGE_INTENT_NOT_FOUND));
 
 		if (!intent.getMemberId().equals(memberId)) {
@@ -168,9 +167,7 @@ public class ExchangeService {
 			List<RoomItem> roomItems = new ArrayList<>();
 
 			for (ExchangeRoomIntentEntity ri : roomIntents) {
-				ExchangeRoomEntity room = roomRepository.findById(
-						new ExchangeRoomEntity.ExchangeRoomId(term, ri.getRoomId())
-				).orElse(null);
+				ExchangeRoomEntity room = roomRepository.findById(ri.getRoomId()).orElse(null);
 				if (room == null) continue;
 
 				ExchangeRoomReadStatusEntity read = readStatusRepository.findById(
@@ -193,9 +190,7 @@ public class ExchangeService {
 				List<ExchangeRoomIntentEntity> allRoomIntents = roomIntentRepository.findByTermAndRoomId(term, ri.getRoomId());
 				List<ParticipantItem> participantItems = new ArrayList<>();
 				for (ExchangeRoomIntentEntity pri : allRoomIntents) {
-					ExchangeIntentEntity pi = intentRepository.findById(
-							new ExchangeIntentEntity.ExchangeIntentId(term, pri.getIntentId())
-					).orElse(null);
+					ExchangeIntentEntity pi = intentRepository.findById(pri.getIntentId()).orElse(null);
 
 					participantItems.add(ParticipantItem.builder()
 							.memberId(pri.getMemberId())
@@ -416,7 +411,7 @@ public class ExchangeService {
 		int o = (int) roomIntents.stream().filter(ri -> !ri.isDeleted() && !ri.isOn()).count();
 		int activeCount = n - d;
 
-		ExchangeRoomEntity room = roomRepository.findByIdForUpdate(term, roomId)
+		ExchangeRoomEntity room = roomRepository.findByIdForUpdate(roomId)
 				.orElseThrow(() -> new BaseException(ErrorCode.EXCHANGE_ROOM_NOT_FOUND));
 
 		String newStatus;

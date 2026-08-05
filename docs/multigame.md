@@ -259,7 +259,7 @@ T는 10분 마크(`:00`, `:10`, `:20`, `:30`, `:40`, `:50`)이며, **서버가 `
 --
 -- 반환 형식:
 -- - BLOCKED:        {'BLOCKED', current_state}
--- - PENDING:        {'PENDING', seq, limit}
+-- - PENDING:        {'PENDING', seq, limit, rank}
 -- - SUCCESS:        {'SUCCESS', subject_id, remaining}
 -- - FAIL_SOLDOUT:   {'FAIL_SOLDOUT', subject_id}
 -- - FAIL_DUPLICATE: {'FAIL_DUPLICATE', subject_id}
@@ -287,7 +287,9 @@ end
 local limit = tonumber(redis.call('GET', KEYS[4]) or '0')
 if tonumber(seq) > limit then
     -- PENDING일 때는 로그를 남기지 않고 바로 반환 (폴링 노이즈 방지)
-    return {'PENDING', seq, limit}
+    -- rank: 현재 큐에서 내 앞에 남아 있는 시도 수 (상대값, ZRANK 0-based — 앞 사람이 성공하면 실시간 감소)
+    local rank = redis.call('ZRANK', KEYS[2], attempt)
+    return {'PENDING', seq, limit, rank}
 end
 
 -- 4. 중복 수강 검증 (같은 과목만 차단. 다른 과목은 별도로 성공 가능)

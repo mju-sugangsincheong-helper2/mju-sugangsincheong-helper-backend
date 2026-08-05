@@ -106,7 +106,7 @@ class AccountServiceTest {
 					.build();
 			MemberDevice device = MemberDevice.builder()
 					.memberId(memberId)
-					.refreshToken("some_refresh_token")
+					.refreshTokenHash("some_refresh_token")
 					.build();
 			MemberAuth memberAuth = MemberAuth.builder()
 					.memberId(memberId)

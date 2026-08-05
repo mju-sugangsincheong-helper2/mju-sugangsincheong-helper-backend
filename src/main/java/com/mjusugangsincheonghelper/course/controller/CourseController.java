@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -81,10 +82,12 @@ public class CourseController {
 	}
 
 	@GetMapping(version = "1+")
-	@PreAuthorize("hasRole('GUEST')")
+	@PreAuthorize("permitAll()") // 공개 GET API (PUBLIC_GET_URLS에 등록됨)
 	@Operation(
 			summary = "List course sections",
-			description = "강좌 목록을 조회합니다. term 파라미터가 없으면 현재 학기(current_term)를 조회합니다.",
+			description = "학기별 강좌 목록을 검색합니다. term 파라미터가 없으면 현재 학기(current_term)를 조회하며, 해당 학기에 강좌 데이터가 없으면 직전 학기(202620 → 202610, 202625 → 202615, 202610 → 202520)로 순차 폴백하여 가장 최근 데이터가 있는 학기를 사용합니다. " +
+					"deptcd(개설학과), keyword(교과목명/강좌번호/학수번호 통합검색), " +
+					"campus(캠퍼스), excludeDays(제외할 요일)로 서버에서 필터링합니다. 시간 미지정(lecttime 없음) 강좌는 excludeDays와 무관하게 포함됩니다.",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
@@ -97,9 +100,28 @@ public class CourseController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<List<CourseSectionResponse>>> findSections(
 			@Parameter(description = "조회할 학기 (예: 202515), 없으면 current_term 사용", example = "202515")
-			@RequestParam(name = "term", required = false) String term) {
+			@RequestParam(name = "term", required = false) String term,
+			@Parameter(description = "개설학과 코드", example = "15611")
+			@RequestParam(name = "deptcd", required = false) String deptcd,
+			@Parameter(description = "교과목명/강좌번호(4자리)/학수번호 통합검색 키워드", example = "알고리즘")
+			@RequestParam(name = "keyword", required = false) String keyword,
+			@Parameter(description = "캠퍼스 구분 (10: 자연, 20: 인문)", example = "10")
+			@RequestParam(name = "campus", required = false) String campus,
+			@Parameter(description = "제외할 요일 코드 (1: 월 ~ 6: 토, 콤마 구분)", example = "1,6")
+			@RequestParam(name = "excludeDays", required = false) String excludeDays) {
 		String effectiveTerm = (term != null && !term.isBlank()) ? term : systemConfigService.getCurrentTerm();
-		List<CourseSectionResponse> response = courseService.findSections(effectiveTerm);
+		List<CourseSectionResponse> response = courseService.findSections(
+				effectiveTerm, deptcd, campus, keyword, parseExcludeDays(excludeDays));
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
+	}
+
+	private static List<String> parseExcludeDays(String excludeDays) {
+		if (excludeDays == null || excludeDays.isBlank()) {
+			return null;
+		}
+		return Arrays.stream(excludeDays.split(","))
+				.map(String::trim)
+				.filter(s -> !s.isEmpty())
+				.toList();
 	}
 }

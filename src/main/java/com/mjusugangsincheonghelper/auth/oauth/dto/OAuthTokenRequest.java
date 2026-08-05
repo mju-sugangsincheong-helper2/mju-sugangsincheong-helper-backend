@@ -1,5 +1,7 @@
 package com.mjusugangsincheonghelper.auth.oauth.dto;
 
+import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
+
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,4 +21,6 @@ public class OAuthTokenRequest {
 	private String state;
 
 	private String accessToken;
+
+	private DeviceInfo device;
 }

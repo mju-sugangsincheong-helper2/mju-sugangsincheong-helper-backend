@@ -87,7 +87,7 @@ class ExchangeCycleDetectorTest {
 					.build();
 			ReflectionTestUtils.setField(intent3, "id", 3L);
 
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
+			given(intentRepository.findById(triggerIntentId))
 					.willReturn(Optional.of(intent1));
 
 			given(intentRepository.findByTermAndIsDeletedFalse(term))
@@ -121,7 +121,7 @@ class ExchangeCycleDetectorTest {
 					.build();
 			ReflectionTestUtils.setField(intentB, "id", 2L);
 
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
+			given(intentRepository.findById(triggerIntentId))
 					.willReturn(Optional.of(intentA));
 
 			given(intentRepository.findByTermAndIsDeletedFalse(term))
@@ -144,7 +144,7 @@ class ExchangeCycleDetectorTest {
 			String term = "202620";
 			Long triggerIntentId = 1L;
 
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
+			given(intentRepository.findById(triggerIntentId))
 					.willReturn(Optional.empty());
 
 			// When
@@ -168,7 +168,7 @@ class ExchangeCycleDetectorTest {
 			ReflectionTestUtils.setField(intent, "id", triggerIntentId);
 			intent.markDeleted();
 
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
+			given(intentRepository.findById(triggerIntentId))
 					.willReturn(Optional.of(intent));
 
 			// When
@@ -197,7 +197,7 @@ class ExchangeCycleDetectorTest {
 					.build();
 			ReflectionTestUtils.setField(intent2, "id", 2L);
 
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
+			given(intentRepository.findById(triggerIntentId))
 					.willReturn(Optional.of(intent1));
 
 			given(intentRepository.findByTermAndIsDeletedFalse(term))
@@ -227,7 +227,7 @@ class ExchangeCycleDetectorTest {
 					.build();
 			ReflectionTestUtils.setField(intent2, "id", 2L);
 
-			given(intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, triggerIntentId)))
+			given(intentRepository.findById(triggerIntentId))
 					.willReturn(Optional.of(intent1));
 
 			given(intentRepository.findByTermAndIsDeletedFalse(term))

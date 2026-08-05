@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.auth.test;
 
+import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
 
 import lombok.AllArgsConstructor;
@@ -14,4 +15,6 @@ import lombok.NoArgsConstructor;
 public class CreateTestAccountRequest {
 
 	private Role role;
+
+	private DeviceInfo device;
 }

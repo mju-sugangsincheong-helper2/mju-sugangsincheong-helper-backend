@@ -687,7 +687,7 @@ private void scheduleDoubleEvict(String key) {
 
 ##### **4. 최근 등록된 교환 의사 피드 조회**
 - **Method & Path:** `GET /api/v1/exchange/intents/recent`
-- **Description:** 최근 등록된 활성 교환 의사 리스트(최대 50개)를 단순 조회합니다. Redis 피드 캐시(`exchange::{term}:feed:cache`)에서 최근 50개 데이터를 즉시 반환하여 초고속 조회를 보장합니다.
+- **Description:** 최근 등록된 활성 교환 의사 리스트(최대 50개)를 단순 조회합니다. Redis 피드 캐시(`exchange::{term}:feed:cache`)에서 최근 50개 데이터를 즉시 반환하여 초고속 조회를 보장합니다. **(인증 없이 접근 가능한 공개 API)**
 - **Query Parameters:** 없음
 - **Response JSON (200 OK):**
   ```json

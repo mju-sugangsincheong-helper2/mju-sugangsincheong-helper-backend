@@ -21,6 +21,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 
 @Configuration
 @EnableWebSecurity
@@ -44,6 +45,25 @@ public class GlobalSecurityConfig {
 			"/*.js"
 	};
 
+	/**
+	 * HTTP 메서드별 공개 API 목록.
+	 * 같은 경로의 다른 HTTP 메서드는 보안 체인을 그대로 타도록 메서드별로 분리하여 정의한다.
+	 */
+	public static final String[] PUBLIC_GET_URLS = {
+			"/api/*/course/sections",
+			"/api/*/course/department",
+			"/api/*/exchange/intents/recent",
+			"/api/*/system/configs/notices"
+	};
+
+	public static final String[] PUBLIC_POST_URLS = {};
+
+	public static final String[] PUBLIC_PUT_URLS = {};
+
+	public static final String[] PUBLIC_PATCH_URLS = {};
+
+	public static final String[] PUBLIC_DELETE_URLS = {};
+
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final ConsentCheckFilter consentCheckFilter;
 
@@ -56,7 +76,24 @@ public class GlobalSecurityConfig {
 	@Order(1)
 	public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
 		http
-				.securityMatchers(matchers -> matchers.requestMatchers(PUBLIC_URLS))
+				.securityMatchers(matchers -> {
+					matchers.requestMatchers(PUBLIC_URLS);
+					if (PUBLIC_GET_URLS.length > 0) {
+						matchers.requestMatchers(HttpMethod.GET, PUBLIC_GET_URLS);
+					}
+					if (PUBLIC_POST_URLS.length > 0) {
+						matchers.requestMatchers(HttpMethod.POST, PUBLIC_POST_URLS);
+					}
+					if (PUBLIC_PUT_URLS.length > 0) {
+						matchers.requestMatchers(HttpMethod.PUT, PUBLIC_PUT_URLS);
+					}
+					if (PUBLIC_PATCH_URLS.length > 0) {
+						matchers.requestMatchers(HttpMethod.PATCH, PUBLIC_PATCH_URLS);
+					}
+					if (PUBLIC_DELETE_URLS.length > 0) {
+						matchers.requestMatchers(HttpMethod.DELETE, PUBLIC_DELETE_URLS);
+					}
+				})
 				.csrf(csrf -> csrf.disable())
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

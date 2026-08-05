@@ -16,6 +16,9 @@ public class CourseSectionResponse {
 	private final String term;
 	private final String curinum;
 	private final String curinm;
+	private final String comyear;
+	private final String deptcd;
+	private final String deptnm;
 	private final String profnm;
 	private final String lecttime;
 	private final String lecperiod;
@@ -23,6 +26,7 @@ public class CourseSectionResponse {
 	private final String cdttime;
 	private final String takelim;
 	private final String listennow;
+	private final String bagcnt;
 
 	public static CourseSectionResponse from(CourseEntity entity) {
 		return CourseSectionResponse.builder()
@@ -30,6 +34,9 @@ public class CourseSectionResponse {
 				.term(entity.getTerm())
 				.curinum(entity.getCurinum())
 				.curinm(entity.getCurinm())
+				.comyear(entity.getComyear())
+				.deptcd(entity.getDeptcd())
+				.deptnm(entity.getDeptnm())
 				.profnm(entity.getProfnm())
 				.lecttime(entity.getLecttime())
 				.lecperiod(entity.getLecperiod())
@@ -37,6 +44,7 @@ public class CourseSectionResponse {
 				.cdttime(entity.getCdttime())
 				.takelim(entity.getTakelim())
 				.listennow(entity.getListennow())
+				.bagcnt(entity.getBagcnt())
 				.build();
 	}
 }

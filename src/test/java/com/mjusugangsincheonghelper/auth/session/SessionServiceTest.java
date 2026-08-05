@@ -12,6 +12,7 @@ import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
 import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
+import com.mjusugangsincheonghelper.auth.session.token.RefreshTokenHasher;
 import com.mjusugangsincheonghelper.auth.session.token.TokenProvider;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.Member.Role;
@@ -76,7 +77,7 @@ class SessionServiceTest {
 
 			MemberDevice device = MemberDevice.builder()
 					.memberId(1L)
-					.refreshToken("refresh-token")
+					.refreshTokenHash(RefreshTokenHasher.hash("refresh-token"))
 					.build();
 			ReflectionTestUtils.setField(device, "id", 10L);
 
@@ -112,7 +113,7 @@ class SessionServiceTest {
 
 			MemberDevice device = MemberDevice.builder()
 					.memberId(1L)
-					.refreshToken(refreshToken)
+					.refreshTokenHash(RefreshTokenHasher.hash(refreshToken))
 					.expiresAt(java.time.Instant.now().plusMillis(3600_000L))
 					.build();
 			ReflectionTestUtils.setField(device, "id", 10L);
@@ -123,7 +124,7 @@ class SessionServiceTest {
 					.build();
 			ReflectionTestUtils.setField(member, "id", 1L);
 
-			given(memberDeviceRepository.findByRefreshToken(refreshToken)).willReturn(Optional.of(device));
+			given(memberDeviceRepository.findByRefreshTokenHash(RefreshTokenHasher.hash(refreshToken))).willReturn(Optional.of(device));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
 			given(accountAgreementService.isAgreed(1L)).willReturn(false);
 			given(tokenProvider.createRefreshToken()).willReturn("new-refresh-token");
@@ -142,7 +143,7 @@ class SessionServiceTest {
 			String invalidRefreshToken = "invalid-refresh-token";
 			HttpServletResponse response = new MockHttpServletResponse();
 
-			given(memberDeviceRepository.findByRefreshToken(invalidRefreshToken)).willReturn(Optional.empty());
+			given(memberDeviceRepository.findByRefreshTokenHash(RefreshTokenHasher.hash(invalidRefreshToken))).willReturn(Optional.empty());
 
 			assertThatThrownBy(() -> sessionService.refreshSession(invalidRefreshToken, response))
 					.isInstanceOf(BaseException.class)

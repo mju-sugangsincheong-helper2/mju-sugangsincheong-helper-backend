@@ -64,7 +64,15 @@ public class GlobalSecurityConfig {
             "/swagger-ui/**",
             "/v3/api-docs/**",
             "/actuator/**",
-            "/*.html"
+            "/*.html",
+            "/*.js"
+    };
+
+    /** 인증 없이 조회 가능한 공개 GET API (HttpMethod.GET 에 한해 매칭) */
+    public static final String[] PUBLIC_GET_URLS = {
+            "/api/*/course/sections",      // 강좌 목록 조회
+            "/api/*/course/department",    // 학과 목록 조회
+            "/api/*/exchange/intents/recent" // 최근 교환 의사 피드
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -79,7 +87,9 @@ public class GlobalSecurityConfig {
     @Order(1)
     public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
         http
-                .securityMatchers(matchers -> matchers.requestMatchers(PUBLIC_URLS))
+                .securityMatchers(matchers -> matchers
+                        .requestMatchers(PUBLIC_URLS)
+                        .requestMatchers(HttpMethod.GET, PUBLIC_GET_URLS))
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -131,6 +141,10 @@ public class GlobalSecurityConfig {
 ```
 요청 → [JwtAuthenticationFilter] → [ConsentCheckFilter] → DispatcherServlet → [@PreAuthorize] → Controller
 ```
+
+> **공개 GET API**: `PUBLIC_GET_URLS`(예: `GET /api/1/course/sections`, `GET /api/1/course/department`, `GET /api/1/exchange/intents/recent`)는 `HttpMethod.GET`에 한해 `publicSecurityFilterChain`으로 매칭되어 인증·동의 검증 없이 통과합니다.
+> 같은 경로의 다른 메서드는 보안 체인을 그대로 사용합니다(예: `POST/DELETE /api/1/course/sections`는 여전히 ADMIN 인증 필요).
+> `ExchangeController`처럼 클래스 레벨에 `@PreAuthorize("hasRole('MEMBER')")`가 있는 컨트롤러의 공개 메서드는 메서드 레벨 `@PreAuthorize("permitAll()")`로 재정의합니다.
 
 - **JwtAuthenticationFilter**는 `shouldNotFilter()`로 `/api/`로 시작하지 않는 요청을 건너뛰며, DB 접근 없이 JWT 내부 Claims(`memberId`, `role`, `agreed`, `deviceId`)만으로 Spring Security의 `Authentication` 객체를 만듭니다. `agreed` 클레임은 `request.setAttribute("privacyAgreed", ...)`, `deviceId` 클레임은 `request.setAttribute("deviceId", ...)`로 후속 필터 및 컨트롤러에 전달됩니다.
 - **ConsentCheckFilter**는 SecurityContext의 인증 객체가 `Long`(memberId) principal을 가지며 `ROLE_MEMBER`/`ROLE_ADMIN` 권한을 가질 때만 `privacyAgreed` 플래그를 검사합니다. 동의하지 않은 사용자가 비면제 경로로 접근하면 `AUTH_PRIVACY_POLICY_REQUIRED`(403) 응답을 즉시 반환합니다. 면제 경로는 `/auth/privacy/agree`, `/auth/logout`입니다.

@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.account.dto;
 
+import com.mjusugangsincheonghelper.auth.session.token.RefreshTokenHasher;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import java.time.Instant;
 import lombok.Builder;
@@ -22,7 +23,8 @@ public class AccountDeviceResponse {
 
 	public static AccountDeviceResponse from(MemberDevice device, String currentRefreshToken) {
 		boolean pushEnabled = device.getFcmToken() != null && !device.getFcmToken().isBlank();
-		boolean current = currentRefreshToken != null && currentRefreshToken.equals(device.getRefreshToken());
+		boolean current = currentRefreshToken != null
+				&& device.getRefreshTokenHash().equals(RefreshTokenHasher.hash(currentRefreshToken));
 
 		return AccountDeviceResponse.builder()
 				.id(device.getId())

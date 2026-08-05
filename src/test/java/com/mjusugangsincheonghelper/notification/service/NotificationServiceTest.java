@@ -25,11 +25,14 @@ class NotificationServiceTest {
 	@Mock
 	private MemberDeviceRepository memberDeviceRepository;
 
+	@Mock
+	private com.mjusugangsincheonghelper.global.config.PgmqService pgmqService;
+
 	private NotificationService notificationService;
 
 	@BeforeEach
 	void setUp() {
-		notificationService = new NotificationService(memberDeviceRepository);
+		notificationService = new NotificationService(memberDeviceRepository, pgmqService);
 	}
 
 	@Test
@@ -40,7 +43,7 @@ class NotificationServiceTest {
 		String token = "sample-fcm-token-123";
 		MemberDevice device = MemberDevice.builder()
 				.memberId(memberId)
-				.refreshToken("ref-token-1")
+				.refreshTokenHash("ref-token-1")
 				.build();
 
 		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
@@ -65,7 +68,7 @@ class NotificationServiceTest {
 		String token = "sample-fcm-token-123";
 		MemberDevice device = MemberDevice.builder()
 				.memberId(otherMemberId)
-				.refreshToken("ref-token-1")
+				.refreshTokenHash("ref-token-1")
 				.build();
 
 		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
@@ -87,7 +90,7 @@ class NotificationServiceTest {
 		String token = "sample-fcm-token-123";
 		MemberDevice device = MemberDevice.builder()
 				.memberId(memberId)
-				.refreshToken("ref-token-1")
+				.refreshTokenHash("ref-token-1")
 				.build();
 		device.updateFcmToken(token);
 
@@ -111,7 +114,7 @@ class NotificationServiceTest {
 		String token = "sample-fcm-token-123";
 		MemberDevice device = MemberDevice.builder()
 				.memberId(otherMemberId)
-				.refreshToken("ref-token-1")
+				.refreshTokenHash("ref-token-1")
 				.build();
 		device.updateFcmToken(token);
 

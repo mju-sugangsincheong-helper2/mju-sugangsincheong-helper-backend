@@ -21,7 +21,11 @@ public final class GameApplyScript {
 				redis.call('RPUSH', KEYS[7], ARGV[1]..':ENQUEUED:'..ARGV[2]..':'..ARGV[3]..':'..seq..':0')
 			end
 			local limit = tonumber(redis.call('GET', KEYS[4]) or '0')
-			if tonumber(seq) > limit then return {'PENDING', seq, limit} end
+			if tonumber(seq) > limit then
+				-- rank: 현재 큐에서 내 앞에 있는 시도 수 (상대값, 실시간 감소)
+				local rank = redis.call('ZRANK', KEYS[2], attempt)
+				return {'PENDING', seq, limit, rank}
+			end
 			-- 같은 과목은 1회만 성공 가능(중복 수강 방지). 다른 과목은 별도로 성공 가능
 			if redis.call('SISMEMBER', KEYS[6], attempt) == 1 then
 				redis.call('ZREM', KEYS[2], attempt)

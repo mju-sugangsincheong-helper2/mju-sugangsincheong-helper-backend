@@ -15,7 +15,6 @@ import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
 import com.mjusugangsincheonghelper.global.api.support.InstanceIdProvider;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
-import com.mjusugangsincheonghelper.multigame.result.dto.MyRoundResult;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundDetailResponse;
 import com.mjusugangsincheonghelper.multigame.result.dto.RoundSummaryResponse;
 import com.mjusugangsincheonghelper.multigame.result.service.RoundResultService;
@@ -83,8 +82,6 @@ class RoundResultControllerTest {
 					.willReturn(new PageImpl<>(List.of(RoundSummaryResponse.builder()
 							.multigameId("20260801120000")
 							.participantCount(50)
-							.capacity(5)
-							.createdAt(Instant.parse("2026-08-01T12:01:00Z"))
 							.build()), PageRequest.of(0, 10), 1));
 
 			mockMvc.perform(get("/api/v1/multigame/results")
@@ -104,7 +101,7 @@ class RoundResultControllerTest {
 	class Describe_detail {
 
 		@Test
-		@DisplayName("라운드 상세(메타 + 분석서 + 내 참여 정보)를 반환한다")
+		@DisplayName("라운드 상세(게임 시각 + 참여자 수 + 참여 여부 + 처리 시계열)를 반환한다")
 		void it_returns_detail() throws Exception {
 			given(roundResultService.roundDetail("20260801120000", 1L))
 					.willReturn(RoundDetailResponse.builder()
@@ -112,57 +109,67 @@ class RoundResultControllerTest {
 							.participantCount(50)
 							.capacity(5)
 							.participated(true)
-							.myResults(List.of(MyRoundResult.builder()
-									.subjectId(2)
-									.status("SUCCESS")
-									.createdAt(Instant.parse("2026-08-01T12:01:00Z"))
-									.build()))
-							.myLog(List.of(RoundDetailResponse.AttemptLog.builder()
-									.subjectId(2)
-									.status("ENQUEUED")
-									.seq(3)
-									.limit(1)
-									.attemptedAt(Instant.parse("2026-08-01T12:00:01Z"))
-									.build()))
-							.subjects(List.of(RoundDetailResponse.SubjectStat.builder()
-									.subjectId(1).applied(10).succeeded(8).competitionRate(2.0)
-									.build()))
+							.timeline(List.of(
+									RoundDetailResponse.TimelineEntry.builder()
+											.participantNo(1)
+											.subjectId(2)
+											.status("ENQUEUED")
+											.seq(3)
+											.limit(1)
+											.attemptedAt(Instant.parse("2026-08-01T12:00:01Z"))
+											.mine(true)
+											.build(),
+									RoundDetailResponse.TimelineEntry.builder()
+											.participantNo(2)
+											.subjectId(3)
+											.status("SUCCESS")
+											.seq(4)
+											.limit(2)
+											.attemptedAt(Instant.parse("2026-08-01T12:00:02Z"))
+											.mine(false)
+											.build()))
 							.build());
 
 			mockMvc.perform(get("/api/v1/multigame/results/20260801120000"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.multigameId").value("20260801120000"))
+					.andExpect(jsonPath("$.data.participantCount").value(50))
+					.andExpect(jsonPath("$.data.capacity").value(5))
 					.andExpect(jsonPath("$.data.participated").value(true))
-					.andExpect(jsonPath("$.data.myResults[0].subjectId").value(2))
-					.andExpect(jsonPath("$.data.myResults[0].status").value("SUCCESS"))
-					.andExpect(jsonPath("$.data.myLog[0].subjectId").value(2))
-					.andExpect(jsonPath("$.data.myLog[0].status").value("ENQUEUED"))
-					.andExpect(jsonPath("$.data.myLog[0].seq").value(3))
-					.andExpect(jsonPath("$.data.subjects[0].subjectId").value(1))
-					.andExpect(jsonPath("$.data.subjects[0].applied").value(10))
-					.andExpect(jsonPath("$.data.subjects[0].competitionRate").value(2.0));
+					.andExpect(jsonPath("$.data.timeline[0].participantNo").value(1))
+					.andExpect(jsonPath("$.data.timeline[0].subjectId").value(2))
+					.andExpect(jsonPath("$.data.timeline[0].status").value("ENQUEUED"))
+					.andExpect(jsonPath("$.data.timeline[0].seq").value(3))
+					.andExpect(jsonPath("$.data.timeline[0].mine").value(true))
+					.andExpect(jsonPath("$.data.timeline[1].participantNo").value(2))
+					.andExpect(jsonPath("$.data.timeline[1].mine").value(false));
 		}
 
 		@Test
-		@DisplayName("미참여 라운드는 participated=false와 myResults=[]로 반환한다")
+		@DisplayName("미참여 라운드는 participated=false와 mine=false인 전체 시계열을 반환한다")
 		void it_returns_detail_without_participation() throws Exception {
 			given(roundResultService.roundDetail("20260801120000", 1L))
 					.willReturn(RoundDetailResponse.builder()
 							.multigameId("20260801120000")
 							.participantCount(50)
-							.capacity(5)
 							.participated(false)
-							.myResults(List.of())
-							.myLog(List.of())
-							.subjects(List.of())
+							.timeline(List.of(RoundDetailResponse.TimelineEntry.builder()
+									.participantNo(1)
+									.subjectId(2)
+									.status("ENQUEUED")
+									.seq(3)
+									.limit(1)
+									.attemptedAt(Instant.parse("2026-08-01T12:00:01Z"))
+									.mine(false)
+									.build()))
 							.build());
 
 			mockMvc.perform(get("/api/v1/multigame/results/20260801120000"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.participated").value(false))
-					.andExpect(jsonPath("$.data.myResults").isArray())
-					.andExpect(jsonPath("$.data.myResults").isEmpty())
-					.andExpect(jsonPath("$.data.myLog").isArray());
+					.andExpect(jsonPath("$.data.timeline").isArray())
+					.andExpect(jsonPath("$.data.timeline[0].participantNo").value(1))
+					.andExpect(jsonPath("$.data.timeline[0].mine").value(false));
 		}
 
 		@Test

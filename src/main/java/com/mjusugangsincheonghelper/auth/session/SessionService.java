@@ -5,6 +5,7 @@ import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.auth.session.delivery.TokenDeliveryStrategy;
 import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
+import com.mjusugangsincheonghelper.auth.session.token.RefreshTokenHasher;
 import com.mjusugangsincheonghelper.auth.session.token.TokenProvider;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
@@ -60,7 +61,7 @@ public class SessionService {
 
 	@Transactional
 	public SessionResult refreshSession(String refreshToken, HttpServletResponse response) {
-		MemberDevice device = memberDeviceRepository.findByRefreshToken(refreshToken)
+		MemberDevice device = memberDeviceRepository.findByRefreshTokenHash(RefreshTokenHasher.hash(refreshToken))
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
 
 		if (device.getExpiresAt() != null && device.getExpiresAt().isBefore(Instant.now())) {
@@ -72,7 +73,7 @@ public class SessionService {
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 
 		String newRefreshToken = tokenProvider.createRefreshToken();
-		device.updateRefreshToken(newRefreshToken);
+		device.updateRefreshTokenHash(RefreshTokenHasher.hash(newRefreshToken));
 
 		boolean privacyAgreed = accountAgreementService.isAgreed(member.getId());
 		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed,
@@ -93,7 +94,7 @@ public class SessionService {
 
 	@Transactional
 	public void reissueToken(Long memberId, String refreshToken, HttpServletResponse response) {
-		MemberDevice device = memberDeviceRepository.findByRefreshToken(refreshToken)
+		MemberDevice device = memberDeviceRepository.findByRefreshTokenHash(RefreshTokenHasher.hash(refreshToken))
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
 
 		if (device.getExpiresAt() != null && device.getExpiresAt().isBefore(Instant.now())) {
@@ -105,7 +106,7 @@ public class SessionService {
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
 
 		String newRefreshToken = tokenProvider.createRefreshToken();
-		device.updateRefreshToken(newRefreshToken);
+		device.updateRefreshTokenHash(RefreshTokenHasher.hash(newRefreshToken));
 
 		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), true,
 				device.getId());

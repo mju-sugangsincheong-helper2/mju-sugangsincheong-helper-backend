@@ -1,17 +1,18 @@
 package com.mjusugangsincheonghelper.notification.service;
 
 import com.google.firebase.FirebaseApp;
-import com.google.firebase.messaging.FirebaseMessaging;
-import com.google.firebase.messaging.Message;
-import com.google.firebase.messaging.Notification;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.global.config.PgmqService;
+import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
+import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenDeleteRequest;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenRegisterRequest;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenResponse;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTestRequest;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class NotificationService {
 
 	private final MemberDeviceRepository memberDeviceRepository;
+	private final PgmqService pgmqService;
 
 	@Transactional
 	public NotificationTokenResponse registerToken(Long memberId, Long deviceId,
@@ -60,16 +62,10 @@ public class NotificationService {
 		device.clearFcmToken();
 	}
 
-	public void sendTestNotification(Long memberId, Long deviceId, NotificationTestRequest request) {
-		MemberDevice device = memberDeviceRepository.findById(deviceId)
-				.orElseThrow(() -> new BaseException(ErrorCode.NOTIFICATION_TOKEN_NOT_FOUND));
-
-		if (!device.getMemberId().equals(memberId)) {
-			throw new BaseException(ErrorCode.GLOBAL_SECURITY_FORBIDDEN);
-		}
-
-		String fcmToken = device.getFcmToken();
-		if (fcmToken == null || fcmToken.isBlank()) {
+	@Transactional
+	public void sendTestNotification(Long memberId, NotificationTestRequest request) {
+		List<MemberDevice> devices = memberDeviceRepository.findByMemberId(memberId);
+		if (devices.isEmpty()) {
 			throw new BaseException(ErrorCode.NOTIFICATION_TOKEN_NOT_FOUND);
 		}
 
@@ -77,24 +73,36 @@ public class NotificationService {
 			throw new BaseException(ErrorCode.NOTIFICATION_SEND_FAILED);
 		}
 
-		try {
-			Message message = Message.builder()
-					.setToken(fcmToken)
-					.setNotification(Notification.builder()
-							.setTitle(request.getTitle())
-							.setBody(request.getBody())
+		String timestamp = String.valueOf(System.currentTimeMillis());
+		int queuedCount = 0;
+
+		// 테스트 알림은 실제 알림과 동일하게 PGMQ 큐를 통해 발송되며,
+		// 현재 기기가 아닌 유저의 모든 기기로 전송된다.
+		for (MemberDevice device : devices) {
+			String fcmToken = device.getFcmToken();
+			if (fcmToken == null || fcmToken.isBlank()) {
+				continue;
+			}
+
+			NotificationEventMessage event = NotificationEventMessage.builder()
+					.token(fcmToken)
+					.notification(NotificationEventMessage.NotificationPayload.builder()
+							.title(request.getTitle())
+							.body("이것은 테스트 알림입니다.")
 							.build())
-					.putAllData(Map.of(
+					.data(Map.of(
 							"type", "GENERAL",
-							"path", "/",
-							"timestamp", String.valueOf(System.currentTimeMillis())
+							"path", "/notification",
+							"timestamp", timestamp
 					))
 					.build();
-			FirebaseMessaging.getInstance().send(message);
-			log.info("Test notification sent to deviceId={}, memberId={}", deviceId, memberId);
-		} catch (Exception e) {
-			log.error("Failed to send test notification", e);
-			throw new BaseException(ErrorCode.NOTIFICATION_SEND_FAILED, e);
+			pgmqService.send(NotificationConsumerWorker.QUEUE_NAME, event);
+			queuedCount++;
+			log.info("Queued test notification for memberId={}, deviceId={}", memberId, device.getId());
+		}
+
+		if (queuedCount == 0) {
+			throw new BaseException(ErrorCode.NOTIFICATION_TOKEN_NOT_FOUND);
 		}
 	}
 }

@@ -106,6 +106,7 @@ public class ExchangeController {
 	}
 
 	@GetMapping(value = "/intents/recent", version = "1+")
+	@PreAuthorize("permitAll()") // 공개 GET API (PUBLIC_GET_URLS에 등록됨, 클래스 레벨 hasRole('MEMBER') 무시)
 	@Operation(
 			summary = "Recent exchange intents",
 			description = "최근 등록된 교환 의사 리스트(최대 50개)를 단순 조회합니다.",

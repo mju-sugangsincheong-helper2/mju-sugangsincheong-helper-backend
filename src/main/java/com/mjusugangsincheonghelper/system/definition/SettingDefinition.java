@@ -24,7 +24,7 @@ public enum SettingDefinition {
 			"notices",
 			ConfigType.JSON,
 			"공지사항 목록",
-			"[]",
+			"[{\"type\":\"update\",\"title\":\"명지대 수강신청 도우미 서비스 정식 오픈\",\"content\":\"강의 교환매칭, 일반 수강연습 및 싱글/멀티 게임 기능이 정식 오픈되었습니다.\"},{\"type\":\"general\",\"title\":\"앱(PWA) 사용 안내\",\"content\":\"모바일 브라우저에서 홈 화면에 추가하시면 앱처럼 편리하게 이용하실 수 있습니다.\"},{\"type\":\"general\",\"title\":\"개발 인원 모집 및 카카오톡 문의\",\"content\":\"프로젝트 개발 참여 및 문의사항은 카카오톡 오픈채팅 채널을 통해 전달해 주세요.\"}]",
 			raw -> {
 				ObjectMapper mapper = new ObjectMapper();
 				return mapper.readTree(raw);
