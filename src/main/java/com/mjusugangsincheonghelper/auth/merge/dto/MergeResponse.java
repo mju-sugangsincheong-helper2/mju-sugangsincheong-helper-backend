@@ -15,6 +15,7 @@ public class MergeResponse {
 	private final String name;
 	private final String position;
 	private final String department;
+	private final Boolean newUser;
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private final String accessToken;

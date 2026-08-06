@@ -5,25 +5,19 @@ import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadStatusEntity;
-import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
-import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
-import com.mjusugangsincheonghelper.global.config.PgmqService;
-import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
-import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
+import com.mjusugangsincheonghelper.exchange.event.ExchangeEvents;
 import jakarta.persistence.EntityManager;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -35,9 +29,7 @@ public class ExchangeRoomCreationService {
 	private final ExchangeRoomIntentRepository roomIntentRepository;
 	private final ExchangeRoomMessageRepository messageRepository;
 	private final ExchangeRoomReadStatusRepository readStatusRepository;
-	private final MemberDeviceRepository memberDeviceRepository;
-	private final PgmqService pgmqService;
-	private final ExchangeCacheService cacheService;
+	private final ApplicationEventPublisher eventPublisher;
 
 	@Transactional
 	public Long createRoom(String term, List<ExchangeIntentEntity> cycle, String cycleHash) {
@@ -108,60 +100,9 @@ public class ExchangeRoomCreationService {
 
 		List<Long> memberIds = distinctMemberIntents.stream().map(ExchangeIntentEntity::getMemberId).toList();
 
-		executeAfterCommit(() -> {
-			for (Long memberId : memberIds) {
-				cacheService.evictMainCache(term, memberId);
-			}
-			sendFcmForRoomCreated(term, room.getId(), memberIds);
-		});
+		eventPublisher.publishEvent(new ExchangeEvents.RoomCreated(term, room.getId(), memberIds));
 
 		return room.getId();
-	}
-
-	private void sendFcmForRoomCreated(String term, Long roomId, List<Long> memberIds) {
-		try {
-			String path = "/exchange/rooms/" + roomId;
-			String timestamp = String.valueOf(System.currentTimeMillis());
-
-			for (Long targetMemberId : memberIds) {
-				List<MemberDevice> devices = memberDeviceRepository.findByMemberId(targetMemberId);
-				for (MemberDevice device : devices) {
-					String token = device.getFcmToken();
-					if (token != null && !token.isBlank()) {
-						NotificationEventMessage event = NotificationEventMessage.builder()
-								.token(token)
-								.notification(NotificationEventMessage.NotificationPayload.builder()
-										.title("수강신청 교환 매칭 성공")
-										.body("[시스템] 교환 매칭이 성사되었습니다!")
-										.build())
-								.data(Map.of(
-										"type", "EXCHANGE_ROOM",
-										"path", path,
-										"timestamp", timestamp
-								))
-								.build();
-						pgmqService.send(NotificationConsumerWorker.QUEUE_NAME, event);
-						log.info("Queued FCM notification for EXCHANGE_ROOM: memberId={}, deviceId={}, path={}",
-								targetMemberId, device.getId(), path);
-					}
-				}
-			}
-		} catch (Exception e) {
-			log.warn("FCM 방 생성 알림 발송 중 오류 발생: roomId={}", roomId, e);
-		}
-	}
-
-	private void executeAfterCommit(Runnable action) {
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-					action.run();
-				}
-			});
-		} else {
-			action.run();
-		}
 	}
 
 	private String buildWelcomeMessage(List<ExchangeIntentEntity> cycle) {

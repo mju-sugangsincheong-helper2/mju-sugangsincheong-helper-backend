@@ -717,7 +717,7 @@ updated_at   TIMESTAMP WITH TIME ZONE
 |----|--------|------|------|
 | `current_term` | `"202620"` | STRING | 현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기) |
 
-> `expose_error_details`, `performance_thresholds`, `jwt_expiry_config`, `singlegame_reaction_time_config`는 더 이상 DB 기반 시스템 설정이 아닌 `application.yml` 프로퍼티로 관리됩니다. 각각 `app.expose-error-details`, `app.performance.slow-ms` / `app.performance.very-slow-ms`, `app.jwt.*`, `app.singlegame.reaction-time-*`를 참조하세요.
+> `expose_error_details`, `performance_thresholds`, `jwt_expiry_config`, `singlegame_reaction_time_config`는 더 이상 DB 기반 시스템 설정이 아닌 `application.yml` 프로퍼티로 관리됩니다. 각각 `app.expose-error-details`, `app.performance.slow-ms` / `app.performance.very-slow-ms`, `app.jwt.*`, `app.singlegame.timing.*`(이벤트별 min/max)를 참조하세요.
 
 ### SettingDefinition (타입 안전 설정 정의)
 

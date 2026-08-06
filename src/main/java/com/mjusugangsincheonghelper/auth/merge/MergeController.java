@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.auth.merge;
 
+import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.merge.dto.MergeRequest;
 import com.mjusugangsincheonghelper.auth.merge.dto.MergeResponse;
@@ -29,6 +30,7 @@ public class MergeController {
 
 	private final MergeService mergeService;
 	private final SessionService sessionService;
+	private final AccountAgreementService accountAgreementService;
 
 	@Value("${app.auth.token-in-response:false}")
 	private boolean tokenInResponse;
@@ -67,7 +69,8 @@ public class MergeController {
 				.role(session.getRole())
 				.name(session.getName())
 				.position(session.getPosition())
-				.department(session.getDepartment());
+				.department(session.getDepartment())
+				.newUser(!accountAgreementService.isAgreed(session.getMemberId()));
 		if (tokenInResponse) {
 			builder.accessToken(session.getAccessToken())
 					.refreshToken(session.getRefreshToken());

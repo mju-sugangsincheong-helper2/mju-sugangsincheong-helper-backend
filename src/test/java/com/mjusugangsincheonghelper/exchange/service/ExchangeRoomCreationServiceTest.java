@@ -17,6 +17,7 @@ import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentReposi
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
+import com.mjusugangsincheonghelper.exchange.event.ExchangeEvents;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import java.util.List;
@@ -29,6 +30,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,7 +53,7 @@ class ExchangeRoomCreationServiceTest {
 	private ExchangeRoomReadStatusRepository readStatusRepository;
 
 	@Mock
-	private ExchangeCacheService cacheService;
+	private ApplicationEventPublisher eventPublisher;
 
 	@InjectMocks
 	private ExchangeRoomCreationService roomCreationService;
@@ -137,8 +139,13 @@ class ExchangeRoomCreationServiceTest {
 			assertThat(roomId).isEqualTo(100L);
 			verify(roomIntentRepository, times(2)).save(any(ExchangeRoomIntentEntity.class));
 			verify(readStatusRepository, times(2)).save(any(ExchangeRoomReadStatusEntity.class));
-			verify(cacheService).evictMainCache(term, 1L);
-			verify(cacheService).evictMainCache(term, 2L);
+			ArgumentCaptor<ExchangeEvents.RoomCreated> eventCaptor =
+					ArgumentCaptor.forClass(ExchangeEvents.RoomCreated.class);
+			verify(eventPublisher).publishEvent(eventCaptor.capture());
+			ExchangeEvents.RoomCreated event = eventCaptor.getValue();
+			assertThat(event.term()).isEqualTo(term);
+			assertThat(event.roomId()).isEqualTo(100L);
+			assertThat(event.memberIds()).containsExactly(1L, 2L);
 			assertThat(readStatus1.getLastReadMessageId()).isEqualTo(1000L);
 		}
 

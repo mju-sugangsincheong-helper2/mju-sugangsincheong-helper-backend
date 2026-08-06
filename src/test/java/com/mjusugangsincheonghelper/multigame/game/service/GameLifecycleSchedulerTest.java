@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 
 import com.mjusugangsincheonghelper.global.config.AdvisoryLockService;
 import com.mjusugangsincheonghelper.global.config.AdvisoryLockService.SessionLock;
-import com.mjusugangsincheonghelper.multigame.game.config.MultigameProperties;
+import com.mjusugangsincheonghelper.multigame.game.domain.GameStatusResolver;
 import com.mjusugangsincheonghelper.multigame.game.domain.RuntimeState;
 import com.mjusugangsincheonghelper.multigame.game.runtime.GameRuntimeStore;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement;
@@ -54,16 +54,12 @@ class GameLifecycleSchedulerTest {
 	@Mock
 	private RoundSettlementService settlementService;
 
-	@Mock
-	private MultigameProperties properties;
-
 	private GameLifecycleScheduler scheduler;
 
 	@BeforeEach
 	void setUp() {
-		scheduler = new GameLifecycleScheduler(advisoryLockService, transactionTemplate, runtimeStore, supplyService, settlementService, properties);
-		given(properties.getStartClose()).willReturn(java.time.LocalTime.of(2, 0));
-		given(properties.getEndClose()).willReturn(java.time.LocalTime.of(5, 0));
+		// 미운영 시간대 판정은 GameStatusResolver 기본 설정(02:00 ~ 05:00)을 그대로 사용한다
+		scheduler = new GameLifecycleScheduler(advisoryLockService, transactionTemplate, runtimeStore, supplyService, settlementService, new GameStatusResolver());
 		// TransactionTemplate.executeWithoutResult가 실제로 Consumer를 실행하도록 한다
 		doAnswer(invocation -> {
 			Consumer<TransactionStatus> action = invocation.getArgument(0);
@@ -226,7 +222,7 @@ class GameLifecycleSchedulerTest {
 		@Test
 		@DisplayName("ready()가 아무것도 하지 않는다")
 		void ready_is_noop() {
-			// CLOSED 판정은 properties 기반 (기본 02:00 ~ 05:00)
+			// CLOSED 판정은 GameStatusResolver 기본 설정(02:00 ~ 05:00) 기반
 			withNow(LocalDateTime.of(2026, 8, 1, 3, 0, 0), scheduler::ready);
 
 			verify(runtimeStore, never()).removeExpiredHeartbeatsAndCount(any());

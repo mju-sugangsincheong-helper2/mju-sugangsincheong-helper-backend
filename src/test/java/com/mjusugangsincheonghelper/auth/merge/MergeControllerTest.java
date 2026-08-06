@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.common.dto.DeviceInfo;
 import com.mjusugangsincheonghelper.auth.session.SessionResult;
@@ -44,6 +45,9 @@ class MergeControllerTest {
 
 	@MockitoBean
 	private SessionService sessionService;
+
+	@MockitoBean
+	private AccountAgreementService accountAgreementService;
 
 	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;

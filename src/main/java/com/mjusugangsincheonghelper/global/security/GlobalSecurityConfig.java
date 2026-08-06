@@ -1,10 +1,10 @@
 package com.mjusugangsincheonghelper.global.security;
 
+import com.mjusugangsincheonghelper.global.config.CorsProperties;
 import com.mjusugangsincheonghelper.global.security.filter.ConsentCheckFilter;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
@@ -30,51 +30,14 @@ import org.springframework.http.HttpMethod;
 @RequiredArgsConstructor
 public class GlobalSecurityConfig {
 
-	public static final String[] PUBLIC_URLS = {
-			"/api/*/auth/guest",
-			"/api/*/auth/refresh",
-			"/api/*/auth/login/google/merge",
-			"/api/*/auth/oauth/start",
-			"/api/*/auth/token",
-			"/api/*/auth/config/google",
-			"/api/*/auth/test-**",
-			"/api/*/example/**",
-			"/swagger-ui/**",
-			"/v3/api-docs/**",
-			"/*.html",
-			"/*.js",
-			/*
-			 * Actuator 전체 공개: 공개 프록시가 /api 경로만 백엔드로 라우팅하므로
-			 * actuator는 도커 네트워크/내부망에서만 접근 가능하다.
-			 * 추후 metrics 도구 스크레이핑과 내부 어드민 페이지(internal_system/index.html)가 사용한다.
-			 */
-			"/actuator/**"
-	};
-
 	/**
-	 * HTTP 메서드별 공개 API 목록.
-	 * 같은 경로의 다른 HTTP 메서드는 보안 체인을 그대로 타도록 메서드별로 분리하여 정의한다.
+	 * 공개 URL 규칙은 yml(app.security.*)에서 관리한다.
+	 * 엔드포인트를 공개/비공개로 바꾸려면 Java 수정 없이 yml만 수정하면 된다.
 	 */
-	public static final String[] PUBLIC_GET_URLS = {
-			"/api/*/course/sections",
-			"/api/*/course/department",
-			"/api/*/exchange/intents/recent",
-			"/api/*/notices"
-	};
-
-	public static final String[] PUBLIC_POST_URLS = {};
-
-	public static final String[] PUBLIC_PUT_URLS = {};
-
-	public static final String[] PUBLIC_PATCH_URLS = {};
-
-	public static final String[] PUBLIC_DELETE_URLS = {};
-
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final ConsentCheckFilter consentCheckFilter;
-
-	@Value("${app.cors.allowed-origins:}")
-	private String corsAllowedOrigins;
+	private final CorsProperties corsProperties;
+	private final AppSecurityProperties securityProperties;
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -86,21 +49,23 @@ public class GlobalSecurityConfig {
 	public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
 		http
 				.securityMatchers(matchers -> {
-					matchers.requestMatchers(PUBLIC_URLS);
-					if (PUBLIC_GET_URLS.length > 0) {
-						matchers.requestMatchers(HttpMethod.GET, PUBLIC_GET_URLS);
+					if (!securityProperties.getPublicUrls().isEmpty()) {
+						matchers.requestMatchers(securityProperties.getPublicUrls().toArray(String[]::new));
 					}
-					if (PUBLIC_POST_URLS.length > 0) {
-						matchers.requestMatchers(HttpMethod.POST, PUBLIC_POST_URLS);
+					if (!securityProperties.getPublicGetUrls().isEmpty()) {
+						matchers.requestMatchers(HttpMethod.GET, securityProperties.getPublicGetUrls().toArray(String[]::new));
 					}
-					if (PUBLIC_PUT_URLS.length > 0) {
-						matchers.requestMatchers(HttpMethod.PUT, PUBLIC_PUT_URLS);
+					if (!securityProperties.getPublicPostUrls().isEmpty()) {
+						matchers.requestMatchers(HttpMethod.POST, securityProperties.getPublicPostUrls().toArray(String[]::new));
 					}
-					if (PUBLIC_PATCH_URLS.length > 0) {
-						matchers.requestMatchers(HttpMethod.PATCH, PUBLIC_PATCH_URLS);
+					if (!securityProperties.getPublicPutUrls().isEmpty()) {
+						matchers.requestMatchers(HttpMethod.PUT, securityProperties.getPublicPutUrls().toArray(String[]::new));
 					}
-					if (PUBLIC_DELETE_URLS.length > 0) {
-						matchers.requestMatchers(HttpMethod.DELETE, PUBLIC_DELETE_URLS);
+					if (!securityProperties.getPublicPatchUrls().isEmpty()) {
+						matchers.requestMatchers(HttpMethod.PATCH, securityProperties.getPublicPatchUrls().toArray(String[]::new));
+					}
+					if (!securityProperties.getPublicDeleteUrls().isEmpty()) {
+						matchers.requestMatchers(HttpMethod.DELETE, securityProperties.getPublicDeleteUrls().toArray(String[]::new));
 					}
 				})
 				.csrf(csrf -> csrf.disable())
@@ -137,10 +102,7 @@ public class GlobalSecurityConfig {
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(Arrays.stream(corsAllowedOrigins.split(","))
-				.map(String::trim)
-				.filter(origin -> !origin.isEmpty())
-				.toList());
+		configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
 		configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 		configuration.setAllowedHeaders(Arrays.asList("*"));
 		configuration.setExposedHeaders(Arrays.asList(

@@ -31,8 +31,6 @@ spring:
     redis:
       host: localhost
       port: 6379
-      # Redis Repository 스캔 비활성 (리포 전부 JPA — Redis 는 캐시/템플릿 전용).
-      # 끄면 시작 시 "Could not safely identify store assignment..." INFO 노이즈가 사라짐.
       repositories:
         enabled: false
 
@@ -49,13 +47,37 @@ logging:
   file:
     name: logs/${app.instance-id}-application.log
 
+# Actuator 노출 설정 — internal_system/index.html(운영 대시보드) 및 Prometheus 모니터링용 - 내부망이므로 특별히 보안 설정 없음
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers,logfile,threaddump,httpexchanges,env,mappings,beans,configprops,caches,conditions
+  endpoint:
+    health:
+      show-details: always
+    logfile:
+      # logging.file.name과 동일한 파일 지정 (명시적으로 연결)
+      external-file: logs/${app.instance-id}-application.log
+    # dev에서만 env 값 노출(마스킹 해제). prod는 보안상 기본값(NEVER) 유지.
+    env:
+      show-values: always
+
 app:
   instance-id: ${INSTANCE_ID:app}
   cors:
     # 쉼표 구분 목록. 나중에 오리진이 바뀌면 여기만 수정하면 된다.
     allowed-origins: "http://localhost:5173,http://localhost:8000"
   auth:
+    # header+cookie 동시 전달·추출: Authorization 헤더 우선 + 쿠키 폴백 (프론트는 쿠키 기반 credentials:include)
+    token-mode: header, cookie
+    # 로컬 HTTP 개발 환경에서는 Secure 쿠키를 브라우저가 거부할 수 있으므로 비활성화
+    cookie-secure: false
     token-in-response: true
+    # 쿠키 maxAge — app.jwt.* 만료와 별개로 브라우저 쿠키 수명을 제어 (jwt 만료와 맞춰서 관리)
+    cookie-max-age:
+      access: 1h
+      refresh: 7d
     test-accounts:
       - name: "TEST_ADMIN/TEST_POSITION/TEST_DEPARTMENT"
         role: ADMIN
@@ -72,21 +94,30 @@ app:
     default-ttl: 24h
     ttls:
       system-config: 24h
-      room-static-meta: 0s
-      user-intents: 24h
-      user-room-ids: 24h
-      user-unread-counts: 24h
-      room-dynamic-meta: 24h
-      room-active-intents: 24h
-      recent-intents-page: 24h
+      exchange-feed: 24h
+      exchange-main: 24h
+      exchange-user-intents: 24h
+      exchange-room-meta: 24h
       singlegame-rank: 5m
       singlegame-records: 5m
       singlegame-analysis: 5m
-      multigame-department-participation: 5m
-      multigame-department-success-rate: 5m
+      multigame-rank: 5m
+    # evict 직후 한 번 더 삭제하는 더블 evict 지연 시간 (캐시 재구성 경합 방지)
+    double-evict-delay: 2s
   singlegame:
-    reaction-time-min-ms: 1
-    reaction-time-max-ms: 60000
+    timing:
+      t-enter-main:
+        min-ms: 1
+        max-ms: 60000
+      t-click-course:
+        min-ms: 1
+        max-ms: 60000
+      t-click-yes:
+        min-ms: 1
+        max-ms: 60000
+      t-click-ok:
+        min-ms: 1
+        max-ms: 60000
   multigame:
     # 미운영(CLOSED) 시간대. start_close/end_close snake_case도 동일하게 바인딩된다.
     start-close: "02:00"
@@ -99,6 +130,8 @@ app:
       redirect-uri: http://localhost:5173/login
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
+    # OAuth state Redis 만료 시간
+    state-ttl: 300s
   firebase:
     admin:
       project-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PROJECT_ID:}
@@ -108,19 +141,3 @@ app:
       private-key-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY_ID:}
       client-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_ID:}
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "*"
-  endpoint:
-    health:
-      show-details: always
-  info:
-    env:
-      enabled: true
-
-info:
-  app:
-    name: mju-sugangsincheong-helper
-    profile: dev

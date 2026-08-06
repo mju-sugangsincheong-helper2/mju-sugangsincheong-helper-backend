@@ -3,14 +3,13 @@ package com.mjusugangsincheonghelper.exchange.service;
 import tools.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
 import com.mjusugangsincheonghelper.global.config.PgmqMessageDto;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
 import jakarta.annotation.PostConstruct;
-import java.time.Duration;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -18,33 +17,28 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ExchangeCycleDetectionWorker {
 
-	private static final int VISIBILITY_TIMEOUT = 30;
-	private static final int BATCH_SIZE = 1;
-	private static final int MAX_RETRY_COUNT = 5;
-
 	private final PgmqService pgmqService;
 	private final ExchangeCycleDetector cycleDetector;
 	private final ObjectMapper objectMapper;
-
-	@Qualifier("pgmqScheduler")
-	private final TaskScheduler pgmqScheduler;
+	private final PgmqProperties pgmqProperties;
 
 	@PostConstruct
-	public void start() {
+	public void createQueue() {
 		try {
 			pgmqService.createQueue(ExchangeCycleDetector.QUEUE_NAME);
 		} catch (Exception e) {
 			log.debug("Queue may already exist: {}", e.getMessage());
 		}
-		pgmqScheduler.scheduleWithFixedDelay(this::poll, Duration.ofSeconds(1));
 	}
 
-	private void poll() {
-		List<PgmqMessageDto> messages = pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, VISIBILITY_TIMEOUT, BATCH_SIZE);
+	@Scheduled(fixedDelayString = "${app.pgmq.cycle-detection.poll-interval:1s}", scheduler = "pgmqScheduler")
+	void poll() {
+		PgmqProperties.WorkerConfig config = pgmqProperties.getCycleDetection();
+		List<PgmqMessageDto> messages = pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, config.getVisibilityTimeout(), config.getBatchSize());
 
 		for (PgmqMessageDto msg : messages) {
 			try {
-				if (msg.getReadCt() > MAX_RETRY_COUNT) {
+				if (msg.getReadCt() > config.getMaxRetryCount()) {
 					log.error("Exchange cycle detection message exceeded max retries. Archiving message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
 					pgmqService.archive(ExchangeCycleDetector.QUEUE_NAME, msg.getMsgId());
 					continue;

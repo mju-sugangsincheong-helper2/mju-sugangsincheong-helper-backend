@@ -34,6 +34,9 @@ public class RedisConfig implements CachingConfigurer {
 		return GenericJacksonJsonRedisSerializer.builder()
 				.enableUnsafeDefaultTyping()
 				.customize(builder -> builder.findAndAddModules())
+				// Jackson 3 기반 SDR 4.x는 루트 값(특히 List)에 타입 정보를 남기지 않아 재역직렬화가 깨진다.
+				// 루트를 Object로 선언해 쓰면 타입 id가 항상 기록되어 빈/비어있지 않은 List도 캐시된다.
+				.writer((mapper, value) -> mapper.writerFor(Object.class).writeValueAsBytes(value))
 				.build();
 	}
 

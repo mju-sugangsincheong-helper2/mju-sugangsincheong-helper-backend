@@ -93,29 +93,7 @@ public class SessionService {
 	}
 
 	@Transactional
-	public void reissueToken(Long memberId, String refreshToken, HttpServletResponse response) {
-		MemberDevice device = memberDeviceRepository.findByRefreshTokenHash(RefreshTokenHasher.hash(refreshToken))
-				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
-
-		if (device.getExpiresAt() != null && device.getExpiresAt().isBefore(Instant.now())) {
-			memberDeviceRepository.delete(device);
-			throw new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
-		}
-
-		Member member = memberRepository.findById(memberId)
-				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND));
-
-		String newRefreshToken = tokenProvider.createRefreshToken();
-		device.updateRefreshTokenHash(RefreshTokenHasher.hash(newRefreshToken));
-
-		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), true,
-				device.getId());
-
-		tokenDeliveryStrategy.deliver(newAccessToken, newRefreshToken, response);
-	}
-
-	@Transactional
-	public void destroySession(String refreshToken, Long memberId, HttpServletResponse response) {
+	public void destroySession(String refreshToken, HttpServletResponse response) {
 		deviceSessionService.deleteByRefreshToken(refreshToken);
 		tokenDeliveryStrategy.clear(response);
 	}

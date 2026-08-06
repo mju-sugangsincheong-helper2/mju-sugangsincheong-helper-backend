@@ -16,7 +16,6 @@ import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentReposi
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
-import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
 import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
@@ -28,6 +27,8 @@ import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse;
 import com.mjusugangsincheonghelper.exchange.dto.RoomToggleRequest;
 import com.mjusugangsincheonghelper.exchange.dto.RoomToggleResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
+import com.mjusugangsincheonghelper.exchange.event.ExchangeEvents;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
@@ -37,9 +38,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,13 +65,13 @@ class ExchangeServiceTest {
 	private ExchangeRoomReadStatusRepository readStatusRepository;
 
 	@Mock
-	private ExchangeCycleDetector cycleDetector;
-
-	@Mock
 	private ExchangeCacheService cacheService;
 
 	@Mock
 	private SystemConfigService systemConfigService;
+
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
 
 	@InjectMocks
 	private ExchangeService exchangeService;
@@ -191,8 +194,8 @@ class ExchangeServiceTest {
 		}
 
 		@Test
-		@DisplayName("등록 후 pushFeed, evictMainCache, enqueueCycleDetection 후처리가 수행된다")
-		void it_performs_aftercare_after_create() {
+		@DisplayName("등록 후 IntentCreated 이벤트가 발행된다 (커밋 후 캐시 evict·사이클 탐지 적재)")
+		void it_publishes_intent_created_event() {
 			// Given
 			String term = "202620";
 			Long memberId = 1L;
@@ -217,9 +220,14 @@ class ExchangeServiceTest {
 			exchangeService.createIntent(memberId, request);
 
 			// Then
-			verify(cacheService).evictFeed(term);
-			verify(cacheService).evictMainCache(term, memberId);
-			verify(cycleDetector).enqueueCycleDetection(any(CycleDetectionMessage.class));
+			ArgumentCaptor<ExchangeEvents.IntentCreated> eventCaptor =
+					ArgumentCaptor.forClass(ExchangeEvents.IntentCreated.class);
+			verify(eventPublisher).publishEvent(eventCaptor.capture());
+			ExchangeEvents.IntentCreated event = eventCaptor.getValue();
+			assertThat(event.term()).isEqualTo(term);
+			assertThat(event.memberId()).isEqualTo(memberId);
+			assertThat(event.giveCourseNo()).isEqualTo("10001");
+			assertThat(event.wantCourseNo()).isEqualTo("10002");
 		}
 	}
 
@@ -506,8 +514,8 @@ class ExchangeServiceTest {
 		}
 
 		@Test
-		@DisplayName("삭제 후 영향받은 참여자 전원의 main:cache가 Evict된다")
-		void it_evicts_caches_after_delete() {
+		@DisplayName("삭제 후 IntentDeleted 이벤트에 영향받은 방·참여자가 담긴다")
+		void it_publishes_intent_deleted_event() {
 			// Given
 			String term = "202620";
 			Long memberIdA = 1L;
@@ -540,8 +548,14 @@ class ExchangeServiceTest {
 			exchangeService.deleteIntent(memberIdA, intentIdA);
 
 			// Then
-			verify(cacheService).evictMainCache(term, memberIdA);
-			verify(cacheService).evictMainCache(term, memberIdB);
+			ArgumentCaptor<ExchangeEvents.IntentDeleted> eventCaptor =
+					ArgumentCaptor.forClass(ExchangeEvents.IntentDeleted.class);
+			verify(eventPublisher).publishEvent(eventCaptor.capture());
+			ExchangeEvents.IntentDeleted event = eventCaptor.getValue();
+			assertThat(event.term()).isEqualTo(term);
+			assertThat(event.memberId()).isEqualTo(memberIdA);
+			assertThat(event.roomIds()).containsExactly(roomId);
+			assertThat(event.memberIds()).containsExactlyInAnyOrder(memberIdA, memberIdB);
 		}
 	}
 
@@ -556,14 +570,16 @@ class ExchangeServiceTest {
 			String term = "202620";
 			Long memberId = 1L;
 
-			ExchangeIntentEntity intent = ExchangeIntentEntity.builder()
-					.term(term).memberId(memberId).giveCourseNo("10001").wantCourseNo("10002").build();
-			ReflectionTestUtils.setField(intent, "id", 10L);
+			IntentCacheDto intent = IntentCacheDto.builder()
+					.intentId(10L)
+					.giveCourseNo("10001")
+					.wantCourseNo("10002")
+					.createdAt(java.time.Instant.now())
+					.build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(cacheService.getMainCache(term, memberId)).willReturn(null);
-			given(intentRepository.findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(term, memberId))
-					.willReturn(List.of(intent));
+			given(cacheService.getMemberIntents(term, memberId)).willReturn(List.of(intent));
 			given(roomIntentRepository.findByTermAndIntentId(term, 10L)).willReturn(List.of());
 			given(cacheService.getFeed(term)).willReturn(List.of(
 					FeedCacheDto.builder()
@@ -679,7 +695,7 @@ class ExchangeServiceTest {
 			assertThat(response.getMessages()).hasSize(1);
 			assertThat(response.getMessages().get(0).getContent()).isEqualTo("Test message");
 			verify(readStatusRepository).save(any());
-			verify(cacheService).evictMainCache(term, memberId);
+			verify(eventPublisher).publishEvent(any(ExchangeEvents.RoomViewed.class));
 		}
 	}
 
@@ -778,7 +794,6 @@ class ExchangeServiceTest {
 			given(roomIntentRepository.findByTermAndRoomId(term, roomId)).willReturn(List.of(roomIntent1, roomIntent2));
 			given(messageRepository.save(any())).willReturn(message);
 			given(readStatusRepository.findById(any())).willReturn(Optional.empty());
-			given(roomIntentRepository.findDistinctMemberIdsByTermAndRoomId(term, roomId)).willReturn(List.of(1L, 2L));
 
 			// When
 			MessageSendResponse response = exchangeService.sendMessage(memberId, roomId, request);
@@ -787,8 +802,14 @@ class ExchangeServiceTest {
 			assertThat(response.getMessageId()).isEqualTo(1000L);
 			assertThat(response.getContent()).isEqualTo("Hello");
 			verify(messageRepository).save(any());
-			verify(cacheService).evictMainCache(term, 1L);
-			verify(cacheService).evictMainCache(term, 2L);
+			ArgumentCaptor<ExchangeEvents.RoomMessageSent> eventCaptor =
+					ArgumentCaptor.forClass(ExchangeEvents.RoomMessageSent.class);
+			verify(eventPublisher).publishEvent(eventCaptor.capture());
+			ExchangeEvents.RoomMessageSent event = eventCaptor.getValue();
+			assertThat(event.term()).isEqualTo(term);
+			assertThat(event.roomId()).isEqualTo(roomId);
+			assertThat(event.senderMemberId()).isEqualTo(memberId);
+			assertThat(event.content()).isEqualTo("Hello");
 		}
 	}
 
@@ -853,7 +874,7 @@ class ExchangeServiceTest {
 			assertThat(response.getRoomId()).isEqualTo(roomId);
 			assertThat(response.isOn()).isFalse();
 			assertThat(roomIntent.isOn()).isFalse();
-			verify(cacheService).evictMainCache(term, memberId);
+			verify(eventPublisher).publishEvent(any(ExchangeEvents.RoomToggled.class));
 		}
 
 		@Test

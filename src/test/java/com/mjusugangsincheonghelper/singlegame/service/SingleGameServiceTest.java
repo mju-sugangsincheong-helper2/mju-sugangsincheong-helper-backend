@@ -7,6 +7,7 @@ import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameDetailRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.singlegame.config.SingleGameProperties;
 import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
@@ -17,7 +18,6 @@ import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -29,11 +29,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -56,9 +54,6 @@ class SingleGameServiceTest {
 	@Mock
 	private MemberRepository memberRepository;
 
-	@Mock
-	private CacheManager cacheManager;
-
 	private SingleGameService singleGameService;
 
 	@Captor
@@ -69,16 +64,8 @@ class SingleGameServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		TransactionSynchronizationManager.initSynchronization();
 		singleGameService = new SingleGameService(
-				singleGameRepository, singleGameDetailRepository, memberRepository, cacheManager, new SingleGameFeedbackEngine(), 1, 60000);
-	}
-
-	@AfterEach
-	void tearDown() {
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.clearSynchronization();
-		}
+				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameFeedbackEngine(), new SingleGameProperties());
 	}
 
 	@Nested

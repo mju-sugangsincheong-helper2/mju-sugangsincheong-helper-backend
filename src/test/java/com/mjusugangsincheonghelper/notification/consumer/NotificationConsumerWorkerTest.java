@@ -2,6 +2,7 @@ package com.mjusugangsincheonghelper.notification.consumer;
 
 import tools.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.global.config.PgmqMessageDto;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
 import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
 import com.mjusugangsincheonghelper.notification.consumer.service.NotificationConsumerService;
@@ -14,12 +15,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.scheduling.TaskScheduler;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,15 +32,23 @@ class NotificationConsumerWorkerTest {
 	@Mock
 	private NotificationConsumerService notificationConsumerService;
 
-	@Mock
-	private TaskScheduler pgmqScheduler;
-
 	private final ObjectMapper objectMapper = new ObjectMapper();
+	private final PgmqProperties pgmqProperties = new PgmqProperties();
 	private NotificationConsumerWorker worker;
 
 	@BeforeEach
 	void setUp() {
-		worker = new NotificationConsumerWorker(pgmqService, notificationConsumerService, objectMapper, pgmqScheduler);
+		worker = new NotificationConsumerWorker(pgmqService, notificationConsumerService, objectMapper, pgmqProperties);
+	}
+
+	@Test
+	@DisplayName("createQueue는 큐 생성 실패(이미 존재)에도 예외를 던지지 않는다")
+	void createQueueShouldSwallowAlreadyExistsError() {
+		doThrow(new RuntimeException("Queue exists")).when(pgmqService).createQueue(NotificationConsumerWorker.QUEUE_NAME);
+
+		worker.createQueue();
+
+		verify(pgmqService).createQueue(NotificationConsumerWorker.QUEUE_NAME);
 	}
 
 	@Test

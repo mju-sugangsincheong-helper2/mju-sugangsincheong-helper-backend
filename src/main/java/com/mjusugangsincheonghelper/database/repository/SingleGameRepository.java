@@ -26,9 +26,18 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	@Query("SELECT MIN(s.tTotal) FROM SingleGameEntity s WHERE s.isCompleted = true")
 	Integer minTTotalByIsCompletedTrue();
 
-	/** 종목(과목 수)별 완주 기록 수 (도메인 지표) */
-	@Query("SELECT s.totalCourses, COUNT(s) FROM SingleGameEntity s WHERE s.isCompleted = true GROUP BY s.totalCourses ORDER BY s.totalCourses")
-	List<Object[]> countByIsCompletedTrueGroupByTotalCourses();
+	/** 종목(과목 수)별 기록 집계: 전체/완주 수, 완주 평균·최단 소요시간(ms) (도메인 지표) */
+	@Query("""
+			SELECT s.totalCourses,
+			       COUNT(s),
+			       SUM(CASE WHEN s.isCompleted = true THEN 1 ELSE 0 END),
+			       AVG(CASE WHEN s.isCompleted = true THEN s.tTotal END),
+			       MIN(CASE WHEN s.isCompleted = true THEN s.tTotal END)
+			FROM SingleGameEntity s
+			GROUP BY s.totalCourses
+			ORDER BY s.totalCourses
+			""")
+	List<Object[]> aggregateByTotalCourses();
 
 	@Modifying(clearAutomatically = true)
 	@Query("UPDATE SingleGameEntity s SET s.memberId = :newMemberId WHERE s.memberId = :oldMemberId")

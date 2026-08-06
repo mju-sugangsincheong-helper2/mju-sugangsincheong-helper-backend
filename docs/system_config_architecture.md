@@ -124,27 +124,46 @@ public TokenProvider(
 }
 ```
 
-#### 싱글게임 반응시간 범위
+#### 싱글게임 이벤트별 반응시간 범위
+
+싱글게임은 전체 시간을 한 범위로 제한하지 않고, **1개 과목 처리 기준의 이벤트별 min/max**로 관리한다. `SingleGameProperties`가 `app.singlegame.timing` 하위 항목을 바인딩한다.
 
 | yml 키 | 주입 대상 | 기본값 | 설명 |
 |--------|----------|--------|------|
-| `app.singlegame.reaction-time-min-ms` | `SingleGameService` | `1` | 최소 반응시간 (ms) |
-| `app.singlegame.reaction-time-max-ms` | `SingleGameService` | `60000` | 최대 반응시간 (ms) |
+| `app.singlegame.timing.t-enter-main.min-ms` | `SingleGameService` | `1` | 메인방 진입 최소 반응시간 (ms) |
+| `app.singlegame.timing.t-enter-main.max-ms` | `SingleGameService` | `60000` | 메인방 진입 최대 반응시간 (ms) |
+| `app.singlegame.timing.t-click-course.min-ms` | `SingleGameService` | `1` | 과목 조준/클릭 최소 (ms) |
+| `app.singlegame.timing.t-click-course.max-ms` | `SingleGameService` | `60000` | 과목 조준/클릭 최대 (ms) |
+| `app.singlegame.timing.t-click-yes.min-ms` | `SingleGameService` | `1` | 1차 확인 팝업 최소 (ms) |
+| `app.singlegame.timing.t-click-yes.max-ms` | `SingleGameService` | `60000` | 1차 확인 팝업 최대 (ms) |
+| `app.singlegame.timing.t-click-ok.min-ms` | `SingleGameService` | `1` | 2차 완료 팝업 최소 (ms) |
+| `app.singlegame.timing.t-click-ok.max-ms` | `SingleGameService` | `60000` | 2차 완료 팝업 최대 (ms) |
 
 ```yaml
 app:
   singlegame:
-    reaction-time-min-ms: 1
-    reaction-time-max-ms: 60000
+    timing:
+      t-enter-main:
+        min-ms: 1
+        max-ms: 60000
+      t-click-course:
+        min-ms: 1
+        max-ms: 60000
+      t-click-yes:
+        min-ms: 1
+        max-ms: 60000
+      t-click-ok:
+        min-ms: 1
+        max-ms: 60000
 ```
 
 ```java
-// SingleGameService.java
-public SingleGameService(
-    // ...
-    @Value("${app.singlegame.reaction-time-min-ms:1}") int reactionTimeMinMs,
-    @Value("${app.singlegame.reaction-time-max-ms:60000}") int reactionTimeMaxMs) {
-    // ...
+// SingleGameProperties.java (app.singlegame.timing 하위를 바인딩)
+@Configuration
+@ConfigurationProperties(prefix = "app.singlegame")
+public class SingleGameProperties {
+    private Timing timing = new Timing();
+    // Timing { tEnterMain, tClickCourse, tClickYes, tClickOk } : 각각 { minMs, maxMs }
 }
 ```
 

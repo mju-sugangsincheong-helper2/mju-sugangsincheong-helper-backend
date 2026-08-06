@@ -1,19 +1,16 @@
 package com.mjusugangsincheonghelper.notice.service;
 
 import com.mjusugangsincheonghelper.database.entity.NoticeEntity;
-import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
 import com.mjusugangsincheonghelper.database.repository.NoticeRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.global.config.PgmqService;
 import com.mjusugangsincheonghelper.notice.dto.NoticeRequest;
 import com.mjusugangsincheonghelper.notice.dto.NoticeResponse;
-import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
-import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
+import com.mjusugangsincheonghelper.notice.event.NoticeCreated;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,8 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class NoticeService {
 
 	private final NoticeRepository noticeRepository;
-	private final MemberDeviceRepository memberDeviceRepository;
-	private final PgmqService pgmqService;
+	private final ApplicationEventPublisher eventPublisher;
 
 	public List<NoticeResponse> findAll() {
 		return noticeRepository.findAllByOrderByCreatedAtDesc().stream()
@@ -41,9 +37,10 @@ public class NoticeService {
 				.content(request.getContent())
 				.build());
 
-		// broadcast=true 일 때만 전체 사용자에게 푸시 (기본: 등록만)
+		// broadcast=true 일 때만 전체 사용자에게 푸시 (기본: 등록만).
+		// 커밋 후(AFTER_COMMIT) 리스너가 발행하므로 롤백된 공지의 푸시가 나가지 않는다.
 		if (Boolean.TRUE.equals(request.getBroadcast())) {
-			broadcastNotice(notice);
+			eventPublisher.publishEvent(new NoticeCreated(notice.getId(), notice.getTitle()));
 		}
 		return NoticeResponse.from(notice);
 	}
@@ -61,40 +58,5 @@ public class NoticeService {
 		NoticeEntity notice = noticeRepository.findById(id)
 				.orElseThrow(() -> new BaseException(ErrorCode.NOTICE_NOT_FOUND));
 		noticeRepository.delete(notice);
-	}
-
-	/**
-	 * 공지 생성 시 전체 사용자(모든 FCM 토큰) 대상 푸시 알림을 발행한다.
-	 * 알림 발행 실패가 공지 저장 자체를 실패시키지 않도록 예외는 여기서 흡수한다.
-	 */
-	private void broadcastNotice(NoticeEntity notice) {
-		try {
-			List<String> fcmTokens = memberDeviceRepository.findAllFcmTokens();
-			if (fcmTokens.isEmpty()) {
-				log.info("No FCM tokens found. Skipping notice broadcast: noticeId={}", notice.getId());
-				return;
-			}
-
-			String timestamp = String.valueOf(System.currentTimeMillis());
-			for (String token : fcmTokens) {
-				NotificationEventMessage event = NotificationEventMessage.builder()
-						.token(token)
-						.notification(NotificationEventMessage.NotificationPayload.builder()
-								.title("공지 알림")
-								.body(notice.getTitle())
-								.build())
-						.data(Map.of(
-								"type", "SYSTEM_NOTICE",
-								"path", "/",
-								"timestamp", timestamp
-						))
-						.build();
-				pgmqService.send(NotificationConsumerWorker.QUEUE_NAME, event);
-			}
-
-			log.info("Queued notice broadcast: noticeId={}, tokenCount={}", notice.getId(), fcmTokens.size());
-		} catch (Exception e) {
-			log.warn("공지 푸시 알림 발송 중 오류 발생: noticeId={}", notice.getId(), e);
-		}
 	}
 }

@@ -1,29 +1,28 @@
 package com.mjusugangsincheonghelper.notice.service;
 
 import com.mjusugangsincheonghelper.database.entity.NoticeEntity;
-import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
 import com.mjusugangsincheonghelper.database.repository.NoticeRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.global.config.PgmqService;
 import com.mjusugangsincheonghelper.notice.dto.NoticeRequest;
 import com.mjusugangsincheonghelper.notice.dto.NoticeResponse;
-import java.util.List;
+import com.mjusugangsincheonghelper.notice.event.NoticeCreated;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class NoticeServiceTest {
@@ -32,16 +31,13 @@ class NoticeServiceTest {
 	private NoticeRepository noticeRepository;
 
 	@Mock
-	private MemberDeviceRepository memberDeviceRepository;
-
-	@Mock
-	private PgmqService pgmqService;
+	private ApplicationEventPublisher eventPublisher;
 
 	private NoticeService noticeService;
 
 	@BeforeEach
 	void setUp() {
-		noticeService = new NoticeService(noticeRepository, memberDeviceRepository, pgmqService);
+		noticeService = new NoticeService(noticeRepository, eventPublisher);
 	}
 
 	private static NoticeRequest request() {
@@ -62,54 +58,29 @@ class NoticeServiceTest {
 	}
 
 	@Test
-	@DisplayName("broadcast=true 로 생성 시 전체 FCM 토큰 수만큼 알림 이벤트를 큐에 발행한다")
-	void shouldBroadcastNoticeToAllFcmTokens() {
-		given(memberDeviceRepository.findAllFcmTokens())
-				.willReturn(List.of("token-1", "token-2", "token-3"));
+	@DisplayName("broadcast=true 로 생성 시 NoticeCreated 이벤트가 발행된다 (커밋 후 리스너가 푸시 발행)")
+	void shouldPublishNoticeCreatedEventWhenBroadcast() {
 		given(noticeRepository.save(any(NoticeEntity.class)))
 				.willAnswer(invocation -> invocation.getArgument(0));
 
 		NoticeResponse response = noticeService.create(request());
 
 		assertThat(response.getTitle()).isEqualTo("신규 공지");
-		verify(pgmqService, times(3)).send(any(), any());
+		ArgumentCaptor<NoticeCreated> captor = ArgumentCaptor.forClass(NoticeCreated.class);
+		verify(eventPublisher).publishEvent(captor.capture());
+		assertThat(captor.getValue().title()).isEqualTo("신규 공지");
 	}
 
 	@Test
-	@DisplayName("broadcast가 null/false 이면 푸시 없이 공지 등록만 한다")
-	void shouldNotBroadcastWhenBroadcastNotSet() {
+	@DisplayName("broadcast가 null/false 이면 이벤트 발행 없이 공지 등록만 한다")
+	void shouldNotPublishEventWhenBroadcastNotSet() {
 		given(noticeRepository.save(any(NoticeEntity.class)))
 				.willAnswer(invocation -> invocation.getArgument(0));
 
 		NoticeResponse response = noticeService.create(requestWithoutBroadcast());
 
 		assertThat(response.getTitle()).isEqualTo("등록만 하는 공지");
-		verify(pgmqService, never()).send(any(), any());
-	}
-
-	@Test
-	@DisplayName("FCM 토큰이 없으면 알림 발행 없이 공지 생성만 한다")
-	void shouldSkipBroadcastWhenNoFcmTokens() {
-		given(memberDeviceRepository.findAllFcmTokens()).willReturn(List.of());
-		given(noticeRepository.save(any(NoticeEntity.class)))
-				.willAnswer(invocation -> invocation.getArgument(0));
-
-		noticeService.create(request());
-
-		verify(pgmqService, never()).send(any(), any());
-	}
-
-	@Test
-	@DisplayName("알림 발행 실패가 공지 생성 자체를 실패시키지 않는다")
-	void shouldNotFailNoticeCreateWhenBroadcastFails() {
-		given(memberDeviceRepository.findAllFcmTokens())
-				.willThrow(new RuntimeException("pgmq down"));
-		given(noticeRepository.save(any(NoticeEntity.class)))
-				.willAnswer(invocation -> invocation.getArgument(0));
-
-		NoticeResponse response = noticeService.create(request());
-
-		assertThat(response.getTitle()).isEqualTo("신규 공지");
+		verifyNoInteractions(eventPublisher);
 	}
 
 	@Test

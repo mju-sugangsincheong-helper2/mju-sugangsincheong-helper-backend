@@ -8,6 +8,7 @@ import com.mjusugangsincheonghelper.database.repository.SingleGameDetailReposito
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.singlegame.config.SingleGameProperties;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.BasicEvent;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.DetailEvent;
@@ -33,8 +34,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -42,8 +41,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @Transactional(readOnly = true)
@@ -52,26 +49,20 @@ public class SingleGameService {
 	private final SingleGameRepository singleGameRepository;
 	private final SingleGameDetailRepository singleGameDetailRepository;
 	private final MemberRepository memberRepository;
-	private final CacheManager cacheManager;
 	private final SingleGameFeedbackEngine feedbackEngine;
-	private final int reactionTimeMinMs;
-	private final int reactionTimeMaxMs;
+	private final SingleGameProperties properties;
 
 	public SingleGameService(
 			SingleGameRepository singleGameRepository,
 			SingleGameDetailRepository singleGameDetailRepository,
 			MemberRepository memberRepository,
-			CacheManager cacheManager,
 			SingleGameFeedbackEngine feedbackEngine,
-			@org.springframework.beans.factory.annotation.Value("${app.singlegame.reaction-time-min-ms:1}") int reactionTimeMinMs,
-			@org.springframework.beans.factory.annotation.Value("${app.singlegame.reaction-time-max-ms:60000}") int reactionTimeMaxMs) {
+			SingleGameProperties properties) {
 		this.singleGameRepository = singleGameRepository;
 		this.singleGameDetailRepository = singleGameDetailRepository;
 		this.memberRepository = memberRepository;
-		this.cacheManager = cacheManager;
 		this.feedbackEngine = feedbackEngine;
-		this.reactionTimeMinMs = reactionTimeMinMs;
-		this.reactionTimeMaxMs = reactionTimeMaxMs;
+		this.properties = properties;
 	}
 
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
@@ -84,8 +75,7 @@ public class SingleGameService {
 	}
 
 	@Transactional
-	public SingleGameSaveResponse saveGame(Long memberId, SingleGameSaveRequest request) {
-		if (!memberRepository.existsById(memberId)) {
+	public SingleGameSaveResponse saveGame(Long memberId, SingleGameSaveRequest request) {		if (!memberRepository.existsById(memberId)) {
 			throw new BaseException(ErrorCode.AUTH_MEMBER_NOT_FOUND);
 		}
 
@@ -105,18 +95,19 @@ public class SingleGameService {
 			}
 		}
 
-		if (request.getTEnterMain() < reactionTimeMinMs || request.getTEnterMain() > reactionTimeMaxMs) {
+		SingleGameProperties.Timing timing = properties.getTiming();
+		if (outOfRange(request.getTEnterMain(), timing.getTEnterMain())) {
 			throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 		}
 
 		for (SingleGameDetailRequest d : request.getDetails()) {
-			if (d.getTClickCourse() < reactionTimeMinMs || d.getTClickCourse() > reactionTimeMaxMs) {
+			if (outOfRange(d.getTClickCourse(), timing.getTClickCourse())) {
 				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 			}
-			if (d.getTClickYes() < reactionTimeMinMs || d.getTClickYes() > reactionTimeMaxMs) {
+			if (outOfRange(d.getTClickYes(), timing.getTClickYes())) {
 				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 			}
-			if (d.getTClickOk() < reactionTimeMinMs || d.getTClickOk() > reactionTimeMaxMs) {
+			if (outOfRange(d.getTClickOk(), timing.getTClickOk())) {
 				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_REACTION_TIME);
 			}
 		}
@@ -147,13 +138,7 @@ public class SingleGameService {
 				.toList();
 		singleGameDetailRepository.saveAll(details);
 
-		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-			@Override
-			public void afterCommit() {
-				evictRankingCaches(totalCourses);
-				evictMemberRecordCaches(memberId);
-			}
-		});
+		// singlegame 캐시(rank/records/analysis)는 TTL 기반이라 쓰기 시점에 evict 하지 않는다.
 
 		return SingleGameSaveResponse.builder()
 				.gameId(gameId)
@@ -768,24 +753,6 @@ public class SingleGameService {
 				.build();
 	}
 
-	private void evictRankingCaches(int totalCourses) {
-		Cache cache = cacheManager.getCache("singlegame-rank");
-		if (cache != null) {
-			cache.clear();
-		}
-		Cache analysisCache = cacheManager.getCache("singlegame-analysis");
-		if (analysisCache != null) {
-			analysisCache.clear();
-		}
-	}
-
-	private void evictMemberRecordCaches(Long memberId) {
-		Cache cache = cacheManager.getCache("singlegame-records");
-		if (cache != null) {
-			cache.evict(memberId + ":page:0:size:10:cache");
-		}
-	}
-
 	private double computePercentileFromAggregates(List<double[]> aggregates, double myValue, int idx,
 			boolean isEnterMain) {
 		if (aggregates.isEmpty()) return 0;
@@ -809,6 +776,10 @@ public class SingleGameService {
 		if (percentile < 70) return "B";
 		if (percentile < 95) return "C";
 		return "D";
+	}
+
+	private boolean outOfRange(int value, SingleGameProperties.EventTiming timing) {
+		return value < timing.getMinMs() || value > timing.getMaxMs();
 	}
 
 	private int computeRank(int totalCourses, int tTotal) {

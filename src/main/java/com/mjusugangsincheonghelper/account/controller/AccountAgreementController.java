@@ -55,7 +55,8 @@ public class AccountAgreementController {
 
 		String refreshToken = extractRefreshToken(request);
 		if (refreshToken != null) {
-			sessionService.reissueToken(memberId, refreshToken, response);
+			// 동의 상태가 DB에 커밋됐으므로, 재발급되는 액세스 토큰의 agreed 클레임도 갱신된다
+			sessionService.refreshSession(refreshToken, response);
 		}
 
 		PrivacyAgreementResponse res = PrivacyAgreementResponse.builder()

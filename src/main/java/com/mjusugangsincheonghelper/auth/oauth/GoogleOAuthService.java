@@ -2,6 +2,7 @@ package com.mjusugangsincheonghelper.auth.oauth;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
 import com.mjusugangsincheonghelper.auth.common.AuthenticatedIdentity;
 import com.mjusugangsincheonghelper.auth.merge.MergeTicketService;
 import com.mjusugangsincheonghelper.database.entity.Member;
@@ -45,6 +46,7 @@ public class GoogleOAuthService {
 	private final MemberRepository memberRepository;
 	private final MemberAuthRepository memberAuthRepository;
 	private final MergeTicketService mergeTicketService;
+	private final AccountAgreementService accountAgreementService;
 	private final JsonMapper jsonMapper;
 
 	@Value("${app.oauth2.google.client-id}")
@@ -85,7 +87,7 @@ public class GoogleOAuthService {
 			member.promoteToMember(parsedName.name(), parsedName.position(), parsedName.department());
 			memberRepository.save(member);
 			targetMemberId = member.getId();
-			newUser = false;
+			newUser = !accountAgreementService.isAgreed(member.getId());
 		} else {
 			Member member = Member.builder()
 					.role(Role.MEMBER)

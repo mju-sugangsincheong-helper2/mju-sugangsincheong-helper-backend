@@ -28,7 +28,35 @@ spring:
       port: 6379
 
 app:
+  security:
+    # 테스트 클래스패스가 메인 application.yml을 섀도잉하므로 공개 URL 목록을 동일하게 유지해야 한다.
+    public-urls:
+      - /api/*/auth/guest
+      - /api/*/auth/refresh
+      - /api/*/auth/login/google/merge
+      - /api/*/auth/oauth/start
+      - /api/*/auth/token
+      - /api/*/auth/config/google
+      - /api/*/auth/test-**
+      - /api/*/example/**
+      - /swagger-ui/**
+      - /v3/api-docs/**
+      - /*.html
+      - /*.js
+      - /actuator/**
+    public-get-urls:
+      - "/api/*/course/sections"
+      - "/api/*/course/department"
+      - "/api/*/exchange/intents/recent"
+      - "/api/*/notices"
+    public-post-urls: []
+    public-put-urls: []
+    public-patch-urls: []
+    public-delete-urls: []
   auth:
+    # dev 런타임과 동일한 복수 모드 유지 (헤더 우선 + 쿠키 폴백)
+    token-mode: header, cookie
+    cookie-secure: false
     token-in-response: true
   jwt:
     secret: test-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
@@ -46,8 +74,19 @@ app:
       singlegame-records: 5m
       singlegame-analysis: 5m
   singlegame:
-    reaction-time-min-ms: 1
-    reaction-time-max-ms: 60000
+    timing:
+      t-enter-main:
+        min-ms: 1
+        max-ms: 60000
+      t-click-course:
+        min-ms: 1
+        max-ms: 60000
+      t-click-yes:
+        min-ms: 1
+        max-ms: 60000
+      t-click-ok:
+        min-ms: 1
+        max-ms: 60000
   oauth2:
     google:
       client-id: test-client-id

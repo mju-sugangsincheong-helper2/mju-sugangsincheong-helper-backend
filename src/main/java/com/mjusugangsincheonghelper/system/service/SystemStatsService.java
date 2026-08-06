@@ -15,10 +15,13 @@ import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWo
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundMemberRepository;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse;
-import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.CourseCount;
+import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.CourseStats;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.CourseTermCount;
+import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.DailyCount;
+import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.DayOfWeekCount;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.DeviceDistribution;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.ExchangeStats;
+import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.HourCount;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.MemberStats;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.MultigameStats;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.RoomStatusCount;
@@ -27,6 +30,7 @@ import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.SingleGameSta
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -142,8 +146,21 @@ public class SystemStatsService {
 		Double avgMs = singleGameRepository.averageTTotalByIsCompletedTrue();
 		Integer bestMs = singleGameRepository.minTTotalByIsCompletedTrue();
 
-		List<CourseCount> byCourseCount = singleGameRepository.countByIsCompletedTrueGroupByTotalCourses().stream()
-				.map(row -> new CourseCount(((Number) row[0]).intValue(), ((Number) row[1]).longValue()))
+		List<CourseStats> byCourse = singleGameRepository.aggregateByTotalCourses().stream()
+				.map(row -> {
+					int totalCourses = ((Number) row[0]).intValue();
+					long courseTotal = ((Number) row[1]).longValue();
+					long courseCompleted = nvl(row[2]);
+					int courseRate = courseTotal > 0 ? (int) Math.round(courseCompleted * 100.0 / courseTotal) : 0;
+					return new CourseStats(
+							totalCourses,
+							courseTotal,
+							courseCompleted,
+							courseRate,
+							row[3] == null ? 0L : Math.round(((Number) row[3]).doubleValue()),
+							row[4] == null ? 0L : ((Number) row[4]).longValue()
+					);
+				})
 				.toList();
 
 		return new SingleGameStats(
@@ -154,7 +171,7 @@ public class SystemStatsService {
 				completionRate,
 				avgMs == null ? 0L : Math.round(avgMs),
 				bestMs == null ? 0L : bestMs.longValue(),
-				byCourseCount
+				byCourse
 		);
 	}
 
@@ -208,7 +225,19 @@ public class SystemStatsService {
 				? (int) Math.round(successCount * 100.0 / (successCount + failedCount))
 				: 0;
 
-		return new MultigameStats(rounds, peakParticipants, successCount, failedCount, successRate, recentRounds);
+		List<HourCount> roundsByHour = multigameRoundRepository.countRoundsByHour().stream()
+				.map(row -> new HourCount(((Number) row[0]).intValue(), ((Number) row[1]).longValue()))
+				.toList();
+		List<DayOfWeekCount> roundsByDayOfWeek = multigameRoundRepository.countRoundsByDayOfWeek().stream()
+				.map(row -> new DayOfWeekCount(((Number) row[0]).intValue(), ((Number) row[1]).longValue()))
+				.toList();
+		String from = LocalDate.now(ZONE).minusDays(13).format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "0000";
+		List<DailyCount> roundsByDay = multigameRoundRepository.countRoundsByDaySince(from).stream()
+				.map(row -> new DailyCount((String) row[0], ((Number) row[1]).longValue()))
+				.toList();
+
+		return new MultigameStats(rounds, peakParticipants, successCount, failedCount, successRate, recentRounds,
+				roundsByHour, roundsByDayOfWeek, roundsByDay);
 	}
 
 	private long nvl(Object value) {

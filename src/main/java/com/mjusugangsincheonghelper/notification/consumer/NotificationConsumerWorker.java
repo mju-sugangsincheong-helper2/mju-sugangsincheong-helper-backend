@@ -2,55 +2,43 @@ package com.mjusugangsincheonghelper.notification.consumer;
 
 import tools.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.global.config.PgmqMessageDto;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
 import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
 import com.mjusugangsincheonghelper.notification.consumer.service.NotificationConsumerService;
 import jakarta.annotation.PostConstruct;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class NotificationConsumerWorker {
 
 	public static final String QUEUE_NAME = "notification_queue";
-	private static final int VISIBILITY_TIMEOUT = 30;
-	private static final int BATCH_SIZE = 400;
-	private static final int MAX_RETRY_COUNT = 5;
 
 	private final PgmqService pgmqService;
 	private final NotificationConsumerService notificationConsumerService;
 	private final ObjectMapper objectMapper;
-	private final TaskScheduler pgmqScheduler;
-
-	public NotificationConsumerWorker(
-			PgmqService pgmqService,
-			NotificationConsumerService notificationConsumerService,
-			ObjectMapper objectMapper,
-			@Qualifier("pgmqScheduler") TaskScheduler pgmqScheduler) {
-		this.pgmqService = pgmqService;
-		this.notificationConsumerService = notificationConsumerService;
-		this.objectMapper = objectMapper;
-		this.pgmqScheduler = pgmqScheduler;
-	}
+	private final PgmqProperties pgmqProperties;
 
 	@PostConstruct
-	public void start() {
+	public void createQueue() {
 		try {
 			pgmqService.createQueue(QUEUE_NAME);
 		} catch (Exception e) {
 			log.debug("Queue may already exist: {}", e.getMessage());
 		}
-		pgmqScheduler.scheduleWithFixedDelay(this::poll, Duration.ofSeconds(1));
 	}
 
-	private void poll() {
-		List<PgmqMessageDto> messages = pgmqService.read(QUEUE_NAME, VISIBILITY_TIMEOUT, BATCH_SIZE);
+	@Scheduled(fixedDelayString = "${app.pgmq.notification.poll-interval:1s}", scheduler = "pgmqScheduler")
+	void poll() {
+		PgmqProperties.WorkerConfig config = pgmqProperties.getNotification();
+		List<PgmqMessageDto> messages = pgmqService.read(QUEUE_NAME, config.getVisibilityTimeout(), config.getBatchSize());
 		if (messages.isEmpty()) {
 			return;
 		}
@@ -60,7 +48,7 @@ public class NotificationConsumerWorker {
 
 		for (PgmqMessageDto msg : messages) {
 			try {
-				if (msg.getReadCt() > MAX_RETRY_COUNT) {
+				if (msg.getReadCt() > config.getMaxRetryCount()) {
 					log.error("Notification message exceeded max retries. Archiving message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
 					pgmqService.archive(QUEUE_NAME, msg.getMsgId());
 					continue;

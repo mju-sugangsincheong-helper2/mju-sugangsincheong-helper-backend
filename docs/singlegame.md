@@ -252,7 +252,11 @@ POST /api/{version}/singlegame
 - `totalCourses`는 `[1, 3, 6, 7, 8]` 중 하나여야 함
 - 완료된 게임(`isCompleted=true`)인 경우 `details` 개수는 `totalCourses`와 동일해야 함
 - 미완료 게임인 경우 `details` 개수는 `totalCourses`보다 적어야 함
-- 모든 시간 값은 `reactionTimeMinMs`(기본값: 1) ~ `reactionTimeMaxMs`(기본값: 60000) 범위 내여야 함
+- **이벤트별 반응 시간은 각각 별도의 min/max 범위를 적용**한다. (전체 시간을 하나의 범위로 제한하지 않음)
+  - `tEnterMain`: `app.singlegame.timing.t-enter-main` (기본 min: 1 ~ max: 60000)
+  - `tClickCourse`: `app.singlegame.timing.t-click-course` (기본 min: 1 ~ max: 60000)
+  - `tClickYes`: `app.singlegame.timing.t-click-yes` (기본 min: 1 ~ max: 60000)
+  - `tClickOk`: `app.singlegame.timing.t-click-ok` (기본 min: 1 ~ max: 60000)
 
 **처리 절차:**
 1. 회원 존재 여부 확인
@@ -606,10 +610,38 @@ GET /api/{version}/singlegame/{gameId}/analysis
 
 ## 설정값
 
+싱글게임의 반응시간 제한은 **전체 게임 시간에 대한 단일 min/max가 아니라, 1개 과목의 처리 기준으로 이벤트별(min/max)로 관리**한다. 각 이벤트의 반응 시간은 해당 설정값 범위 내여야 유효하다.
+
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| `app.singlegame.reaction-time-min-ms` | 1 | 최소 반응 시간 (ms) |
-| `app.singlegame.reaction-time-max-ms` | 60000 | 최대 반응 시간 (ms) |
+| `app.singlegame.timing.t-enter-main.min-ms` | 1 | 최소 메인방 진입 반응시간 (ms) |
+| `app.singlegame.timing.t-enter-main.max-ms` | 60000 | 최대 메인방 진입 반응시간 (ms) |
+| `app.singlegame.timing.t-click-course.min-ms` | 1 | 최소 과목 조준/클릭시간 (ms) |
+| `app.singlegame.timing.t-click-course.max-ms` | 60000 | 최대 과목 조준/클릭시간 (ms) |
+| `app.singlegame.timing.t-click-yes.min-ms` | 1 | 최소 1차 확인 팝업 반응시간 (ms) |
+| `app.singlegame.timing.t-click-yes.max-ms` | 60000 | 최대 1차 확인 팝업 반응시간 (ms) |
+| `app.singlegame.timing.t-click-ok.min-ms` | 1 | 최소 2차 완료 팝업 반응시간 (ms) |
+| `app.singlegame.timing.t-click-ok.max-ms` | 60000 | 최대 2차 완료 팝업 반응시간 (ms) |
+
+예시(dev/prod/test 공통):
+
+```yaml
+app:
+  singlegame:
+    timing:
+      t-enter-main:
+        min-ms: 1
+        max-ms: 60000
+      t-click-course:
+        min-ms: 1
+        max-ms: 60000
+      t-click-yes:
+        min-ms: 1
+        max-ms: 60000
+      t-click-ok:
+        min-ms: 1
+        max-ms: 60000
+```
 
 ---
 

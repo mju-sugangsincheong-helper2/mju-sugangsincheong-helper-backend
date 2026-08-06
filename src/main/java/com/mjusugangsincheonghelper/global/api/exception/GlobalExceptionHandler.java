@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -55,9 +56,7 @@ public class GlobalExceptionHandler {
 		}
 
 		log.warn("BaseException: code={}, message={}", errorCode.getCode(), errorCode.getMessage(), cause);
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, details, isExposeErrorDetails()));
+		return errorResponse(errorCode, details);
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
@@ -68,9 +67,7 @@ public class GlobalExceptionHandler {
 
 		ErrorCode errorCode = ErrorCode.GLOBAL_VALIDATION_ERROR;
 		log.warn("Validation failed: details={}", details.size());
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, details, isExposeErrorDetails()));
+		return errorResponse(errorCode, details);
 	}
 
 	@ExceptionHandler(ConstraintViolationException.class)
@@ -81,63 +78,58 @@ public class GlobalExceptionHandler {
 
 		ErrorCode errorCode = ErrorCode.GLOBAL_VALIDATION_ERROR;
 		log.warn("Constraint violation: details={}", details.size());
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, details, isExposeErrorDetails()));
+		return errorResponse(errorCode, details);
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleMessageNotReadable(HttpMessageNotReadableException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
 		log.warn("Message not readable: {}", exception.getMessage());
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(MissingServletRequestParameterException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleMissingServletRequestParameter(MissingServletRequestParameterException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
 		log.warn("Missing request parameter: {}", exception.getMessage());
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
 		log.warn("Type mismatch: {}", exception.getMessage());
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(NoResourceFoundException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleNoResourceFound(NoResourceFoundException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_NOT_FOUND;
 		log.warn("Resource not found: {}", exception.getMessage());
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleAccessDenied(AccessDeniedException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_SECURITY_FORBIDDEN;
 		log.warn("Access denied: {}", exception.getMessage());
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleUnexpected(Exception exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR;
 		log.error("Unexpected error", exception);
-		return ResponseEntity
-				.status(errorCode.getStatus())
-				.body(ErrorResponseEnvelope.from(errorCode, errorDetailFrom(exception), isExposeErrorDetails()));
+		return errorResponse(errorCode, errorDetailFrom(exception));
+	}
+
+	private ResponseEntity<ErrorResponseEnvelope> errorResponse(ErrorCode code, List<FieldViolation> details) {
+		// Content-Type을 명시적으로 JSON 지정: actuator처럼 produces가 text/plain인 엔드포인트의
+		// 예외를 잡았을 때 preset Content-Type 때문에 JSON을 못 쓰고 HttpMessageNotWritableException이
+		// 나는 것을 방지한다.
+		return ResponseEntity.status(code.getStatus())
+				.contentType(MediaType.APPLICATION_JSON)
+				.body(ErrorResponseEnvelope.from(code, details, isExposeErrorDetails()));
 	}
 
 	private List<FieldViolation> errorDetailFrom(ErrorCode errorCode) {

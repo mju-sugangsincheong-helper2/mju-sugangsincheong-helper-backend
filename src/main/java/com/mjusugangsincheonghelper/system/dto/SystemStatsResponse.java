@@ -56,7 +56,7 @@ public record SystemStatsResponse(
 			int completionRate,
 			long avgTotalMs,
 			long bestTotalMs,
-			List<CourseCount> byCourseCount
+			List<CourseStats> byCourse
 	) {
 	}
 
@@ -67,7 +67,10 @@ public record SystemStatsResponse(
 			long successCount,
 			long failedCount,
 			int successRate,
-			List<RoundStats> recentRounds
+			List<RoundStats> recentRounds,
+			List<HourCount> roundsByHour,
+			List<DayOfWeekCount> roundsByDayOfWeek,
+			List<DailyCount> roundsByDay
 	) {
 	}
 
@@ -75,8 +78,27 @@ public record SystemStatsResponse(
 	public record RoomStatusCount(String status, long count) {
 	}
 
-	/** 싱글게임 종목(과목 수)별 기록 수 */
-	public record CourseCount(int totalCourses, long count) {
+	/** 싱글게임 종목(과목 수)별 지표: 기록 규모/완주율/평균·최단 소요시간 */
+	public record CourseStats(
+			int totalCourses,
+			long total,
+			long completed,
+			int completionRate,
+			long avgTotalMs,
+			long bestTotalMs
+	) {
+	}
+
+	/** 멀티게임 진행 시각 분포: 시간대(0~23시)별 실제 진행 라운드 수 */
+	public record HourCount(int hour, long count) {
+	}
+
+	/** 멀티게임 진행 요일 분포: ISO 요일(1=월 ~ 7=일)별 실제 진행 라운드 수 */
+	public record DayOfWeekCount(int dayOfWeek, long count) {
+	}
+
+	/** 멀티게임 일자(yyyy-MM-dd)별 실제 진행 라운드 수 */
+	public record DailyCount(String day, long count) {
 	}
 
 	/** 멀티게임 최근 라운드별 집계 */

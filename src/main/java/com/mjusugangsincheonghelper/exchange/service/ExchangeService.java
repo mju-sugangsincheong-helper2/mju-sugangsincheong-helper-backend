@@ -5,14 +5,11 @@ import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomReadStatusEntity;
-import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomReadStatusRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
-import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
-import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
 import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
@@ -31,25 +28,21 @@ import com.mjusugangsincheonghelper.exchange.dto.RecentIntentsResponse.IntentFee
 import com.mjusugangsincheonghelper.exchange.dto.RoomToggleRequest;
 import com.mjusugangsincheonghelper.exchange.dto.RoomToggleResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.RoomMetaCacheDto;
+import com.mjusugangsincheonghelper.exchange.event.ExchangeEvents;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.global.config.PgmqService;
-import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
-import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
 import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -60,11 +53,9 @@ public class ExchangeService {
 	private final ExchangeRoomMessageRepository messageRepository;
 	private final ExchangeRoomReadStatusRepository readStatusRepository;
 	private final ExchangeRoomRepository roomRepository;
-	private final MemberDeviceRepository memberDeviceRepository;
-	private final PgmqService pgmqService;
-	private final ExchangeCycleDetector cycleDetector;
 	private final ExchangeCacheService cacheService;
 	private final SystemConfigService systemConfigService;
+	private final ApplicationEventPublisher eventPublisher;
 
 	@Transactional
 	public IntentCreateResponse createIntent(Long memberId, IntentCreateRequest request) {
@@ -92,17 +83,8 @@ public class ExchangeService {
 			throw new BaseException(ErrorCode.EXCHANGE_DUPLICATE_INTENT);
 		}
 
-		executeAfterCommit(() -> {
-			cacheService.evictFeed(term);
-			cacheService.evictMainCache(term, memberId);
-			cycleDetector.enqueueCycleDetection(CycleDetectionMessage.builder()
-					.term(term)
-					.intentId(saved.getId())
-					.memberId(memberId)
-					.giveCourseNo(saved.getGiveCourseNo())
-					.wantCourseNo(saved.getWantCourseNo())
-					.build());
-		});
+		eventPublisher.publishEvent(new ExchangeEvents.IntentCreated(
+				term, saved.getId(), memberId, saved.getGiveCourseNo(), saved.getWantCourseNo()));
 
 		return IntentCreateResponse.from(saved);
 	}
@@ -125,6 +107,10 @@ public class ExchangeService {
 		intent.markDeleted();
 
 		List<ExchangeRoomIntentEntity> affectedRoomIntents = roomIntentRepository.findByTermAndIntentId(term, intentId);
+		List<Long> affectedRoomIds = affectedRoomIntents.stream()
+				.map(ExchangeRoomIntentEntity::getRoomId)
+				.distinct()
+				.toList();
 		List<Long> affectedMemberIds = affectedRoomIntents.stream()
 				.map(ExchangeRoomIntentEntity::getMemberId)
 				.distinct()
@@ -135,14 +121,7 @@ public class ExchangeService {
 			updateRoomStatusAndState(term, ri.getRoomId(), intentId, memberId);
 		}
 
-		executeAfterCommit(() -> {
-			cacheService.evictMainCache(term, memberId);
-			for (Long mid : affectedMemberIds) {
-				if (!mid.equals(memberId)) {
-					cacheService.evictMainCache(term, mid);
-				}
-			}
-		});
+		eventPublisher.publishEvent(new ExchangeEvents.IntentDeleted(term, memberId, affectedRoomIds, affectedMemberIds));
 
 		return IntentDeleteResponse.builder()
 				.intentId(intentId)
@@ -159,65 +138,65 @@ public class ExchangeService {
 			return cached;
 		}
 
-		List<ExchangeIntentEntity> myIntents = intentRepository.findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(term, memberId);
+		List<IntentCacheDto> myIntents = cacheService.getMemberIntents(term, memberId);
 
 		List<IntentItem> intentItems = new ArrayList<>();
-		for (ExchangeIntentEntity intent : myIntents) {
-			List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndIntentId(term, intent.getId());
+		for (IntentCacheDto intent : myIntents) {
+			List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndIntentId(term, intent.getIntentId());
 			List<RoomItem> roomItems = new ArrayList<>();
 
-			for (ExchangeRoomIntentEntity ri : roomIntents) {
-				ExchangeRoomEntity room = roomRepository.findById(new ExchangeRoomEntity.ExchangeRoomId(term, ri.getRoomId())).orElse(null);
-				if (room == null) continue;
-
-				ExchangeRoomReadStatusEntity read = readStatusRepository.findById(
-						new ExchangeRoomReadStatusEntity.ExchangeRoomReadStatusId(term, ri.getRoomId(), memberId)
-				).orElse(null);
-				Long lastReadId = read != null ? read.getLastReadMessageId() : 0L;
-
-				boolean isOn = ri.isOn();
-				ExchangeRoomMessageEntity lastMsg = isOn ? messageRepository.findTopByTermAndRoomIdOrderByIdDesc(term, ri.getRoomId()).orElse(null) : null;
-				int unread = isOn ? messageRepository.countByTermAndRoomIdAndIdGreaterThan(term, ri.getRoomId(), lastReadId) : 0;
-
-				MessageSummaryItem summaryItem = (isOn && lastMsg != null) ? MessageSummaryItem.builder()
-						.messageId(lastMsg.getId())
-						.senderId(lastMsg.getMemberId())
-						.messageType(lastMsg.getMessageType())
-						.content(lastMsg.getContent())
-						.createdAt(lastMsg.getCreatedAt())
-						.build() : null;
-
-				List<ExchangeRoomIntentEntity> allRoomIntents = roomIntentRepository.findByTermAndRoomId(term, ri.getRoomId());
-				List<ParticipantItem> participantItems = new ArrayList<>();
-				for (ExchangeRoomIntentEntity pri : allRoomIntents) {
-					ExchangeIntentEntity pi = intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, pri.getIntentId())).orElse(null);
-
-					participantItems.add(ParticipantItem.builder()
-							.memberId(pri.getMemberId())
-							.intentId(pri.getIntentId())
-							.giveCourseNo(pi != null ? pi.getGiveCourseNo() : null)
-							.wantCourseNo(pi != null ? pi.getWantCourseNo() : null)
-							.isDeleted(pri.isDeleted())
-							.isOn(pri.isOn())
-							.build());
+			for (ExchangeRoomIntentEntity roomIntent : roomIntents) {
+				RoomMetaCacheDto roomMeta = cacheService.getRoomMeta(term, roomIntent.getRoomId());
+				if (roomMeta == null) {
+					continue;
 				}
 
+				ExchangeRoomReadStatusEntity readStatus = readStatusRepository.findById(
+						new ExchangeRoomReadStatusEntity.ExchangeRoomReadStatusId(term, roomIntent.getRoomId(), memberId)).orElse(null);
+				Long lastReadMessageId = readStatus != null ? readStatus.getLastReadMessageId() : 0L;
+
+				boolean isOn = roomIntent.isOn();
+				int unread = isOn ? messageRepository.countByTermAndRoomIdAndIdGreaterThan(term, roomIntent.getRoomId(), lastReadMessageId) : 0;
+
+				MessageSummaryItem summaryItem = null;
+				if (isOn && roomMeta.getLastMessage() != null) {
+					RoomMetaCacheDto.MessageSummary lastMessage = roomMeta.getLastMessage();
+					summaryItem = MessageSummaryItem.builder()
+							.messageId(lastMessage.getMessageId())
+							.senderId(lastMessage.getSenderId())
+							.messageType(lastMessage.getMessageType())
+							.content(lastMessage.getContent())
+							.createdAt(lastMessage.getCreatedAt())
+							.build();
+				}
+
+				List<ParticipantItem> participantItems = roomMeta.getParticipants().stream()
+						.map(participant -> ParticipantItem.builder()
+								.memberId(participant.getMemberId())
+								.intentId(participant.getIntentId())
+								.giveCourseNo(participant.getGiveCourseNo())
+								.wantCourseNo(participant.getWantCourseNo())
+								.isDeleted(participant.isDeleted())
+								.isOn(participant.isOn())
+								.build())
+						.toList();
+
 				roomItems.add(RoomItem.builder()
-						.roomId(ri.getRoomId())
+						.roomId(roomIntent.getRoomId())
 						.term(term)
-						.cycleHash(room.getCycleHash())
-						.status(room.getStatus())
-						.isOn(ri.isOn())
+						.cycleHash(roomMeta.getCycleHash())
+						.status(roomMeta.getStatus())
+						.isOn(isOn)
 						.unreadCount(unread)
-						.lastReadMessageId(lastReadId)
+						.lastReadMessageId(lastReadMessageId)
 						.lastMessage(summaryItem)
 						.participants(participantItems)
-						.createdAt(room.getCreatedAt())
+						.createdAt(roomMeta.getCreatedAt())
 						.build());
 			}
 
 			intentItems.add(IntentItem.builder()
-					.intentId(intent.getId())
+					.intentId(intent.getIntentId())
 					.giveCourseNo(intent.getGiveCourseNo())
 					.wantCourseNo(intent.getWantCourseNo())
 					.isDeleted(intent.isDeleted())
@@ -228,11 +207,11 @@ public class ExchangeService {
 
 		List<FeedCacheDto> feed = cacheService.getFeed(term);
 		List<RecentIntentItem> recentItems = feed.stream()
-				.map(f -> RecentIntentItem.builder()
-						.intentId(f.getIntentId())
-						.giveCourseNo(f.getGiveCourseNo())
-						.wantCourseNo(f.getWantCourseNo())
-						.createdAt(f.getCreatedAt())
+				.map(feedItem -> RecentIntentItem.builder()
+						.intentId(feedItem.getIntentId())
+						.giveCourseNo(feedItem.getGiveCourseNo())
+						.wantCourseNo(feedItem.getWantCourseNo())
+						.createdAt(feedItem.getCreatedAt())
 						.build())
 				.toList();
 
@@ -314,9 +293,7 @@ public class ExchangeService {
 
 		Long nextBeforeMessageId = result.isEmpty() ? beforeMessageId : result.get(result.size() - 1).getId();
 
-		executeAfterCommit(() -> {
-			cacheService.evictMainCache(term, memberId);
-		});
+		eventPublisher.publishEvent(new ExchangeEvents.RoomViewed(term, roomId, memberId));
 
 		return MessageResponse.builder()
 				.roomId(roomId)
@@ -362,14 +339,7 @@ public class ExchangeService {
 			read.updateLastReadMessageId(saved.getId());
 		}
 
-		List<Long> memberIds = roomIntentRepository.findDistinctMemberIdsByTermAndRoomId(term, roomId);
-
-		executeAfterCommit(() -> {
-			for (Long mid : memberIds) {
-				cacheService.evictMainCache(term, mid);
-			}
-			sendFcmForRoomMessage(term, roomId, memberId, request.getContent());
-		});
+		eventPublisher.publishEvent(new ExchangeEvents.RoomMessageSent(term, roomId, memberId, request.getContent()));
 
 		return MessageSendResponse.from(saved);
 	}
@@ -394,9 +364,7 @@ public class ExchangeService {
 
 		updateRoomStatusAndState(term, roomId, activeRi != null ? activeRi.getIntentId() : null, memberId);
 
-		executeAfterCommit(() -> {
-			cacheService.evictMainCache(term, memberId);
-		});
+		eventPublisher.publishEvent(new ExchangeEvents.RoomToggled(term, roomId));
 
 		return RoomToggleResponse.builder()
 				.roomId(roomId)
@@ -458,64 +426,6 @@ public class ExchangeService {
 					.messageType("SYSTEM")
 					.content(systemContent)
 					.build());
-		}
-	}
-
-	private void sendFcmForRoomMessage(String term, Long roomId, Long senderMemberId, String content) {
-		try {
-			List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, roomId);
-			List<Long> targetMemberIds = roomIntents.stream()
-					.filter(ri -> ri.isOn() && !ri.isDeleted() && !ri.getMemberId().equals(senderMemberId))
-					.map(ExchangeRoomIntentEntity::getMemberId)
-					.distinct()
-					.toList();
-
-			if (targetMemberIds.isEmpty()) {
-				log.debug("No active target members to receive FCM notification for roomId={}", roomId);
-				return;
-			}
-
-			String path = "/exchange/rooms/" + roomId;
-			String timestamp = String.valueOf(System.currentTimeMillis());
-
-			for (Long targetMemberId : targetMemberIds) {
-				List<MemberDevice> devices = memberDeviceRepository.findByMemberId(targetMemberId);
-				for (MemberDevice device : devices) {
-					String token = device.getFcmToken();
-					if (token != null && !token.isBlank()) {
-						NotificationEventMessage event = NotificationEventMessage.builder()
-								.token(token)
-								.notification(NotificationEventMessage.NotificationPayload.builder()
-										.title("수강신청 교환 대화방 메시지")
-										.body(content)
-										.build())
-								.data(Map.of(
-										"type", "EXCHANGE_MESSAGE",
-										"path", path,
-										"timestamp", timestamp
-								))
-								.build();
-						pgmqService.send(NotificationConsumerWorker.QUEUE_NAME, event);
-						log.info("Queued FCM notification for EXCHANGE_MESSAGE: memberId={}, deviceId={}, path={}",
-								targetMemberId, device.getId(), path);
-					}
-				}
-			}
-		} catch (Exception e) {
-			log.warn("FCM 알림 발송 중 오류 발생: roomId={}", roomId, e);
-		}
-	}
-
-	private void executeAfterCommit(Runnable action) {
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-					action.run();
-				}
-			});
-		} else {
-			action.run();
 		}
 	}
 }

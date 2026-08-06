@@ -29,7 +29,7 @@ public class PgmqArchiveCleanupScheduler {
 	@Value("${app.pgmq.archive-retention-days:7}")
 	private long retentionDays;
 
-	@Scheduled(cron = "0 30 3 * * *", scheduler = "pgmqScheduler")
+	@Scheduled(cron = "${app.schedule.pgmq-cleanup.cron:0 30 3 * * *}", scheduler = "pgmqScheduler")
 	public void purgeArchives() {
 		for (String queueName : QUEUE_NAMES) {
 			try {

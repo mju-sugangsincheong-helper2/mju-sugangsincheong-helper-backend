@@ -10,8 +10,8 @@ kebab-case, :: 구분자
 
 | 대상 | 규칙 | 예시 |
 |------|------|------|
-| **Cache name** (Spring `@Cacheable value`) | kebab-case | `user-intents`, `room-static-meta` |
-| **Redis key** | kebab-case, `::` 구분자 | `user-intents::202525:member:42:intents:cache` |
+| **Cache name** (Spring `@Cacheable value`) | kebab-case, 도메인명 접두사 | `exchange-feed`, `multigame-rank` |
+| **Redis key** | kebab-case, `::` 구분자 | `exchange-feed::202525:cache` |
 
 ## 표준 접미사 (Suffix)
 
@@ -37,12 +37,12 @@ SingleGame, System Config, OAuth 는 term 에 종속되지 않으므로 key 에 
 
 | Segment | 의미 | 예시 |
 |---------|------|------|
-| `cache_name` | Spring cache region (kebab-case) | `user-intents` |
+| `cache_name` | Spring cache region (kebab-case, 도메인명 접두사) | `exchange-user-intents` |
 | `::` | Spring Cache 기본 separator | |
 | `term` | 학기 식별자 | `202525` |
 | `entity_type` | 엔티티 종류 | `member`, `room` |
 | `entity_id` | 엔티티 ID | `42` |
-| `data_type` | 저장 데이터 종류 | `intents`, `static_meta` |
+| `data_type` | 저장 데이터 종류 | `intents`, `meta` |
 | `:cache` | 접미사 (성능 최적화 임시 데이터) | |
 
 ### Non-term Domains (cross-term, suffix: `:cache` or `:session`)
@@ -63,23 +63,30 @@ oauth:state:{uuid}:session
 
 | Cache name | Key pattern | 예시 |
 |---|---|---|
-| `user-intents` | `{term}:member:{memberId}:intents:cache` | `user-intents::202525:member:42:intents:cache` |
-| `user-room-ids` | `{term}:member:{memberId}:room_ids:cache` | `user-room-ids::202525:member:42:room_ids:cache` |
-| `user-unread-counts` | `{term}:member:{memberId}:unread_counts:cache` | `user-unread-counts::202525:member:42:unread_counts:cache` |
-| `room-static-meta` | `{term}:room:{roomId}:static_meta:cache` | `room-static-meta::202525:room:7:static_meta:cache` |
-| `room-dynamic-meta` | `{term}:room:{roomId}:dynamic_meta:cache` | `room-dynamic-meta::202525:room:7:dynamic_meta:cache` |
-| `room-active-intents` | `{term}:room:{roomId}:active_intents:cache` | `room-active-intents::202525:room:7:active_intents:cache` |
-| `recent-intents-page` | `{term}:recent_intents:lastId:{lastIntentId}:limit:{limit}:cache` | `recent-intents-page::202525:recent_intents:lastId:100:limit:20:cache` |
+| `exchange-feed` | `{term}:cache` | `exchange-feed::202525:cache` |
+| `exchange-main` | `{term}:member:{memberId}:main:cache` | `exchange-main::202525:member:42:main:cache` |
+| `exchange-user-intents` | `{term}:member:{memberId}:intents:cache` | `exchange-user-intents::202525:member:42:intents:cache` |
+| `exchange-room-meta` | `{term}:room:{roomId}:meta:cache` | `exchange-room-meta::202525:room:7:meta:cache` |
+
+> `exchange-main`은 `RedisTemplate`으로 직접 읽기/쓰기/evict(더블 evict)하며, 나머지는 `@Cacheable`/`@CacheEvict`로 관리한다.
 
 ### SingleGame Domain
 
 | Cache name | Key pattern | 예시 |
 |---|---|---|
-| `singlegame-rank` | `{totalCourses}:{scope}:cache` | `singlegame-rank::6:GLOBAL:cache` |
+| `singlegame-rank` | `{totalCourses}:{scope}:{department}:cache` | `singlegame-rank::6:GLOBAL:cache` |
 | `singlegame-records` | `{memberId}:page:0:size:10:cache` | `singlegame-records::42:page:0:size:10:cache` |
-| `singlegame-analysis` | `{gameId}:cache` | `singlegame-analysis::123:cache` |
+| `singlegame-analysis` | `{gameId}:{memberId}:cache` | `singlegame-analysis::123:42:cache` |
 
-> `scope` = `GLOBAL` \| `DEPARTMENT`
+> `scope` = `GLOBAL` \| `DEPARTMENT`, `department` = `ALL` 또는 학과명
+
+### MultiGame Domain
+
+| Cache name | Key pattern | 예시 |
+|---|---|---|
+| `multigame-rank` | `department:rates:cache` | `multigame-rank::department:rates:cache` |
+
+> 랭킹 API에 파라미터가 없으므로 캐시 키는 도메인 전체 공유 단일 값이다. 집계 원본(학과별 성공률)만 캐시하고 참여 수/성공률/myDepartment는 요청마다 파생한다.
 
 ### System Domain
 
@@ -97,16 +104,22 @@ oauth:state:{uuid}:session
 
 | Cache name | TTL |
 |---|---|
-| `room-static-meta` | `0s` (만료 없음) |
+| `exchange-feed` | `24h` |
+| `exchange-main` | `24h` |
+| `exchange-user-intents` | `24h` |
+| `exchange-room-meta` | `24h` |
+| `system-config` | `24h` |
 | `singlegame-rank` | `5m` |
 | `singlegame-records` | `5m` |
 | `singlegame-analysis` | `5m` |
-| 그 외 나머지 | `24h` |
+| `multigame-rank` | `5m` |
+| 그 외 (YAML 미등록 캐시) | `24h` (default-ttl) |
 | OAuth state | `300s` (코드 레벨) |
 
 ## Eviction 전략
 
 - Redis를 read-through cache로 사용, RDB를 single source of truth로 유지
-- 쓰기 트랜잭션 커밋 후 `TransactionSynchronization.afterCommit()` 에서 관련 cache evict
-- `recent-intests-page` 는 개별 키 evict 가 아닌 전체 clear (`cache.clear()`)
+- **Exchange**: 쓰기 트랜잭션 커밋 후 `TransactionSynchronization.afterCommit()` 에서 관련 캐시를 명시적으로 evict (메시지 전송/의도 등록·철회/방 토글/방 생성). `exchange-main`은 2초 지연 더블 evict. TTL(24h)은 evict 누락 시 안전망.
+- **SingleGame**: 게임 저장 트랜잭션 커밋 후 `afterCommit()` 에서 rank/analysis 전체 clear + records evict. TTL(5m)은 안전망.
+- **MultiGame**: 랭킹 원본 집계만 캐시하며, 데이터 변경이 게임 정산(주기적 일괄 배치)에서만 발생하므로 **명시적 evict 없이 TTL(5m)만** 사용.
 - Redis 장애는 WARN 로깅 후 무시 (graceful degradation)

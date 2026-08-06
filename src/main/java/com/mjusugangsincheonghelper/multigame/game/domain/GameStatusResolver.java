@@ -40,7 +40,8 @@ public final class GameStatusResolver {
 		return GameStatus.ENDED;
 	}
 
-	private boolean isClosed(LocalDateTime now) {
+	/** 미운영(CLOSED) 시간대인지 판정한다. 스케줄러 등 게임 상태가 아닌 시간대만 필요한 곳에서도 재사용한다. */
+	public boolean isClosed(LocalDateTime now) {
 		LocalTime time = now.toLocalTime();
 		if (closedStart.equals(closedEnd)) {
 			return false; // start-close == end-close 이면 미운영 시간대 없음 (24시간 운영)

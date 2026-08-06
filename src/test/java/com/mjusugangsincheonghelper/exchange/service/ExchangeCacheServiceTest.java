@@ -59,6 +59,7 @@ class ExchangeCacheServiceTest {
 	@BeforeEach
 	void setUp() {
 		org.mockito.Mockito.lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+		org.mockito.Mockito.lenient().when(cacheProperties.getDoubleEvictDelay()).thenReturn(Duration.ofSeconds(2));
 	}
 
 	@Nested
@@ -112,7 +113,7 @@ class ExchangeCacheServiceTest {
 			// Given
 			String term = "202620";
 			Long memberId = 1L;
-			String key = "exchange::" + term + ":member:" + memberId + ":main:cache";
+			String key = "exchange-main::" + term + ":member:" + memberId + ":main:cache";
 			MainResponse expected = MainResponse.builder().myIntents(List.of()).recentIntents(List.of()).build();
 
 			given(valueOperations.get(key)).willReturn(expected);
@@ -130,7 +131,7 @@ class ExchangeCacheServiceTest {
 			// Given
 			String term = "202620";
 			Long memberId = 1L;
-			String key = "exchange::" + term + ":member:" + memberId + ":main:cache";
+			String key = "exchange-main::" + term + ":member:" + memberId + ":main:cache";
 			MainResponse response = MainResponse.builder().myIntents(List.of()).recentIntents(List.of()).build();
 			given(cacheProperties.getTtl("exchange-main")).willReturn(Duration.ofMinutes(10));
 
@@ -147,7 +148,7 @@ class ExchangeCacheServiceTest {
 			// Given
 			String term = "202620";
 			Long memberId = 1L;
-			String key = "exchange::" + term + ":member:" + memberId + ":main:cache";
+			String key = "exchange-main::" + term + ":member:" + memberId + ":main:cache";
 
 			doAnswer(invocation -> {
 				Runnable runnable = invocation.getArgument(0);

@@ -13,8 +13,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -75,11 +73,9 @@ public class SessionController {
 	public ResponseEntity<SingleSuccessResponseEnvelope<Void>> logout(
 			HttpServletRequest request,
 			HttpServletResponse response) {
-		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-		Long memberId = (Long) authentication.getPrincipal();
 		String refreshToken = extractRefreshToken(request);
 
-		sessionService.destroySession(refreshToken, memberId, response);
+		sessionService.destroySession(refreshToken, response);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.empty());
 	}
 

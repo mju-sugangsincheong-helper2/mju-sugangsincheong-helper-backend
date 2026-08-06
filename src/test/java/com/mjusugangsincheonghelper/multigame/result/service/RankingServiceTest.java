@@ -6,9 +6,11 @@ import static org.mockito.BDDMockito.given;
 
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
-import com.mjusugangsincheonghelper.database.repository.MultigameRoundMemberRepository;
 import com.mjusugangsincheonghelper.multigame.result.dto.MultigameRankingResponse;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,20 +28,29 @@ import org.mockito.quality.Strictness;
 class RankingServiceTest {
 
 	@Mock
-	private MultigameRoundMemberRepository roundMemberRepository;
+	private MemberRepository memberRepository;
 
 	@Mock
-	private MemberRepository memberRepository;
+	private MultigameCacheService multigameCacheService;
 
 	private RankingService service;
 
 	@BeforeEach
 	void setUp() {
-		service = new RankingService(roundMemberRepository, memberRepository);
+		service = new RankingService(memberRepository, multigameCacheService);
 	}
 
+	/** MultigameCacheService.collectSuccessRatesByDepartment()와 동일한 성공률 계산을 흉내낸다. */
 	private void aggregateRows(Object[]... rows) {
-		given(roundMemberRepository.aggregateByMemberDepartment()).willReturn(List.of(rows));
+		Map<String, List<Double>> ratesByDepartment = new HashMap<>();
+		for (Object[] row : rows) {
+			String department = (String) row[1];
+			long successCount = ((Number) row[2]).longValue();
+			long roundsPlayed = ((Number) row[3]).longValue();
+			double successRate = roundsPlayed > 0 ? successCount * 100.0 / (roundsPlayed * 6) : 0.0;
+			ratesByDepartment.computeIfAbsent(department, key -> new ArrayList<>()).add(successRate);
+		}
+		given(multigameCacheService.collectSuccessRatesByDepartment()).willReturn(ratesByDepartment);
 	}
 
 	private Member member(String department) {

@@ -165,8 +165,8 @@ com.mjusugangsincheonghelper/
 │   │   └── ConsentCheckFilter.java           #   - MEMBER+ 사용자 동의 감사 강제
 │   └── token/
 │       ├── TokenExtractor.java               #   - 토큰 추출 인터페이스
-│       ├── BearerTokenExtractor.java         #   - dev/test용 추출기 (Authorization 헤더 + 쿠키)
-│       └── CookieTokenExtractor.java         #   - prod용 추출기 (쿠키만)
+│       ├── HttpTokenExtractor.java           #   - TokenTransportMode 기준 추출 (헤더 우선 + 쿠키 폴백)
+│       └── TokenTransportMode.java           #   - app.auth.token-mode 해석 (cookie/header/복수)
 │
 ├── account/                                  # [회원 리소스 패키지]
 │   ├── controller/
@@ -218,8 +218,7 @@ com.mjusugangsincheonghelper/
     │   │   └── TokenProvider.java            #   - JWT 서명/발급 (ATK/RTK/MergeTicket) + TokenClaims VO
     │   ├── delivery/
     │   │   ├── TokenDeliveryStrategy.java    #   - 쿠키/헤더 토큰 전달 전략 인터페이스
-    │   │   ├── CookieTokenDelivery.java      #   - prod 프로파일 (Secure 쿠키)
-    │   │   └── HeaderTokenDelivery.java      #   - dev/test 프로파일 (쿠키 + 헤더 동시 노출)
+    │   │   └── HttpTokenDelivery.java        #   - TokenTransportMode 기준 전달 (쿠키+헤더, Secure 제어)
     │   └── dto/
     │       ├── LogoutRequest.java
     │       └── RefreshResponse.java
@@ -245,7 +244,7 @@ com.mjusugangsincheonghelper/
 
 [2] 약관 동의 (account/agreement)
     └→ 신규 가입 시 프론트 주도로 POST /api/{version}/auth/privacy/agree 호출하여 감사 로그(agreedAt) 생성/갱신
-    └→ SessionService.reissueToken() 호출로 ATK에 agreed=true 반영 (CookieTokenDelivery로 재발급)
+    └→ SessionService.reissueToken() 호출로 ATK에 agreed=true 반영 (HttpTokenDelivery로 재발급)
 
 [3] 세션 관리 (auth/session)
     └→ 갱신 요청 시 기존 RTK 검증 후 회전(Rotation)하여 신규 ATK/RTK 쿠키 발급
@@ -712,17 +711,23 @@ POST /api/{version}/auth/test-accounts {role}
 
 ## 10. 토큰 전달 전략
 
-쿠키 발행 옵션은 환경 프로파일별로 상이합니다.
+토큰의 발급(전달)과 추출 방식은 `app.auth.token-mode` 한 곳에서 관리합니다. 쉼표 구분으로 복수 모드를 활성화할 수 있으며, 추출/전달 양쪽이 `TokenTransportMode`라는 단일 해석기를 공유합니다.
 
 - **Cookie 설정 공통 규칙**:
   - `access_token`: `accessTokenExpiryMs` 만료 (기본 1시간), Path=/
   - `refresh_token`: `refreshTokenExpiryMs` 만료 (기본 7일), Path=/
   - `HttpOnly`: 스크립트 접근 불허 (XSS 방지)
   - `SameSite`: Lax
+  - `Secure`: `app.auth.cookie-secure`로 제어
 
-- **환경별 차이**:
-  - **prod**: `Secure` 플래그 활성화(HTTPS 필수), 응답 바디나 헤더에 토큰 값을 추가 노출하지 않음.
-  - **dev / test**: `Secure` 플래그 비활성화(HTTP 개발 허용), `app.auth.token-in-response=true` 설정을 통해 API 응답 바디에 토큰 문자열을, 응답 헤더에 `Authorization: Bearer <ATK>`, `X-Access-Token: <ATK>`, `X-Refresh-Token: <RTK>`를 병행 노출.
+- **token-mode 값**:
+  - `cookie`        : HttpOnly 쿠키만 발급·추출 (운영 기본)
+  - `header`        : Authorization / X-* 헤더만 발급·추출
+  - `header, cookie`: 쿠키 + 헤더 동시 발급, 추출은 헤더 우선 + 쿠키 폴백 (개발/테스트)
+
+- **환경별 설정**:
+  - **prod**: `token-mode: cookie`, `cookie-secure: true` (HTTPS 필수), 응답 바디나 헤더에 토큰 값을 추가 노출하지 않음.
+  - **dev / test**: `token-mode: header, cookie`, `cookie-secure: false` (HTTP 개발 허용). 프론트는 `credentials: 'include'` 쿠키 기반이므로 쿠키를 반드시 함께 활성화해야 하며, `app.auth.token-in-response=true` 설정 시 API 응답 바디에도 토큰 문자열을, 응답 헤더에 `Authorization: Bearer <ATK>`, `X-Access-Token: <ATK>`, `X-Refresh-Token: <RTK>`를 병행 노출.
 
 - CORS Exposed Headers: `Authorization`, `X-Access-Token`, `X-Refresh-Token`, `X-Request-Id`, `X-Api-Version`, `Set-Cookie` (프론트에서 헤더로 토큰을 읽을 수 있도록 노출).
 

@@ -119,15 +119,27 @@ class SystemStatsServiceTest {
 		given(singleGameRepository.countByIsCompletedTrueAndCreatedAtGreaterThanEqual(any(Instant.class))).willReturn(5L);
 		given(singleGameRepository.averageTTotalByIsCompletedTrue()).willReturn(41234.0);
 		given(singleGameRepository.minTTotalByIsCompletedTrue()).willReturn(30000);
-		given(singleGameRepository.countByIsCompletedTrueGroupByTotalCourses()).willReturn(List.of(
-				new Object[] {1, 30L},
-				new Object[] {8, 170L}
+		given(singleGameRepository.aggregateByTotalCourses()).willReturn(List.of(
+				new Object[] {1, 220L, 200L, 41234.0, 30000},
+				new Object[] {8, 220L, 200L, 41234.0, 30000}
 		));
 		given(multigameRoundRepository.countByParticipantCountGreaterThan(0)).willReturn(8L);
 		given(multigameRoundRepository.findMaxParticipantCount()).willReturn(Optional.of(120));
 		given(multigameRoundRepository.findAllByOrderByStartTimeDesc(PageRequest.of(0, 10))).willReturn(new PageImpl<>(List.of(
 				MultigameRoundEntity.builder().startTime("202604020010").participantCount(120).capacity(60).build()
 		)));
+		given(multigameRoundRepository.countRoundsByHour()).willReturn(List.of(
+				new Object[] {10, 14L},
+				new Object[] {20, 5L}
+		));
+		given(multigameRoundRepository.countRoundsByDayOfWeek()).willReturn(List.of(
+				new Object[] {3, 8L},
+				new Object[] {5, 6L}
+		));
+		given(multigameRoundRepository.countRoundsByDaySince(any(String.class))).willReturn(List.of(
+				new Object[] {"2026-03-25", 4L},
+				new Object[] {"2026-04-02", 2L}
+		));
 		List<Object[]> byStartTimeRows = new java.util.ArrayList<>();
 		byStartTimeRows.add(new Object[] {"202604020010", 90L, 30L});
 		given(multigameRoundMemberRepository.aggregateResultByStartTimes(any(Collection.class))).willReturn(byStartTimeRows);
@@ -174,8 +186,12 @@ class SystemStatsServiceTest {
 		assertThat(stats.singleGame().completionRate()).isEqualTo(91);
 		assertThat(stats.singleGame().avgTotalMs()).isEqualTo(41234);
 		assertThat(stats.singleGame().bestTotalMs()).isEqualTo(30000);
-		assertThat(stats.singleGame().byCourseCount()).hasSize(2);
-		assertThat(stats.singleGame().byCourseCount().get(0).totalCourses()).isEqualTo(1);
+		assertThat(stats.singleGame().byCourse()).hasSize(2);
+		assertThat(stats.singleGame().byCourse().get(0).totalCourses()).isEqualTo(1);
+		assertThat(stats.singleGame().byCourse().get(0).completed()).isEqualTo(200);
+		assertThat(stats.singleGame().byCourse().get(0).completionRate()).isEqualTo(91);
+		assertThat(stats.singleGame().byCourse().get(0).avgTotalMs()).isEqualTo(41234);
+		assertThat(stats.singleGame().byCourse().get(0).bestTotalMs()).isEqualTo(30000);
 
 		assertThat(stats.multigame().rounds()).isEqualTo(8);
 		assertThat(stats.multigame().peakParticipants()).isEqualTo(120);
@@ -185,6 +201,13 @@ class SystemStatsServiceTest {
 		assertThat(stats.multigame().recentRounds()).hasSize(1);
 		assertThat(stats.multigame().recentRounds().get(0).successCount()).isEqualTo(90);
 		assertThat(stats.multigame().recentRounds().get(0).failedCount()).isEqualTo(30);
+		assertThat(stats.multigame().roundsByHour()).hasSize(2);
+		assertThat(stats.multigame().roundsByHour().get(0).hour()).isEqualTo(10);
+		assertThat(stats.multigame().roundsByHour().get(0).count()).isEqualTo(14);
+		assertThat(stats.multigame().roundsByDayOfWeek().get(0).dayOfWeek()).isEqualTo(3);
+		assertThat(stats.multigame().roundsByDayOfWeek().get(0).count()).isEqualTo(8);
+		assertThat(stats.multigame().roundsByDay().get(0).day()).isEqualTo("2026-03-25");
+		assertThat(stats.multigame().roundsByDay().get(0).count()).isEqualTo(4);
 		assertThat(stats.notificationQueueLength()).isEqualTo(17);
 	}
 
@@ -212,10 +235,13 @@ class SystemStatsServiceTest {
 		given(singleGameRepository.countByIsCompletedTrueAndCreatedAtGreaterThanEqual(any(Instant.class))).willReturn(0L);
 		given(singleGameRepository.averageTTotalByIsCompletedTrue()).willReturn(null);
 		given(singleGameRepository.minTTotalByIsCompletedTrue()).willReturn(null);
-		given(singleGameRepository.countByIsCompletedTrueGroupByTotalCourses()).willReturn(List.of());
+		given(singleGameRepository.aggregateByTotalCourses()).willReturn(List.of());
 		given(multigameRoundRepository.countByParticipantCountGreaterThan(0)).willReturn(0L);
 		given(multigameRoundRepository.findMaxParticipantCount()).willReturn(Optional.empty());
 		given(multigameRoundRepository.findAllByOrderByStartTimeDesc(PageRequest.of(0, 10))).willReturn(new PageImpl<>(List.of()));
+		given(multigameRoundRepository.countRoundsByHour()).willReturn(List.of());
+		given(multigameRoundRepository.countRoundsByDayOfWeek()).willReturn(List.of());
+		given(multigameRoundRepository.countRoundsByDaySince(any(String.class))).willReturn(List.of());
 		given(multigameRoundMemberRepository.aggregateOverallResult()).willReturn(List.of());
 		given(pgmqService.queueLength("notification_queue")).willReturn(0L);
 

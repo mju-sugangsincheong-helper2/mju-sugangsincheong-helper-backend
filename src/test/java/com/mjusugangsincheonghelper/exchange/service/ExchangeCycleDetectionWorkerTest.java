@@ -1,7 +1,6 @@
 package com.mjusugangsincheonghelper.exchange.service;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -12,17 +11,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import tools.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
 import com.mjusugangsincheonghelper.global.config.PgmqMessageDto;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
-import java.time.Duration;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,38 +36,39 @@ class ExchangeCycleDetectionWorkerTest {
 	@Mock
 	private ObjectMapper objectMapper;
 
-	@Mock
-	private TaskScheduler pgmqScheduler;
-
-	@InjectMocks
+	private final PgmqProperties pgmqProperties = new PgmqProperties();
 	private ExchangeCycleDetectionWorker worker;
 
+	@BeforeEach
+	void setUp() {
+		worker = new ExchangeCycleDetectionWorker(pgmqService, cycleDetector, objectMapper, pgmqProperties);
+	}
+
 	@Nested
-	@DisplayName("start 메서드는")
-	class Describe_start {
+	@DisplayName("createQueue 메서드는")
+	class Describe_createQueue {
 
 		@Test
-		@DisplayName("PGMQ 큐를 생성하고 스케줄러에 poll을 등록한다")
-		void it_creates_queue_and_schedules_polling() {
+		@DisplayName("PGMQ 큐를 생성한다")
+		void it_creates_queue() {
 			// When
-			worker.start();
+			worker.createQueue();
 
 			// Then
 			verify(pgmqService).createQueue(ExchangeCycleDetector.QUEUE_NAME);
-			verify(pgmqScheduler).scheduleWithFixedDelay(any(Runnable.class), eq(Duration.ofSeconds(1)));
 		}
 
 		@Test
-		@DisplayName("큐 생성 중 에러가 발생해도 스케줄러 등록을 지속한다")
-		void it_continues_to_schedule_when_queue_creation_fails() {
+		@DisplayName("큐 생성 중 에러(이미 존재)가 발생해도 예외를 던지지 않는다")
+		void it_swallows_error_when_queue_creation_fails() {
 			// Given
 			doThrow(new RuntimeException("Queue exists")).when(pgmqService).createQueue(ExchangeCycleDetector.QUEUE_NAME);
 
 			// When
-			worker.start();
+			worker.createQueue();
 
 			// Then
-			verify(pgmqScheduler).scheduleWithFixedDelay(any(Runnable.class), eq(Duration.ofSeconds(1)));
+			verify(pgmqService).createQueue(ExchangeCycleDetector.QUEUE_NAME);
 		}
 	}
 

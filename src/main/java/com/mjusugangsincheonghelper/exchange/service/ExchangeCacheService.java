@@ -1,8 +1,17 @@
 package com.mjusugangsincheonghelper.exchange.service;
 
+import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
+import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
+import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
 import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
+import com.mjusugangsincheonghelper.exchange.dto.cache.RoomMetaCacheDto;
 import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import java.time.Duration;
 import java.util.List;
@@ -18,10 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 교환 도메인 캐싱.
+ * 교환(Exchange) 도메인 캐싱 파사드.
  *
- * <p>피드(feed)는 읽기 전용 최신 목록이므로 Spring Cache({@code @Cacheable}/{@code @CacheEvict})로
- * 관리한다(캐시 미스 시 DB에서 재구성). 회원별 메인 응답은 별도 키(memberId)의 값 캐시로 관리한다.</p>
+ * <p>읽기 경로는 read-through 캐시({@code @Cacheable})로 RDB 조회 결과를 캐시하고, RDB를 단일 진실 공급원으로 유지한다.
+ * 쓰기 트랜잭션 커밋 후 {@code TransactionSynchronization.afterCommit()}에서 관련 캐시를 evict 한다
+ * (singlegame/multigame 랭킹과 달리 exchange는 TTL에 기대지 않는 명시적 evict 패턴을 사용한다).</p>
+ *
+ * <p>캐시 이름/키 규칙은 docs/redis_key_naming_rule.md 를 따른다. 캐시 이름은 도메인명(exchange-) 접두사를 사용한다.</p>
  */
 @Slf4j
 @Service
@@ -31,17 +43,24 @@ public class ExchangeCacheService {
 
 	private static final String CACHE_NAME_FEED = "exchange-feed";
 	private static final String CACHE_NAME_MAIN = "exchange-main";
+	private static final String CACHE_NAME_USER_INTENTS = "exchange-user-intents";
+	private static final String CACHE_NAME_ROOM_META = "exchange-room-meta";
+
 	private static final int FEED_MAX_SIZE = 50;
-	private static final Duration DOUBLE_EVICT_DELAY = Duration.ofSeconds(2);
 
 	private final ExchangeIntentRepository intentRepository;
+	private final ExchangeRoomIntentRepository roomIntentRepository;
+	private final ExchangeRoomMessageRepository messageRepository;
+	private final ExchangeRoomRepository roomRepository;
 	private final RedisTemplate<String, Object> redisTemplate;
 	private final CacheProperties cacheProperties;
 	private final TaskScheduler taskScheduler;
 	private final ObjectMapper objectMapper;
 
+	// ============ 읽기 (read-through cache) ============
+
 	/**
-	 * 최신 교환 신청 피드(최대 50개). 캐시 히트 시 캐시된 목록, 미스 시 DB에서 재구성해 캐시한다.
+	 * 최근 등록된 교환 신청 피드(최대 50개). 캐시 히트 시 캐시된 목록, 미스 시 DB에서 재구성해 캐시한다.
 	 */
 	@Cacheable(cacheNames = CACHE_NAME_FEED, key = "#term")
 	public List<FeedCacheDto> getFeed(String term) {
@@ -52,12 +71,57 @@ public class ExchangeCacheService {
 	}
 
 	/**
+	 * 회원의 비삭제 교환 의도 목록 (exchange-user-intents).
+	 * evict: 의도 등록/철회 시 {@link #evictMemberIntents(String, Long)}
+	 */
+	@Cacheable(cacheNames = CACHE_NAME_USER_INTENTS, key = "#term + ':member:' + #memberId + ':intents:cache'")
+	public List<IntentCacheDto> getMemberIntents(String term, Long memberId) {
+		return intentRepository.findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(term, memberId)
+				.stream()
+				.map(IntentCacheDto::from)
+				.toList();
+	}
+
+	/**
+	 * 방 단위 메타데이터 — 정적 정보(cycleHash, createdAt) + 동적 정보(상태, 마지막 메시지, 참여자 목록)
+	 * (exchange-room-meta). evict: 메시지 전송/방 토글/의도 철회 시 {@link #evictRoomMeta(String, Long)}
+	 */
+	@Cacheable(cacheNames = CACHE_NAME_ROOM_META, key = "#term + ':room:' + #roomId + ':meta:cache'")
+	public RoomMetaCacheDto getRoomMeta(String term, Long roomId) {
+		ExchangeRoomEntity room = roomRepository.findById(new ExchangeRoomEntity.ExchangeRoomId(term, roomId)).orElse(null);
+		if (room == null) {
+			return null;
+		}
+		ExchangeRoomMessageEntity lastMessage = messageRepository.findTopByTermAndRoomIdOrderByIdDesc(term, roomId).orElse(null);
+		List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, roomId);
+		return RoomMetaCacheDto.from(room, lastMessage, roomIntents,
+				intentId -> intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)).orElse(null));
+	}
+
+	// ============ 쓰기 (evict) ============
+
+	/**
 	 * 피드가 바뀌는 쓰기(신청/삭제) 직후 호출 — 다음 {@link #getFeed(String)}에서 DB로 재구성된다.
 	 */
 	@CacheEvict(cacheNames = CACHE_NAME_FEED, key = "#term")
 	public void evictFeed(String term) {
-		// 무효화만 수행 (본문 필요 없음)
 	}
+
+	/**
+	 * 회원 의도 목록이 바뀌는 쓰기(등록/철회) 직후 호출.
+	 */
+	@CacheEvict(cacheNames = CACHE_NAME_USER_INTENTS, key = "#term + ':member:' + #memberId + ':intents:cache'")
+	public void evictMemberIntents(String term, Long memberId) {
+	}
+
+	/**
+	 * 방 메타데이터가 바뀌는 쓰기(메시지 전송/방 토글/의도 철회) 직후 호출.
+	 */
+	@CacheEvict(cacheNames = CACHE_NAME_ROOM_META, key = "#term + ':room:' + #roomId + ':meta:cache'")
+	public void evictRoomMeta(String term, Long roomId) {
+	}
+
+	// ============ 메인 응답 캐시 (exchange-main, 회원별 전체 응답 레벨) ============
 
 	public MainResponse getMainCache(String term, Long memberId) {
 		String key = mainKey(term, memberId);
@@ -102,10 +166,10 @@ public class ExchangeCacheService {
 			} catch (Exception e) {
 				log.warn("Double evict failed for key={}: {}", key, e.getMessage());
 			}
-		}, java.time.Instant.now().plus(DOUBLE_EVICT_DELAY));
+		}, java.time.Instant.now().plus(cacheProperties.getDoubleEvictDelay()));
 	}
 
 	private String mainKey(String term, Long memberId) {
-		return "exchange::" + term + ":member:" + memberId + ":main:cache";
+		return "exchange-main::" + term + ":member:" + memberId + ":main:cache";
 	}
 }
