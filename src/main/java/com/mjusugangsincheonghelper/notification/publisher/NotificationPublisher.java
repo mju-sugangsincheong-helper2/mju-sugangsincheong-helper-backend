@@ -2,8 +2,8 @@ package com.mjusugangsincheonghelper.notification.publisher;
 
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
-import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
 import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +25,7 @@ public class NotificationPublisher {
 
 	private final MemberDeviceRepository memberDeviceRepository;
 	private final PgmqService pgmqService;
+	private final PgmqProperties pgmqProperties;
 
 	/** 회원의 모든 등록 기기에 푸시를 발행한다. */
 	public void publishToMember(Long memberId, String type, String path, String title, String body) {
@@ -81,6 +82,6 @@ public class NotificationPublisher {
 						"timestamp", String.valueOf(System.currentTimeMillis())
 				))
 				.build();
-		pgmqService.send(NotificationConsumerWorker.QUEUE_NAME, event);
+		pgmqService.send(pgmqProperties.getNotification().getQueueName(), event);
 	}
 }

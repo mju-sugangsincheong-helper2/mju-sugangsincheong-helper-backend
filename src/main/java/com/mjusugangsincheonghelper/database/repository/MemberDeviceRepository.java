@@ -11,21 +11,17 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 
 	Optional<MemberDevice> findByRefreshTokenHash(String refreshTokenHash);
 
-	Optional<MemberDevice> findByMemberIdAndPlatformjsUaAndFcmToken(Long memberId, String platformjsUa, String fcmToken);
+	Optional<MemberDevice> findTopByMemberIdAndPlatformJsUaAndFcmTokenOrderByLastAccessedAtDesc(Long memberId, String platformJsUa, String fcmToken);
 
-	Optional<MemberDevice> findByMemberIdAndPlatformjsUa(Long memberId, String platformjsUa);
+	Optional<MemberDevice> findTopByMemberIdAndPlatformJsUaOrderByLastAccessedAtDesc(Long memberId, String platformJsUa);
 
 	List<MemberDevice> findByMemberId(Long memberId);
 
 	Optional<MemberDevice> findByFcmToken(String fcmToken);
 
-	Optional<MemberDevice> findFirstByMemberIdOrderByLastAccessedAtDesc(Long memberId);
-
 	/** 전체 사용자의 등록된 FCM 토큰 목록 (broadcast 알림용) */
 	@Query("select d.fcmToken from MemberDevice d where d.fcmToken is not null and d.fcmToken <> ''")
 	List<String> findAllFcmTokens();
-
-	List<MemberDevice> findByMemberIdAndFcmToken(Long memberId, String fcmToken);
 
 	void deleteByRefreshTokenHash(String refreshTokenHash);
 
@@ -33,12 +29,12 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 	long countByLastAccessedAtGreaterThanEqual(java.time.Instant since);
 
 	/** OS별 기기 분포 (도메인 지표) */
-	@Query("select d.platformjsOs, count(d) from MemberDevice d where d.platformjsOs is not null and d.platformjsOs <> '' group by d.platformjsOs order by count(d) desc")
-	List<Object[]> countByPlatformjsOs();
+	@Query("select d.platformJsOs, count(d) from MemberDevice d where d.platformJsOs is not null and d.platformJsOs <> '' group by d.platformJsOs order by count(d) desc")
+	List<Object[]> countByPlatformJsOs();
 
 	/** 브라우저별 기기 분포 (도메인 지표) */
-	@Query("select d.platformjsName, count(d) from MemberDevice d where d.platformjsName is not null and d.platformjsName <> '' group by d.platformjsName order by count(d) desc")
-	List<Object[]> countByPlatformjsName();
+	@Query("select d.platformJsName, count(d) from MemberDevice d where d.platformJsName is not null and d.platformJsName <> '' group by d.platformJsName order by count(d) desc")
+	List<Object[]> countByPlatformJsName();
 
 	/** 만료된 기기 세션 일괄 삭제 (만료 FCM 토큰 정리). 삭제된 개수를 반환한다. */
 	@Modifying

@@ -10,8 +10,9 @@ import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository;
 import com.mjusugangsincheonghelper.database.repository.NoticeRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
-import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;import com.mjusugangsincheonghelper.database.entity.MultigameRoundEntity;
+import com.mjusugangsincheonghelper.database.entity.MultigameRoundEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundMemberRepository;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse;
@@ -69,6 +70,7 @@ public class SystemStatsService {
 	private final MultigameRoundMemberRepository multigameRoundMemberRepository;
 	private final SystemConfigService systemConfigService;
 	private final PgmqService pgmqService;
+	private final PgmqProperties pgmqProperties;
 
 	@Transactional(readOnly = true)
 	public SystemStatsResponse getStats() {
@@ -94,10 +96,10 @@ public class SystemStatsService {
 				.map(row -> new CourseTermCount((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
 
-		List<DeviceDistribution> devicesByOs = memberDeviceRepository.countByPlatformjsOs().stream()
+		List<DeviceDistribution> devicesByOs = memberDeviceRepository.countByPlatformJsOs().stream()
 				.map(row -> new DeviceDistribution((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
-		List<DeviceDistribution> devicesByBrowser = memberDeviceRepository.countByPlatformjsName().stream()
+		List<DeviceDistribution> devicesByBrowser = memberDeviceRepository.countByPlatformJsName().stream()
 				.map(row -> new DeviceDistribution((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
 
@@ -231,7 +233,7 @@ public class SystemStatsService {
 		List<DayOfWeekCount> roundsByDayOfWeek = multigameRoundRepository.countRoundsByDayOfWeek().stream()
 				.map(row -> new DayOfWeekCount(((Number) row[0]).intValue(), ((Number) row[1]).longValue()))
 				.toList();
-		String from = LocalDate.now(ZONE).minusDays(13).format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "0000";
+		String from = LocalDate.now(ZONE).minusDays(13).format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "000000";
 		List<DailyCount> roundsByDay = multigameRoundRepository.countRoundsByDaySince(from).stream()
 				.map(row -> new DailyCount((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
@@ -250,7 +252,7 @@ public class SystemStatsService {
 	 */
 	private long notificationQueueLength() {
 		try {
-			return pgmqService.queueLength(NotificationConsumerWorker.QUEUE_NAME);
+			return pgmqService.queueLength(pgmqProperties.getNotification().getQueueName());
 		} catch (Exception e) {
 			log.warn("PGMQ queue length 조회 실패 (큐 미생성 등): {}", e.getMessage());
 			return 0L;

@@ -24,8 +24,8 @@ public class RankingService {
 	public MultigameRankingResponse rankings(long memberId) {
 		Map<String, List<Double>> ratesByDepartment = multigameCacheService.collectSuccessRatesByDepartment();
 
-		List<DepartmentRankingCalculator.Participation> participation = DepartmentRankingCalculator.participation(ratesByDepartment);
-		List<DepartmentRankingCalculator.Performance> performance = DepartmentRankingCalculator.performance(ratesByDepartment);
+		List<DepartmentRankingCalculator.Participation> participation = DepartmentRankingCalculator.calculateParticipation(ratesByDepartment);
+		List<DepartmentRankingCalculator.Performance> performance = DepartmentRankingCalculator.calculatePerformance(ratesByDepartment);
 
 		return MultigameRankingResponse.builder()
 				.participation(participation.stream()

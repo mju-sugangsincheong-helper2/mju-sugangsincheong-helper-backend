@@ -55,20 +55,20 @@ class ExchangeCycleDetectionWorkerTest {
 			worker.createQueue();
 
 			// Then
-			verify(pgmqService).createQueue(ExchangeCycleDetector.QUEUE_NAME);
+			verify(pgmqService).createQueue("exchange_cycle_detection");
 		}
 
 		@Test
 		@DisplayName("큐 생성 중 에러(이미 존재)가 발생해도 예외를 던지지 않는다")
 		void it_swallows_error_when_queue_creation_fails() {
 			// Given
-			doThrow(new RuntimeException("Queue exists")).when(pgmqService).createQueue(ExchangeCycleDetector.QUEUE_NAME);
+			doThrow(new RuntimeException("Queue exists")).when(pgmqService).createQueue("exchange_cycle_detection");
 
 			// When
 			worker.createQueue();
 
 			// Then
-			verify(pgmqService).createQueue(ExchangeCycleDetector.QUEUE_NAME);
+			verify(pgmqService).createQueue("exchange_cycle_detection");
 		}
 	}
 
@@ -86,7 +86,7 @@ class ExchangeCycleDetectionWorkerTest {
 					.message("{\"term\":\"202620\",\"intentId\":10}")
 					.build();
 
-			given(pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, 30, 1))
+			given(pgmqService.read("exchange_cycle_detection", 30, 1))
 					.willReturn(List.of(messageDto));
 
 			CycleDetectionMessage message = CycleDetectionMessage.builder()
@@ -107,7 +107,7 @@ class ExchangeCycleDetectionWorkerTest {
 			verify(cycleDetector).detectCyclesAndCreateRooms(
 					"202620", 10L, 1L, "10001", "10002"
 			);
-			verify(pgmqService).delete(ExchangeCycleDetector.QUEUE_NAME, 123L);
+			verify(pgmqService).delete("exchange_cycle_detection", 123L);
 		}
 
 		@Test
@@ -120,7 +120,7 @@ class ExchangeCycleDetectionWorkerTest {
 					.message("invalid json")
 					.build();
 
-			given(pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, 30, 1))
+			given(pgmqService.read("exchange_cycle_detection", 30, 1))
 					.willReturn(List.of(messageDto));
 
 			doThrow(new RuntimeException("JSON error")).when(objectMapper).readValue(messageDto.getMessage(), CycleDetectionMessage.class);
@@ -143,7 +143,7 @@ class ExchangeCycleDetectionWorkerTest {
 					.message("{\"term\":\"202620\",\"intentId\":10}")
 					.build();
 
-			given(pgmqService.read(ExchangeCycleDetector.QUEUE_NAME, 30, 1))
+			given(pgmqService.read("exchange_cycle_detection", 30, 1))
 					.willReturn(List.of(messageDto));
 
 			// When
@@ -151,7 +151,7 @@ class ExchangeCycleDetectionWorkerTest {
 
 			// Then
 			verifyNoInteractions(cycleDetector);
-			verify(pgmqService).archive(ExchangeCycleDetector.QUEUE_NAME, 123L);
+			verify(pgmqService).archive("exchange_cycle_detection", 123L);
 			verify(pgmqService, never()).delete(any(), any());
 		}
 	}

@@ -4,6 +4,7 @@ import com.mjusugangsincheonghelper.database.entity.SystemConfig;
 import com.mjusugangsincheonghelper.database.repository.SystemConfigRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import com.mjusugangsincheonghelper.system.definition.SettingDefinition;
 import com.mjusugangsincheonghelper.system.dto.SystemConfigResponse;
 import com.mjusugangsincheonghelper.system.dto.SystemConfigUpdateRequest;
@@ -48,7 +49,7 @@ public class SystemConfigService {
 		}
 	}
 
-	@Cacheable(value = "system-config", key = "'current_term:cache'")
+	@Cacheable(value = CacheProperties.SYSTEM_CONFIG, key = "'current_term:cache'")
 	public String getCurrentTerm() {
 		return getRaw("current_term");
 	}
@@ -74,7 +75,7 @@ public class SystemConfigService {
 
 		config.updateValue(request.getConfigValue(), request.getDescription());
 
-		var cache = cacheManager.getCache("system-config");
+		var cache = cacheManager.getCache(CacheProperties.SYSTEM_CONFIG);
 		if (cache != null) {
 			cache.evict(configKey + ":cache");
 		}
@@ -82,7 +83,7 @@ public class SystemConfigService {
 		return SystemConfigResponse.from(config);
 	}
 
-	@Cacheable(value = "system-config", key = "#configKey + ':cache'")
+	@Cacheable(value = CacheProperties.SYSTEM_CONFIG, key = "#configKey + ':cache'")
 	public String getRaw(String configKey) {
 		return repository.findById(configKey)
 				.map(SystemConfig::getConfigValue)

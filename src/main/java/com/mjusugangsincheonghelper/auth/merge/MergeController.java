@@ -64,17 +64,9 @@ public class MergeController {
 	}
 
 	private MergeResponse buildMergeResponse(SessionResult session) {
-		MergeResponse.MergeResponseBuilder builder = MergeResponse.builder()
-				.memberId(session.getMemberId())
-				.role(session.getRole())
-				.name(session.getName())
-				.position(session.getPosition())
-				.department(session.getDepartment())
-				.newUser(!accountAgreementService.isAgreed(session.getMemberId()));
-		if (tokenInResponse) {
-			builder.accessToken(session.getAccessToken())
-					.refreshToken(session.getRefreshToken());
-		}
-		return builder.build();
+		String accessToken = tokenInResponse ? session.getAccessToken() : null;
+		String refreshToken = tokenInResponse ? session.getRefreshToken() : null;
+		Boolean newUser = !accountAgreementService.isAgreed(session.getMemberId());
+		return MergeResponse.of(session.getMemberId(), session.getRole(), session.getName(), session.getPosition(), session.getDepartment(), newUser, accessToken, refreshToken);
 	}
 }

@@ -3,26 +3,15 @@ package com.mjusugangsincheonghelper.singlegame.config;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
 /**
  * 싱글게임 이벤트별 반응시간(min/max) 설정.
  * yml의 {@code app.singlegame.timing} 하위 항목으로 바인딩된다.
- * (relaxed binding 덕분에 {@code t-enter-main}, {@code min-ms} 등 snake/kebab 표기 모두 허용)
- *
- * <pre>
- * app:
- *   singlegame:
- *     timing:
- *       t-enter-main:   { min-ms: 1, max-ms: 60000 }  # 메인방 입장 반응시간
- *       t-click-course: { min-ms: 1, max-ms: 60000 }  # 과목 조준/클릭 시간
- *       t-click-yes:    { min-ms: 1, max-ms: 60000 }  # 1차 확인 팝업 반응시간
- *       t-click-ok:     { min-ms: 1, max-ms: 60000 }  # 2차 완료 팝업 반응시간
- * </pre>
  */
 @Getter
 @Setter
-@Configuration
+@Component
 @ConfigurationProperties(prefix = "app.singlegame")
 public class SingleGameProperties {
 

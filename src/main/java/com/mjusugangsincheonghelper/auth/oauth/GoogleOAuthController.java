@@ -14,6 +14,7 @@ import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.net.URLEncoder;
@@ -30,6 +31,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.mjusugangsincheonghelper.global.security.token.HttpTokenExtractor;
+
 @Slf4j
 @Tag(name = "OAuth", description = "Google OAuth 인증 API")
 @RestController
@@ -41,6 +44,7 @@ public class GoogleOAuthController {
 	private final GoogleOAuthService googleOAuthService;
 	private final SessionService sessionService;
 	private final TokenProvider tokenProvider;
+	private final HttpTokenExtractor tokenExtractor;
 
 	@Value("${app.auth.token-in-response:false}")
 	private boolean tokenInResponse;
@@ -129,12 +133,13 @@ public class GoogleOAuthController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<OAuthTokenResponse>> tokenExchange(
 			@Valid @RequestBody OAuthTokenRequest request,
+			HttpServletRequest httpRequest,
 			HttpServletResponse httpResponse) {
 		if (!oAuthStateService.consumeState(request.getState())) {
 			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
 		}
 
-		Long guestMemberId = extractGuestMemberId(request.getAccessToken());
+		Long guestMemberId = extractGuestMemberId(httpRequest, request.getAccessToken());
 
 		OAuthAuthenticationResult authResult = googleOAuthService.authenticate(request.getCode(), guestMemberId);
 
@@ -157,7 +162,11 @@ public class GoogleOAuthController {
 				.body(SingleSuccessResponseEnvelope.of(response));
 	}
 
-	private Long extractGuestMemberId(String accessToken) {
+	private Long extractGuestMemberId(HttpServletRequest httpRequest, String bodyAccessToken) {
+		String accessToken = bodyAccessToken;
+		if (accessToken == null || accessToken.isBlank()) {
+			accessToken = tokenExtractor.extract(httpRequest);
+		}
 		if (accessToken == null || accessToken.isBlank()) {
 			return null;
 		}

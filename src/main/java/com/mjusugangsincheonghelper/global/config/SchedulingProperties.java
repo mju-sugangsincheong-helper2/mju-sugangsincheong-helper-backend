@@ -3,7 +3,7 @@ package com.mjusugangsincheonghelper.global.config;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
 /**
  * @Scheduled 스케줄러별 스레드 풀 설정 (app.scheduling.*).
@@ -13,13 +13,13 @@ import org.springframework.context.annotation.Configuration;
  */
 @Getter
 @Setter
-@Configuration
+@Component
 @ConfigurationProperties(prefix = "app.scheduling")
 public class SchedulingProperties {
 
 	private Pool task = pool(2, "global-scheduler-");
 	private Pool pgmq = pool(2, "pgmq-worker-");
-	private Pool multigame = pool(4, "multigame-scheduler-");
+	private Pool multigame = pool(1, "multigame-scheduler-");
 
 	private static Pool pool(int poolSize, String threadNamePrefix) {
 		Pool pool = new Pool();

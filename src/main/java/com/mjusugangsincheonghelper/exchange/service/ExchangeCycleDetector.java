@@ -4,6 +4,7 @@ import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
 import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -24,15 +25,14 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ExchangeCycleDetector {
 
-	public static final String QUEUE_NAME = "exchange_cycle_detection";
-
 	private final PgmqService pgmqService;
 	private final ExchangeIntentRepository intentRepository;
 	private final ExchangeRoomRepository roomRepository;
 	private final ExchangeRoomCreationService roomCreationService;
+	private final PgmqProperties pgmqProperties;
 
 	public void enqueueCycleDetection(CycleDetectionMessage message) {
-		pgmqService.send(QUEUE_NAME, message);
+		pgmqService.send(pgmqProperties.getCycleDetection().getQueueName(), message);
 	}
 
 	public void detectCyclesAndCreateRooms(String term, Long intentId, Long memberId, String giveCourseNo, String wantCourseNo) {

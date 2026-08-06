@@ -30,7 +30,7 @@ public final class DepartmentRankingCalculator {
 	public record Performance(String department, double top70AvgSuccessRate, int participantCount) {
 	}
 
-	public static List<Participation> participation(Map<String, List<Double>> successRatesByDepartment) {
+	public static List<Participation> calculateParticipation(Map<String, List<Double>> successRatesByDepartment) {
 		return successRatesByDepartment.entrySet().stream()
 				.map(entry -> new Participation(entry.getKey(), entry.getValue().size()))
 				.sorted(Comparator.comparingInt(Participation::participantCount).reversed()
@@ -38,7 +38,7 @@ public final class DepartmentRankingCalculator {
 				.toList();
 	}
 
-	public static List<Performance> performance(Map<String, List<Double>> successRatesByDepartment) {
+	public static List<Performance> calculatePerformance(Map<String, List<Double>> successRatesByDepartment) {
 		return successRatesByDepartment.entrySet().stream()
 				.map(entry -> {
 					List<Double> rates = entry.getValue().stream()

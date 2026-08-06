@@ -29,7 +29,7 @@ public class NotificationConsumerWorker {
 	@PostConstruct
 	public void createQueue() {
 		try {
-			pgmqService.createQueue(QUEUE_NAME);
+			pgmqService.createQueue(pgmqProperties.getNotification().getQueueName());
 		} catch (Exception e) {
 			log.debug("Queue may already exist: {}", e.getMessage());
 		}
@@ -38,7 +38,8 @@ public class NotificationConsumerWorker {
 	@Scheduled(fixedDelayString = "${app.pgmq.notification.poll-interval:1s}", scheduler = "pgmqScheduler")
 	void poll() {
 		PgmqProperties.WorkerConfig config = pgmqProperties.getNotification();
-		List<PgmqMessageDto> messages = pgmqService.read(QUEUE_NAME, config.getVisibilityTimeout(), config.getBatchSize());
+		String queueName = config.getQueueName();
+		List<PgmqMessageDto> messages = pgmqService.read(queueName, config.getVisibilityTimeout(), config.getBatchSize());
 		if (messages.isEmpty()) {
 			return;
 		}
@@ -50,7 +51,7 @@ public class NotificationConsumerWorker {
 			try {
 				if (msg.getReadCt() > config.getMaxRetryCount()) {
 					log.error("Notification message exceeded max retries. Archiving message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
-					pgmqService.archive(QUEUE_NAME, msg.getMsgId());
+					pgmqService.archive(queueName, msg.getMsgId());
 					continue;
 				}
 
@@ -66,7 +67,7 @@ public class NotificationConsumerWorker {
 			try {
 				notificationConsumerService.processNotificationEvents(validEvents);
 				for (Long msgId : messageIdsToDelete) {
-					pgmqService.delete(QUEUE_NAME, msgId);
+					pgmqService.delete(queueName, msgId);
 				}
 			} catch (Exception e) {
 				log.error("Failed to process notification batch: count={}", validEvents.size(), e);

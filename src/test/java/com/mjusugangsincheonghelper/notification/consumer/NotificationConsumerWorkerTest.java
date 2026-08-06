@@ -44,11 +44,11 @@ class NotificationConsumerWorkerTest {
 	@Test
 	@DisplayName("createQueue는 큐 생성 실패(이미 존재)에도 예외를 던지지 않는다")
 	void createQueueShouldSwallowAlreadyExistsError() {
-		doThrow(new RuntimeException("Queue exists")).when(pgmqService).createQueue(NotificationConsumerWorker.QUEUE_NAME);
+		doThrow(new RuntimeException("Queue exists")).when(pgmqService).createQueue("notification_queue");
 
 		worker.createQueue();
 
-		verify(pgmqService).createQueue(NotificationConsumerWorker.QUEUE_NAME);
+		verify(pgmqService).createQueue("notification_queue");
 	}
 
 	@Test
@@ -70,7 +70,7 @@ class NotificationConsumerWorkerTest {
 				.message(jsonMessage)
 				.build();
 
-		given(pgmqService.read(eq(NotificationConsumerWorker.QUEUE_NAME), eq(30), eq(400)))
+		given(pgmqService.read(eq("notification_queue"), eq(30), eq(400)))
 				.willReturn(List.of(messageDto));
 		doNothing().when(notificationConsumerService).processNotificationEvents(any());
 
@@ -79,7 +79,7 @@ class NotificationConsumerWorkerTest {
 		pollMethod.invoke(worker);
 
 		verify(notificationConsumerService).processNotificationEvents(any());
-		verify(pgmqService).delete(eq(NotificationConsumerWorker.QUEUE_NAME), eq(100L));
+		verify(pgmqService).delete(eq("notification_queue"), eq(100L));
 	}
 
 	@Test
@@ -91,13 +91,13 @@ class NotificationConsumerWorkerTest {
 				.message("{\"invalid\":\"json\"}")
 				.build();
 
-		given(pgmqService.read(eq(NotificationConsumerWorker.QUEUE_NAME), eq(30), eq(400)))
+		given(pgmqService.read(eq("notification_queue"), eq(30), eq(400)))
 				.willReturn(List.of(poisonMessage));
 
 		Method pollMethod = NotificationConsumerWorker.class.getDeclaredMethod("poll");
 		pollMethod.setAccessible(true);
 		pollMethod.invoke(worker);
 
-		verify(pgmqService).archive(eq(NotificationConsumerWorker.QUEUE_NAME), eq(200L));
+		verify(pgmqService).archive(eq("notification_queue"), eq(200L));
 	}
 }

@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.exchange.dto.cache;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
@@ -60,7 +61,11 @@ public class RoomMetaCacheDto implements Serializable {
 		private Long intentId;
 		private String giveCourseNo;
 		private String wantCourseNo;
+
+		@JsonProperty("isDeleted")
 		private boolean isDeleted;
+
+		@JsonProperty("isOn")
 		private boolean isOn;
 	}
 

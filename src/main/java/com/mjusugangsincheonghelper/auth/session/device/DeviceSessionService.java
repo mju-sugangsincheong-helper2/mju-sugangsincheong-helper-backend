@@ -47,15 +47,15 @@ public class DeviceSessionService {
 					MemberDevice device = MemberDevice.builder()
 							.memberId(memberId)
 							.refreshTokenHash(refreshTokenHash)
-							.platformjsName(info.getName())
-							.platformjsVersion(info.getVersion())
-							.platformjsLayout(info.getLayout())
-							.platformjsPrerelease(info.getPrerelease())
-							.platformjsOs(info.getOs())
-							.platformjsManufacturer(info.getManufacturer())
-							.platformjsProduct(info.getProduct())
-							.platformjsDescription(info.getDescription())
-							.platformjsUa(info.getUa())
+							.platformJsName(info.getName())
+							.platformJsVersion(info.getVersion())
+							.platformJsLayout(info.getLayout())
+							.platformJsPrerelease(info.getPrerelease())
+							.platformJsOs(info.getOs())
+							.platformJsManufacturer(info.getManufacturer())
+							.platformJsProduct(info.getProduct())
+							.platformJsDescription(info.getDescription())
+							.platformJsUa(info.getUa())
 							.expiresAt(Instant.now().plusMillis(expiryMs))
 							.build();
 					if (info.getFcmToken() != null) {
@@ -67,13 +67,13 @@ public class DeviceSessionService {
 
 	private Optional<MemberDevice> findExistingDevice(Long memberId, DeviceInfo deviceInfo) {
 		if (deviceInfo.getFcmToken() != null) {
-			return memberDeviceRepository.findByMemberIdAndPlatformjsUaAndFcmToken(
+			return memberDeviceRepository.findTopByMemberIdAndPlatformJsUaAndFcmTokenOrderByLastAccessedAtDesc(
 					memberId, deviceInfo.getUa(), deviceInfo.getFcmToken());
 		}
 		if (deviceInfo.getUa() == null || deviceInfo.getUa().isBlank()) {
 			return Optional.empty();
 		}
-		return memberDeviceRepository.findByMemberIdAndPlatformjsUa(memberId, deviceInfo.getUa());
+		return memberDeviceRepository.findTopByMemberIdAndPlatformJsUaOrderByLastAccessedAtDesc(memberId, deviceInfo.getUa());
 	}
 
 	@Transactional
@@ -90,7 +90,20 @@ public class DeviceSessionService {
 
 	@Transactional
 	public void switchMember(Long memberId, Long newMemberId) {
-		memberDeviceRepository.findByMemberId(memberId).forEach(device -> device.switchMember(newMemberId));
+		List<MemberDevice> guestDevices = memberDeviceRepository.findByMemberId(memberId);
+		List<MemberDevice> targetDevices = memberDeviceRepository.findByMemberId(newMemberId);
+
+		for (MemberDevice guestDevice : guestDevices) {
+			boolean duplicateExists = targetDevices.stream().anyMatch(td ->
+					(td.getPlatformJsUa() != null && td.getPlatformJsUa().equals(guestDevice.getPlatformJsUa()))
+							|| (td.getFcmToken() != null && td.getFcmToken().equals(guestDevice.getFcmToken()))
+			);
+			if (duplicateExists) {
+				memberDeviceRepository.delete(guestDevice);
+			} else {
+				guestDevice.switchMember(newMemberId);
+			}
+		}
 	}
 
 	/**

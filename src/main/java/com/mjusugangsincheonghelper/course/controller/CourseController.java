@@ -54,7 +54,7 @@ public class CourseController {
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<CourseSectionImportResponse>> importSections(
 			@Parameter(description = "등록할 강좌 목록", required = true)
-			@Valid @RequestBody List<CourseSectionImportRequest> items) {
+			@RequestBody List<@Valid CourseSectionImportRequest> items) {
 		CourseSectionImportResponse response = courseService.importSections(items);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}

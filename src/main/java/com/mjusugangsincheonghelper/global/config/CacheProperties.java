@@ -6,13 +6,23 @@ import java.util.Map;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Component;
 
 @Getter
 @Setter
-@Configuration
+@Component
 @ConfigurationProperties(prefix = "app.cache")
 public class CacheProperties {
+
+	public static final String SYSTEM_CONFIG = "system-config";
+	public static final String EXCHANGE_FEED = "exchange-feed";
+	public static final String EXCHANGE_MAIN = "exchange-main";
+	public static final String EXCHANGE_USER_INTENTS = "exchange-user-intents";
+	public static final String EXCHANGE_ROOM_META = "exchange-room-meta";
+	public static final String SINGLEGAME_RANK = "singlegame-rank";
+	public static final String SINGLEGAME_RECORDS = "singlegame-records";
+	public static final String SINGLEGAME_ANALYSIS = "singlegame-analysis";
+	public static final String MULTIGAME_RANK = "multigame-rank";
 
 	private Duration defaultTtl = Duration.ofHours(24);
 	private Map<String, Duration> ttls = new HashMap<>();

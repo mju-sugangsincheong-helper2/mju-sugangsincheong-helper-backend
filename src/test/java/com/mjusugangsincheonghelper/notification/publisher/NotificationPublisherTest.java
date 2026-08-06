@@ -24,6 +24,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
+import org.mockito.Spy;
+
 @ExtendWith(MockitoExtension.class)
 @DisplayName("NotificationPublisher 단위 테스트")
 class NotificationPublisherTest {
@@ -33,6 +36,9 @@ class NotificationPublisherTest {
 
 	@Mock
 	private PgmqService pgmqService;
+
+	@Spy
+	private PgmqProperties pgmqProperties = new PgmqProperties();
 
 	@InjectMocks
 	private NotificationPublisher publisher;
@@ -55,7 +61,7 @@ class NotificationPublisherTest {
 		publisher.publishToMember(1L, "EXCHANGE_MESSAGE", "/exchange/rooms/1", "제목", "본문");
 
 		ArgumentCaptor<NotificationEventMessage> captor = ArgumentCaptor.forClass(NotificationEventMessage.class);
-		verify(pgmqService, times(2)).send(eq(NotificationConsumerWorker.QUEUE_NAME), captor.capture());
+		verify(pgmqService, times(2)).send(eq("notification_queue"), captor.capture());
 		NotificationEventMessage first = captor.getAllValues().get(0);
 		assertThat(first.getToken()).isEqualTo("token-1");
 		assertThat(first.getNotification().getTitle()).isEqualTo("제목");
@@ -94,7 +100,7 @@ class NotificationPublisherTest {
 
 		publisher.publishToAll("SYSTEM_NOTICE", "/", "공지 알림", "공지 제목");
 
-		verify(pgmqService, times(3)).send(eq(NotificationConsumerWorker.QUEUE_NAME), any(NotificationEventMessage.class));
+		verify(pgmqService, times(3)).send(eq("notification_queue"), any(NotificationEventMessage.class));
 	}
 
 	@Test

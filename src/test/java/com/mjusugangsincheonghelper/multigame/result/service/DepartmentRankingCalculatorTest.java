@@ -15,7 +15,7 @@ class DepartmentRankingCalculatorTest {
 				"전자공학과", List.of(100.0),
 				"경영학과", List.of(80.0, 20.0));
 
-		List<DepartmentRankingCalculator.Participation> result = DepartmentRankingCalculator.participation(rates);
+		List<DepartmentRankingCalculator.Participation> result = DepartmentRankingCalculator.calculateParticipation(rates);
 
 		assertThat(result).extracting(DepartmentRankingCalculator.Participation::department)
 				.containsExactly("컴퓨터공학과", "경영학과", "전자공학과");
@@ -28,7 +28,7 @@ class DepartmentRankingCalculatorTest {
 		List<Double> rates = List.of(10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0);
 
 		List<DepartmentRankingCalculator.Performance> result =
-				DepartmentRankingCalculator.performance(Map.of("컴퓨터공학과", rates));
+				DepartmentRankingCalculator.calculatePerformance(Map.of("컴퓨터공학과", rates));
 
 		// 상위 70% = ceil(10 * 0.7) = 7명 → (100+90+80+70+60+50+40) / 7 = 70.0
 		assertThat(result.getFirst().top70AvgSuccessRate()).isEqualTo(70.0);
@@ -37,7 +37,7 @@ class DepartmentRankingCalculatorTest {
 	@Test
 	void smallDepartmentAlwaysIncludesAtLeastOneUser() {
 		List<DepartmentRankingCalculator.Performance> result =
-				DepartmentRankingCalculator.performance(Map.of("컴퓨터공학과", List.of(50.0)));
+				DepartmentRankingCalculator.calculatePerformance(Map.of("컴퓨터공학과", List.of(50.0)));
 
 		assertThat(result.getFirst().top70AvgSuccessRate()).isEqualTo(50.0);
 	}
@@ -48,7 +48,7 @@ class DepartmentRankingCalculatorTest {
 				"경영학과", List.of(100.0, 0.0),
 				"전자공학과", List.of(50.0));
 
-		List<DepartmentRankingCalculator.Performance> result = DepartmentRankingCalculator.performance(rates);
+		List<DepartmentRankingCalculator.Performance> result = DepartmentRankingCalculator.calculatePerformance(rates);
 
 		// 둘 다 평균 50.0 → 참가자 수가 많은 경영학과가 먼저
 		assertThat(result).extracting(DepartmentRankingCalculator.Performance::department)
@@ -61,8 +61,8 @@ class DepartmentRankingCalculatorTest {
 				"컴퓨터공학과", List.of(0.0, 0.0, 100.0),
 				"전자공학과", List.of(0.0));
 
-		List<DepartmentRankingCalculator.Participation> participation = DepartmentRankingCalculator.participation(rates);
-		List<DepartmentRankingCalculator.Performance> performance = DepartmentRankingCalculator.performance(rates);
+		List<DepartmentRankingCalculator.Participation> participation = DepartmentRankingCalculator.calculateParticipation(rates);
+		List<DepartmentRankingCalculator.Performance> performance = DepartmentRankingCalculator.calculatePerformance(rates);
 
 		assertThat(participation).extracting(DepartmentRankingCalculator.Participation::participantCount)
 				.containsExactly(3, 1);

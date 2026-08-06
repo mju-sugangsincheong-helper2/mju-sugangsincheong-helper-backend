@@ -116,6 +116,20 @@ public class GlobalExceptionHandler {
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
+	@ExceptionHandler(IllegalArgumentException.class)
+	public ResponseEntity<ErrorResponseEnvelope> handleIllegalArgument(IllegalArgumentException exception) {
+		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
+		log.warn("Illegal argument: {}", exception.getMessage());
+		return errorResponse(errorCode, errorDetailFrom(exception));
+	}
+
+	@ExceptionHandler(IllegalStateException.class)
+	public ResponseEntity<ErrorResponseEnvelope> handleIllegalState(IllegalStateException exception) {
+		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
+		log.warn("Illegal state: {}", exception.getMessage());
+		return errorResponse(errorCode, errorDetailFrom(exception));
+	}
+
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleUnexpected(Exception exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR;

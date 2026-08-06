@@ -32,7 +32,7 @@ public interface MultigameRoundRepository extends JpaRepository<MultigameRoundEn
 
 	/** 실제 진행된 라운드의 요일(ISO 1=월 ~ 7=일)별 수 (도메인 지표) */
 	@Query(value = """
-			SELECT EXTRACT(ISODOW FROM TO_TIMESTAMP(start_time, 'YYYYMMDDHH24MI'))::int AS dow, COUNT(*)::bigint AS cnt
+			SELECT EXTRACT(ISODOW FROM TO_TIMESTAMP(start_time, 'YYYYMMDDHH24MISS'))::int AS dow, COUNT(*)::bigint AS cnt
 			FROM multigame_round
 			WHERE participant_count > 0
 			GROUP BY dow
@@ -42,7 +42,7 @@ public interface MultigameRoundRepository extends JpaRepository<MultigameRoundEn
 
 	/** 특정 시작시각(이상)에 실제 진행된 라운드의 일자(yyyy-MM-dd)별 수 (도메인 지표) */
 	@Query(value = """
-			SELECT TO_CHAR(TO_TIMESTAMP(start_time, 'YYYYMMDDHH24MI'), 'YYYY-MM-DD') AS day, COUNT(*)::bigint AS cnt
+			SELECT TO_CHAR(TO_TIMESTAMP(start_time, 'YYYYMMDDHH24MISS'), 'YYYY-MM-DD') AS day, COUNT(*)::bigint AS cnt
 			FROM multigame_round
 			WHERE participant_count > 0 AND start_time >= :from
 			GROUP BY day

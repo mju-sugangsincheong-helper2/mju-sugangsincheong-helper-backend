@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.multigame.game.service;
 
+import com.mjusugangsincheonghelper.multigame.game.config.MultigameProperties;
 import com.mjusugangsincheonghelper.multigame.game.runtime.GameRuntimeStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -8,25 +9,26 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class GameSupplyService {
 
-	private static final int DURATION_SECONDS = 30;
-
 	private final GameRuntimeStore runtimeStore;
+	private final MultigameProperties multigameProperties;
 
 	public void run() {
+		long totalRampUpDurationInSeconds = multigameProperties.getSupply().getTotalRampUpDuration().getSeconds();
 		long limit = SupplyCalculator.initialLimit(runtimeStore.waitingCount());
 		runtimeStore.setAdmissionLimit(limit);
-		for (int elapsed = 1; elapsed < DURATION_SECONDS; elapsed++) {
-			if (!sleepOneSecond()) {
+		for (int elapsedSeconds = 1; elapsedSeconds < totalRampUpDurationInSeconds; elapsedSeconds++) {
+			if (!sleepStepInterval()) {
 				return;
 			}
-			limit = SupplyCalculator.nextLimit(limit, runtimeStore.participants(), runtimeStore.queueLength(), DURATION_SECONDS - elapsed);
+			limit = SupplyCalculator.nextLimit(limit, runtimeStore.participants(), runtimeStore.queueLength(), (int) (totalRampUpDurationInSeconds - elapsedSeconds));
 			runtimeStore.setAdmissionLimit(limit);
 		}
 	}
 
-	private boolean sleepOneSecond() {
+	private boolean sleepStepInterval() {
 		try {
-			Thread.sleep(1_000);
+			long stepSleepIntervalInMillis = multigameProperties.getSupply().getStepSleepInterval().toMillis();
+			Thread.sleep(stepSleepIntervalInMillis);
 			return true;
 		} catch (InterruptedException exception) {
 			Thread.currentThread().interrupt();
@@ -34,3 +36,4 @@ public class GameSupplyService {
 		}
 	}
 }
+

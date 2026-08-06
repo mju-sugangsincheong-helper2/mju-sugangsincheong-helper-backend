@@ -19,4 +19,14 @@ public class GuestResponse {
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private final String refreshToken;
+
+	public static GuestResponse of(Long memberId, String role, String name, String accessToken, String refreshToken) {
+		return GuestResponse.builder()
+				.memberId(memberId)
+				.role(role)
+				.name(name)
+				.accessToken(accessToken)
+				.refreshToken(refreshToken)
+				.build();
+	}
 }

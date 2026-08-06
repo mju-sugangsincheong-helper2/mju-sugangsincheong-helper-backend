@@ -54,6 +54,9 @@ class SingleGameServiceTest {
 	@Mock
 	private MemberRepository memberRepository;
 
+	@Mock
+	private SingleGameDataMergeService singleGameDataMergeService;
+
 	private SingleGameService singleGameService;
 
 	@Captor
@@ -65,7 +68,7 @@ class SingleGameServiceTest {
 	@BeforeEach
 	void setUp() {
 		singleGameService = new SingleGameService(
-				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameFeedbackEngine(), new SingleGameProperties());
+				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameFeedbackEngine(), new SingleGameProperties(), singleGameDataMergeService);
 	}
 
 	@Nested

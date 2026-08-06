@@ -37,31 +37,31 @@ public class MemberDevice {
 	private String fcmToken;
 
 	@Column(name = "platformjs_name", length = 100)
-	private String platformjsName;
+	private String platformJsName;
 
 	@Column(name = "platformjs_version", length = 50)
-	private String platformjsVersion;
+	private String platformJsVersion;
 
 	@Column(name = "platformjs_layout", length = 50)
-	private String platformjsLayout;
+	private String platformJsLayout;
 
 	@Column(name = "platformjs_prerelease", length = 50)
-	private String platformjsPrerelease;
+	private String platformJsPrerelease;
 
 	@Column(name = "platformjs_os", length = 100)
-	private String platformjsOs;
+	private String platformJsOs;
 
 	@Column(name = "platformjs_manufacturer", length = 100)
-	private String platformjsManufacturer;
+	private String platformJsManufacturer;
 
 	@Column(name = "platformjs_product", length = 100)
-	private String platformjsProduct;
+	private String platformJsProduct;
 
 	@Column(name = "platformjs_description", columnDefinition = "TEXT")
-	private String platformjsDescription;
+	private String platformJsDescription;
 
 	@Column(name = "platformjs_ua", columnDefinition = "TEXT")
-	private String platformjsUa;
+	private String platformJsUa;
 
 	@Column(name = "last_accessed_at")
 	private Instant lastAccessedAt;
@@ -79,22 +79,22 @@ public class MemberDevice {
 
 	@Builder
 	public MemberDevice(Long memberId, String refreshTokenHash,
-			String platformjsName, String platformjsVersion,
-			String platformjsLayout, String platformjsPrerelease,
-			String platformjsOs, String platformjsManufacturer,
-			String platformjsProduct, String platformjsDescription,
-			String platformjsUa, Instant expiresAt) {
+			String platformJsName, String platformJsVersion,
+			String platformJsLayout, String platformJsPrerelease,
+			String platformJsOs, String platformJsManufacturer,
+			String platformJsProduct, String platformJsDescription,
+			String platformJsUa, Instant expiresAt) {
 		this.memberId = memberId;
 		this.refreshTokenHash = refreshTokenHash;
-		this.platformjsName = platformjsName;
-		this.platformjsVersion = platformjsVersion;
-		this.platformjsLayout = platformjsLayout;
-		this.platformjsPrerelease = platformjsPrerelease;
-		this.platformjsOs = platformjsOs;
-		this.platformjsManufacturer = platformjsManufacturer;
-		this.platformjsProduct = platformjsProduct;
-		this.platformjsDescription = platformjsDescription;
-		this.platformjsUa = platformjsUa;
+		this.platformJsName = platformJsName;
+		this.platformJsVersion = platformJsVersion;
+		this.platformJsLayout = platformJsLayout;
+		this.platformJsPrerelease = platformJsPrerelease;
+		this.platformJsOs = platformJsOs;
+		this.platformJsManufacturer = platformJsManufacturer;
+		this.platformJsProduct = platformJsProduct;
+		this.platformJsDescription = platformJsDescription;
+		this.platformJsUa = platformJsUa;
 		this.lastAccessedAt = Instant.now();
 		this.expiresAt = expiresAt;
 	}
@@ -105,21 +105,21 @@ public class MemberDevice {
 	}
 
 	public void updateAccessInfo(String refreshTokenHash,
-			String platformjsName, String platformjsVersion,
-			String platformjsLayout, String platformjsPrerelease,
-			String platformjsOs, String platformjsManufacturer,
-			String platformjsProduct, String platformjsDescription,
-			String platformjsUa) {
+			String platformJsName, String platformJsVersion,
+			String platformJsLayout, String platformJsPrerelease,
+			String platformJsOs, String platformJsManufacturer,
+			String platformJsProduct, String platformJsDescription,
+			String platformJsUa) {
 		this.refreshTokenHash = refreshTokenHash;
-		this.platformjsName = platformjsName;
-		this.platformjsVersion = platformjsVersion;
-		this.platformjsLayout = platformjsLayout;
-		this.platformjsPrerelease = platformjsPrerelease;
-		this.platformjsOs = platformjsOs;
-		this.platformjsManufacturer = platformjsManufacturer;
-		this.platformjsProduct = platformjsProduct;
-		this.platformjsDescription = platformjsDescription;
-		this.platformjsUa = platformjsUa;
+		this.platformJsName = platformJsName;
+		this.platformJsVersion = platformJsVersion;
+		this.platformJsLayout = platformJsLayout;
+		this.platformJsPrerelease = platformJsPrerelease;
+		this.platformJsOs = platformJsOs;
+		this.platformJsManufacturer = platformJsManufacturer;
+		this.platformJsProduct = platformJsProduct;
+		this.platformJsDescription = platformJsDescription;
+		this.platformJsUa = platformJsUa;
 		this.lastAccessedAt = Instant.now();
 	}
 

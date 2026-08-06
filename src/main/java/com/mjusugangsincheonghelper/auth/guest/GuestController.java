@@ -63,14 +63,8 @@ public class GuestController {
 	}
 
 	private GuestResponse buildGuestResponse(SessionResult session) {
-		GuestResponse.GuestResponseBuilder builder = GuestResponse.builder()
-				.memberId(session.getMemberId())
-				.role(session.getRole())
-				.name(session.getName());
-		if (tokenInResponse) {
-			builder.accessToken(session.getAccessToken())
-					.refreshToken(session.getRefreshToken());
-		}
-		return builder.build();
+		String accessToken = tokenInResponse ? session.getAccessToken() : null;
+		String refreshToken = tokenInResponse ? session.getRefreshToken() : null;
+		return GuestResponse.of(session.getMemberId(), session.getRole(), session.getName(), accessToken, refreshToken);
 	}
 }

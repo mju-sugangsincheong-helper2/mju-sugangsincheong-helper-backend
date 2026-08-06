@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.io.Serializable;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -16,7 +17,11 @@ public class AnalysisResponse implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	private long gameId;
+
+	@JsonProperty("isOwner")
 	private boolean isOwner;
+
+	@JsonProperty("isMember")
 	private boolean isMember;
 	private int totalCourses;
 	private int totalTime;

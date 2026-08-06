@@ -53,6 +53,9 @@ class GoogleOAuthControllerTest {
 	private com.mjusugangsincheonghelper.auth.session.token.TokenProvider tokenProvider;
 
 	@MockitoBean
+	private com.mjusugangsincheonghelper.global.security.token.HttpTokenExtractor tokenExtractor;
+
+	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;
 
 	@MockitoBean

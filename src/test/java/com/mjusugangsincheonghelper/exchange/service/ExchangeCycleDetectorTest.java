@@ -23,6 +23,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
+import org.mockito.Spy;
+
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ExchangeCycleDetector 단위 테스트")
 class ExchangeCycleDetectorTest {
@@ -38,6 +41,9 @@ class ExchangeCycleDetectorTest {
 
 	@Mock
 	private ExchangeRoomCreationService roomCreationService;
+
+	@Spy
+	private PgmqProperties pgmqProperties = new PgmqProperties();
 
 	@InjectMocks
 	private ExchangeCycleDetector cycleDetector;
@@ -56,7 +62,7 @@ class ExchangeCycleDetectorTest {
 			cycleDetector.enqueueCycleDetection(message);
 
 			// Then
-			verify(pgmqService).send(ExchangeCycleDetector.QUEUE_NAME, message);
+			verify(pgmqService).send("exchange_cycle_detection", message);
 		}
 	}
 

@@ -41,10 +41,10 @@ import tools.jackson.databind.ObjectMapper;
 @Transactional(readOnly = true)
 public class ExchangeCacheService {
 
-	private static final String CACHE_NAME_FEED = "exchange-feed";
-	private static final String CACHE_NAME_MAIN = "exchange-main";
-	private static final String CACHE_NAME_USER_INTENTS = "exchange-user-intents";
-	private static final String CACHE_NAME_ROOM_META = "exchange-room-meta";
+	private static final String CACHE_NAME_FEED = CacheProperties.EXCHANGE_FEED;
+	private static final String CACHE_NAME_MAIN = CacheProperties.EXCHANGE_MAIN;
+	private static final String CACHE_NAME_USER_INTENTS = CacheProperties.EXCHANGE_USER_INTENTS;
+	private static final String CACHE_NAME_ROOM_META = CacheProperties.EXCHANGE_ROOM_META;
 
 	private static final int FEED_MAX_SIZE = 50;
 

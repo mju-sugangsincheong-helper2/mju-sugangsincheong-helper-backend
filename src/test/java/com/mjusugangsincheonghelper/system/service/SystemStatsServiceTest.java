@@ -13,6 +13,7 @@ import com.mjusugangsincheonghelper.database.repository.MultigameRoundMemberRepo
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository;
 import com.mjusugangsincheonghelper.database.repository.NoticeRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
+import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse;
 import java.time.Instant;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,6 +78,9 @@ class SystemStatsServiceTest {
 	@Mock
 	private PgmqService pgmqService;
 
+	@Spy
+	private PgmqProperties pgmqProperties = new PgmqProperties();
+
 	@InjectMocks
 	private SystemStatsService systemStatsService;
 
@@ -91,11 +96,11 @@ class SystemStatsServiceTest {
 		given(memberRepository.countByCreatedAtGreaterThanEqual(any(Instant.class))).willReturn(3L);
 		given(memberDeviceRepository.count()).willReturn(150L);
 		given(memberDeviceRepository.countByLastAccessedAtGreaterThanEqual(any(Instant.class))).willReturn(80L);
-		given(memberDeviceRepository.countByPlatformjsOs()).willReturn(List.of(
+		given(memberDeviceRepository.countByPlatformJsOs()).willReturn(List.of(
 				new Object[] {"iOS", 60L},
 				new Object[] {"Android", 40L}
 		));
-		given(memberDeviceRepository.countByPlatformjsName()).willReturn(List.of(
+		given(memberDeviceRepository.countByPlatformJsName()).willReturn(List.of(
 				new Object[] {"Chrome", 90L},
 				new Object[] {"Safari", 10L}
 		));
@@ -219,8 +224,8 @@ class SystemStatsServiceTest {
 		given(memberRepository.countByCreatedAtGreaterThanEqual(any(Instant.class))).willReturn(0L);
 		given(memberDeviceRepository.count()).willReturn(0L);
 		given(memberDeviceRepository.countByLastAccessedAtGreaterThanEqual(any(Instant.class))).willReturn(0L);
-		given(memberDeviceRepository.countByPlatformjsOs()).willReturn(List.of());
-		given(memberDeviceRepository.countByPlatformjsName()).willReturn(List.of());
+		given(memberDeviceRepository.countByPlatformJsOs()).willReturn(List.of());
+		given(memberDeviceRepository.countByPlatformJsName()).willReturn(List.of());
 		given(noticeRepository.count()).willReturn(0L);
 		given(courseRepository.count()).willReturn(0L);
 		given(courseRepository.countDistinctTerms()).willReturn(0L);

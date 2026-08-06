@@ -1,6 +1,7 @@
 package com.mjusugangsincheonghelper.multigame.result.service;
 
 import com.mjusugangsincheonghelper.database.repository.MultigameRoundMemberRepository;
+import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class MultigameCacheService {
 
-	private static final String CACHE_NAME_RANK = "multigame-rank";
+	private static final String CACHE_NAME_RANK = CacheProperties.MULTIGAME_RANK;
 
 	/** 한 라운드에서 취득할 수 있는 최대 과목 수 (과목 1~6). */
 	private static final int SUBJECT_COUNT_PER_ROUND = 6;

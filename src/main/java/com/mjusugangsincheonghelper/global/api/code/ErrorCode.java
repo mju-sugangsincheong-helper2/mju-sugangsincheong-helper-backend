@@ -33,8 +33,6 @@ public enum ErrorCode {
 	AUTH_PRIVACY_POLICY_REQUIRED(HttpStatus.FORBIDDEN, "AUTH_001", "Privacy policy agreement is required."),
 	/** Google OAuth 인증 실패 (401) */
 	AUTH_GOOGLE_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_002", "Google authentication failed."),
-	/** JWT 토큰 서명 검증 실패 (401) */
-	AUTH_INVALID_TOKEN_SIGNATURE(HttpStatus.UNAUTHORIZED, "AUTH_003", "Invalid token signature."),
 	/** 리프레시 토큰이 유효하지 않거나 만료됨 (401) */
 	AUTH_INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "AUTH_004", "Invalid or expired refresh token."),
 	/** 게스트 데이터 병합 필요 (409): 로그인 시 게스트 데이터가 남아 있는 경우 */
@@ -45,8 +43,6 @@ public enum ErrorCode {
 	AUTH_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "AUTH_007", "Member not found."),
 	/** 게스트(Guest)를 찾을 수 없음 (404) */
 	AUTH_GUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "AUTH_008", "Guest not found."),
-	/** 인증 키(auth key)가 이미 존재함 (409) */
-	AUTH_ALREADY_EXISTS(HttpStatus.CONFLICT, "AUTH_009", "Auth key already exists."),
 	/** mju.ac.kr 도메인이 아닌 계정 (403): 명지대 계정만 허용 */
 	AUTH_NOT_MJU_DOMAIN(HttpStatus.FORBIDDEN, "AUTH_010", "Only MJU (mju.ac.kr) accounts are allowed."),
 
@@ -87,12 +83,6 @@ public enum ErrorCode {
 	// ========================== PGMQ 메시지 큐 (PGMQ) ==========================
 	/** 큐에 메시지 전송 실패 (500) */
 	PGMQ_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_001", "Failed to send message to queue."),
-	/** 큐를 찾을 수 없음 (404) */
-	PGMQ_QUEUE_NOT_FOUND(HttpStatus.NOT_FOUND, "PGMQ_002", "Queue not found."),
-	/** 큐에서 메시지 삭제 실패 (500) */
-	PGMQ_DELETE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_003", "Failed to delete message from queue."),
-	/** 메시지 아카이브(보관) 실패 (500) */
-	PGMQ_ARCHIVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PGMQ_004", "Failed to archive message."),
 
 	// ========================== 멀티 게임 (MULTIGAME) ==========================
 	/** 게임 세션을 찾을 수 없음 (404) */
@@ -105,8 +95,6 @@ public enum ErrorCode {
 	MULTIGAME_RESULT_NOT_FOUND(HttpStatus.NOT_FOUND, "MULTIGAME_004", "Game result not found."),
 	/** 게임 로직(Lua 스크립트) 실행 실패 (500) */
 	MULTIGAME_LUA_SCRIPT_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_005", "Failed to execute game logic."),
-	/** 분산 락(Advisory Lock) 획득 실패 (500) */
-	MULTIGAME_ADVISORY_LOCK_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_006", "Failed to acquire distributed lock."),
 
 	// ========================== 알림 (NOTIFICATION) ==========================
 	/** FCM 알림 전송 실패 (500) */

@@ -25,7 +25,7 @@ public class GameLifecycleScheduler {
 	private final RoundSettlementService settlementService;
 	private final GameStatusResolver statusResolver;
 
-	@Scheduled(cron = "${app.schedule.game-ready.cron:55 9/10 * * * *}", scheduler = "multigameScheduler")
+	@Scheduled(cron = "${app.multigame.schedule.game-ready-cron:${app.schedule.game-ready.cron:55 9/10 * * * *}}", scheduler = "multigameScheduler")
 	void ready() {
 		LocalDateTime now = LocalDateTime.now();
 		if (statusResolver.isClosed(now)) {
@@ -43,7 +43,7 @@ public class GameLifecycleScheduler {
 		});
 	}
 
-	@Scheduled(cron = "${app.schedule.game-start.cron:0 0/10 * * * *}", scheduler = "multigameScheduler")
+	@Scheduled(cron = "${app.multigame.schedule.game-start-cron:${app.schedule.game-start.cron:0 0/10 * * * *}}", scheduler = "multigameScheduler")
 	void start() {
 		LocalDateTime now = LocalDateTime.now();
 		if (statusResolver.isClosed(now)) {
@@ -65,7 +65,7 @@ public class GameLifecycleScheduler {
 		}
 	}
 
-	@Scheduled(cron = "${app.schedule.game-finish.cron:30 0/10 * * * *}", scheduler = "multigameScheduler")
+	@Scheduled(cron = "${app.multigame.schedule.game-finish-cron:${app.schedule.game-finish.cron:30 0/10 * * * *}}", scheduler = "multigameScheduler")
 	void finish() {
 		LocalDateTime now = LocalDateTime.now();
 		if (statusResolver.isClosed(now)) {

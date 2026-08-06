@@ -27,27 +27,108 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      # Redis Repository 스캔 비활성 (리포 전부 JPA — Redis 는 캐시/템플릿 전용)
       repositories:
         enabled: false
 
+logging:
+  level:
+    root: INFO
+    com.mjusugangsincheonghelper: INFO
+  file:
+    name: logs/${app.instance-id}-application.log
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers,logfile,threaddump,httpexchanges,env,mappings,beans,configprops,caches,conditions
+  endpoint:
+    health:
+      show-details: always
+    logfile:
+      external-file: logs/${app.instance-id}-application.log
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 app:
   instance-id: ${INSTANCE_ID:app}
-  cors:
-    # https://명수도.com → https://xn--hq1b21kh2g.com
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://xn--hq1b21kh2g.com}
-  auth:
-    token-mode: cookie   # cookie: HttpOnly+Secure 쿠키만 전달·추출 (oper/prod)
-    cookie-secure: true  # HTTPS 필수 환경 Secure 쿠키 활성화
-    # 쿠키 maxAge — app.jwt.* 만료와 별개로 브라우저 쿠키 수명을 제어 (jwt 만료와 맞춰서 관리)
-    cookie-max-age:
-      access: 1h
-      refresh: 7d
-  expose-error-details: false
+  # expose-error-details: false
   performance:
     slow-ms: 1000
     very-slow-ms: 5000
+
+  # ==========================================
+  # 1. 보안 & 인증 영역 (Security / Auth)
+  # ==========================================
+  security:
+    public-urls:
+      - /api/*/auth/guest
+      - /api/*/auth/refresh
+      - /api/*/auth/login/google/merge
+      - /api/*/auth/oauth/start
+      - /api/*/auth/token
+      - /api/*/auth/config/google
+      # - /api/*/example/**
+      # - /swagger-ui/**
+      # - /v3/api-docs/**
+      # - /*.html
+      # - /*.js
+      - /actuator/**
+    public-get-urls:
+      - "/api/*/course/sections"
+      - "/api/*/course/department"
+      - "/api/*/exchange/intents/recent"
+      - "/api/*/notices"
+    public-post-urls: []
+    public-put-urls: []
+    public-patch-urls: []
+    public-delete-urls: []
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://xn--hq1b21kh2g.com}
+
+  auth:
+    token-mode: cookie
+    cookie-secure: true
+    cookie-max-age:
+      access: 1h
+      refresh: 7d
+
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiry-ms: 3600000
+    refresh-token-expiry-ms: 604800000
+    merge-ticket-expiry-ms: 300000
+
+  oauth2:
+    google:
+      client-id: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID:}
+      client-secret: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET:}
+      redirect-uri: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_REDIRECT_URI:https://xn--hq1b21kh2g.com/login}
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+    state-ttl: 300s
+
+  # ==========================================
+  # 2. 글로벌 코어 인프라 (Scheduling / Cache)
+  # ==========================================
+  scheduling:
+    task:
+      pool-size: 2
+      thread-name-prefix: "global-scheduler-"
+    pgmq:
+      pool-size: 2
+      thread-name-prefix: "pgmq-worker-"
+    multigame:
+      pool-size: 1
+      thread-name-prefix: "multigame-scheduler-"
+
   cache:
+    double-evict-delay: 2s
     default-ttl: 24h
     ttls:
       system-config: 24h
@@ -57,10 +138,38 @@ app:
       exchange-room-meta: 24h
       singlegame-rank: 5m
       singlegame-records: 5m
-      singlegame-analysis: 5m
       multigame-rank: 5m
-    # evict 직후 한 번 더 삭제하는 더블 evict 지연 시간 (캐시 재구성 경합 방지)
-    double-evict-delay: 2s
+
+  # ==========================================
+  # 3. 비동기 메시징 & 외부 서비스 (PGMQ / Firebase)
+  # ==========================================
+  pgmq:
+    archive-cleanup-cron: "0 30 3 * * *"
+    notification:
+      queue-name: "notification_queue"
+      poll-interval: 1s
+      visibility-timeout: 30
+      batch-size: 400
+      max-retry-count: 5
+    cycle-detection:
+      queue-name: "exchange_cycle_detection"
+      poll-interval: 1s
+      visibility-timeout: 30
+      batch-size: 1
+      max-retry-count: 5
+
+  firebase:
+    admin:
+      project-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PROJECT_ID:}
+      client-email: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_EMAIL:}
+      private-key: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY:}
+      type: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_TYPE:service_account}
+      private-key-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY_ID:}
+      client-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_ID:}
+
+  # ==========================================
+  # 4. 비즈니스 도메인 설정 (Singlegame / Multigame)
+  # ==========================================
   singlegame:
     timing:
       t-enter-main:
@@ -75,43 +184,14 @@ app:
       t-click-ok:
         min-ms: 1
         max-ms: 60000
+
   multigame:
-    # 미운영(CLOSED) 시간대. start_close/end_close snake_case도 동일하게 바인딩된다.
     start-close: "02:00"
     end-close: "05:00"
-  firebase:
-    admin:
-      project-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PROJECT_ID:}
-      client-email: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_EMAIL:}
-      private-key: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY:}
-      type: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_TYPE:service_account}
-      private-key-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY_ID:}
-      client-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_ID:}
-
-logging:
-  level:
-    root: INFO
-    com.mjusugangsincheonghelper: INFO
-  file:
-    name: logs/${app.instance-id}-application.log
-
-# Actuator 노출 설정 — internal_system/index.html(운영 대시보드) 및 Prometheus 모니터링용 - 내부망이므로 특별히 보안 설정 없음
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus,loggers,logfile,threaddump,httpexchanges,env,mappings,beans,configprops,caches,conditions
-  endpoint:
-    health:
-      show-details: always
-    logfile:
-      # logging.file.name과 동일한 파일 지정 (명시적으로 연결)
-      external-file: logs/${app.instance-id}-application.log
-
-springdoc:
-  # prod Swagger/OpenAPI 비활성화.
-  api-docs:
-    enabled: false
-  swagger-ui:
-    enabled: false
-
+    schedule:
+      game-ready-cron: "55 9/10 * * * *"
+      game-start-cron: "0 0/10 * * * *"
+      game-finish-cron: "30 0/10 * * * *"
+    supply:
+      total-ramp-up-duration: 30s
+      step-sleep-interval: 1s

@@ -26,7 +26,6 @@ public class SingleGameSaveRequest {
 
 	private int tEnterMain;
 
-	@Valid
 	@NotEmpty
-	private List<SingleGameDetailRequest> details;
+	private List<@Valid SingleGameDetailRequest> details;
 }

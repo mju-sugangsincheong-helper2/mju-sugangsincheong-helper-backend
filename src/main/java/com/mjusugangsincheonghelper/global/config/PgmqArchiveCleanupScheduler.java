@@ -5,7 +5,6 @@ import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWo
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -19,24 +18,22 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class PgmqArchiveCleanupScheduler {
 
-	private static final List<String> QUEUE_NAMES = List.of(
-			NotificationConsumerWorker.QUEUE_NAME,
-			ExchangeCycleDetector.QUEUE_NAME
-	);
-
 	private final JdbcTemplate jdbcTemplate;
+	private final PgmqProperties pgmqProperties;
 
-	@Value("${app.pgmq.archive-retention-days:7}")
-	private long retentionDays;
-
-	@Scheduled(cron = "${app.schedule.pgmq-cleanup.cron:0 30 3 * * *}", scheduler = "pgmqScheduler")
+	@Scheduled(cron = "${app.pgmq.archive-cleanup-cron:${app.schedule.pgmq-cleanup.cron:0 30 3 * * *}}", scheduler = "pgmqScheduler")
 	public void purgeArchives() {
-		for (String queueName : QUEUE_NAMES) {
+		long archiveRetentionDays = pgmqProperties.getArchiveRetentionPeriod().toDays();
+		List<String> queueNames = List.of(
+				pgmqProperties.getNotification().getQueueName(),
+				pgmqProperties.getCycleDetection().getQueueName()
+		);
+		for (String queueName : queueNames) {
 			try {
 				int deleted = jdbcTemplate.update(
 						"DELETE FROM pgmq.a_" + queueName + " WHERE enqueued_at < now() - (? || ' days')::interval",
-						retentionDays);
-				log.info("PGMQ archive purged: queue={}, deleted={}, retentionDays={}", queueName, deleted, retentionDays);
+						archiveRetentionDays);
+				log.info("PGMQ archive purged: queue={}, deleted={}, retentionDays={}", queueName, deleted, archiveRetentionDays);
 			} catch (Exception e) {
 				log.warn("PGMQ archive purge skipped (queue may not exist): queue={}, reason={}", queueName, e.getMessage());
 			}

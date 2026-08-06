@@ -8,6 +8,7 @@ import com.mjusugangsincheonghelper.database.repository.SingleGameDetailReposito
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import com.mjusugangsincheonghelper.singlegame.config.SingleGameProperties;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.BasicEvent;
@@ -52,17 +53,21 @@ public class SingleGameService {
 	private final SingleGameFeedbackEngine feedbackEngine;
 	private final SingleGameProperties properties;
 
+	private final SingleGameDataMergeService singleGameDataMergeService;
+
 	public SingleGameService(
 			SingleGameRepository singleGameRepository,
 			SingleGameDetailRepository singleGameDetailRepository,
 			MemberRepository memberRepository,
 			SingleGameFeedbackEngine feedbackEngine,
-			SingleGameProperties properties) {
+			SingleGameProperties properties,
+			SingleGameDataMergeService singleGameDataMergeService) {
 		this.singleGameRepository = singleGameRepository;
 		this.singleGameDetailRepository = singleGameDetailRepository;
 		this.memberRepository = memberRepository;
 		this.feedbackEngine = feedbackEngine;
 		this.properties = properties;
+		this.singleGameDataMergeService = singleGameDataMergeService;
 	}
 
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
@@ -138,7 +143,7 @@ public class SingleGameService {
 				.toList();
 		singleGameDetailRepository.saveAll(details);
 
-		// singlegame 캐시(rank/records/analysis)는 TTL 기반이라 쓰기 시점에 evict 하지 않는다.
+		singleGameDataMergeService.evictSingleGameRecordCacheForMember(memberId);
 
 		return SingleGameSaveResponse.builder()
 				.gameId(gameId)
@@ -146,7 +151,7 @@ public class SingleGameService {
 				.build();
 	}
 
-	@Cacheable(value = "singlegame-rank", key = "#totalCourses + ':' + #scope + ':' + #department + ':cache'", sync = true)
+	@Cacheable(value = CacheProperties.SINGLEGAME_RANK, key = "#totalCourses + ':' + #scope + ':' + #department + ':cache'", sync = true)
 	public RankingResponse getRankings(int totalCourses, String scope, String department, Long memberId) {
 		Member member = memberRepository.findById(memberId).orElse(null);
 		String myDept = member != null ? member.getDepartment() : null;
@@ -288,7 +293,7 @@ public class SingleGameService {
 		return new PageImpl<>(records, pageable, gamesPage.getTotalElements());
 	}
 
-	@Cacheable(value = "singlegame-records", key = "#memberId + ':page:0:size:10:cache'", sync = true)
+	@Cacheable(value = CacheProperties.SINGLEGAME_RECORDS, key = "#memberId + ':page:0:size:10:cache'", sync = true)
 	public List<RecordCacheDto> getMyRecordsFirstPage(Long memberId) {
 		Pageable pageable = PageRequest.of(0, 10);
 		Page<SingleGameEntity> gamesPage = singleGameRepository
@@ -303,7 +308,7 @@ public class SingleGameService {
 				.toList();
 	}
 
-	@Cacheable(value = "singlegame-analysis", key = "#gameId + ':' + #memberId + ':cache'", sync = true)
+	@Cacheable(value = CacheProperties.SINGLEGAME_ANALYSIS, key = "#gameId + ':' + #memberId + ':cache'", sync = true)
 	public AnalysisResponse getAnalysis(long gameId, Long memberId) {
 		SingleGameEntity game = singleGameRepository.findById(gameId)
 				.orElseThrow(() -> new BaseException(ErrorCode.SINGLEGAME_GAME_NOT_FOUND));
