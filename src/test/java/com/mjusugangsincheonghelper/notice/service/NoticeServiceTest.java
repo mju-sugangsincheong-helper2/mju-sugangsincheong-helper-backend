@@ -49,11 +49,20 @@ class NoticeServiceTest {
 				.type("general")
 				.title("신규 공지")
 				.content("내용")
+				.broadcast(true)
+				.build();
+	}
+
+	private static NoticeRequest requestWithoutBroadcast() {
+		return NoticeRequest.builder()
+				.type("general")
+				.title("등록만 하는 공지")
+				.content("내용")
 				.build();
 	}
 
 	@Test
-	@DisplayName("공지 생성 시 전체 FCM 토큰 수만큼 알림 이벤트를 큐에 발행한다")
+	@DisplayName("broadcast=true 로 생성 시 전체 FCM 토큰 수만큼 알림 이벤트를 큐에 발행한다")
 	void shouldBroadcastNoticeToAllFcmTokens() {
 		given(memberDeviceRepository.findAllFcmTokens())
 				.willReturn(List.of("token-1", "token-2", "token-3"));
@@ -64,6 +73,18 @@ class NoticeServiceTest {
 
 		assertThat(response.getTitle()).isEqualTo("신규 공지");
 		verify(pgmqService, times(3)).send(any(), any());
+	}
+
+	@Test
+	@DisplayName("broadcast가 null/false 이면 푸시 없이 공지 등록만 한다")
+	void shouldNotBroadcastWhenBroadcastNotSet() {
+		given(noticeRepository.save(any(NoticeEntity.class)))
+				.willAnswer(invocation -> invocation.getArgument(0));
+
+		NoticeResponse response = noticeService.create(requestWithoutBroadcast());
+
+		assertThat(response.getTitle()).isEqualTo("등록만 하는 공지");
+		verify(pgmqService, never()).send(any(), any());
 	}
 
 	@Test

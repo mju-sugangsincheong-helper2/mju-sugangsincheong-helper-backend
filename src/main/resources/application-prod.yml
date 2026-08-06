@@ -26,9 +26,15 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # Redis Repository 스캔 비활성 (리포 전부 JPA — Redis 는 캐시/템플릿 전용)
+      repositories:
+        enabled: false
 
 app:
   instance-id: ${INSTANCE_ID:app}
+  cors:
+    # 쉼표 구분 목록. 내부 어드민 페이지 오리진이 추가되면 CORS_ALLOWED_ORIGINS로 확장.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://명수도.com}
   expose-error-details: false
   performance:
     slow-ms: 1000
@@ -72,8 +78,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,loggers,logfile,threaddump
+        include: "*"
   endpoint:
     health:
-      show-details: when_authorized
-      roles: ADMIN
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: mju-sugangsincheong-helper
+    profile: prod

@@ -64,6 +64,18 @@ public class PgmqService {
 				.build(), queueName, visibilityTimeout, limit);
 	}
 
+	/**
+	 * 큐의 현재 대기 중인 메시지 수 (백로그 가시성).
+	 * 큐가 존재하지 않으면 예외를 던진다 (호출부에서 처리).
+	 */
+	public Long queueLength(String queueName) {
+		return jdbcTemplate.queryForObject(
+				"SELECT (pgmq.metrics(?)).queue_length",
+				Long.class,
+				queueName
+		);
+	}
+
 	public void delete(String queueName, Long msgId) {
 		jdbcTemplate.queryForObject(
 				"SELECT pgmq.delete(?, ?)",

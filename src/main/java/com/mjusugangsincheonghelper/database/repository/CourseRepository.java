@@ -31,4 +31,15 @@ public interface CourseRepository extends JpaRepository<CourseEntity, CourseId> 
 
 	@Transactional
 	Long deleteByTerm(String term);
+
+	/** 학기별 강좌 수 (도메인 지표) */
+	@Query("""
+		SELECT c.term, count(c) FROM CourseEntity c
+		GROUP BY c.term ORDER BY c.term DESC
+	""")
+	List<Object[]> countByTerm();
+
+	/** 등록된 강좌가 있는 학기 수 (도메인 지표) */
+	@Query("SELECT count(DISTINCT c.term) FROM CourseEntity c")
+	long countDistinctTerms();
 }

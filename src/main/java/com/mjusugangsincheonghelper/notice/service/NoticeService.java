@@ -40,7 +40,11 @@ public class NoticeService {
 				.title(request.getTitle())
 				.content(request.getContent())
 				.build());
-		broadcastNotice(notice);
+
+		// broadcast=true 일 때만 전체 사용자에게 푸시 (기본: 등록만)
+		if (Boolean.TRUE.equals(request.getBroadcast())) {
+			broadcastNotice(notice);
+		}
 		return NoticeResponse.from(notice);
 	}
 

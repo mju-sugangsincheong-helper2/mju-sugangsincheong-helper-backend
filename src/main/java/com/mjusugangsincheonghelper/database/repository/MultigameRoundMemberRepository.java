@@ -3,7 +3,6 @@ package com.mjusugangsincheonghelper.database.repository;
 import com.mjusugangsincheonghelper.database.entity.MultigameRoundMemberEntity;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -56,6 +55,25 @@ public interface MultigameRoundMemberRepository extends JpaRepository<MultigameR
 			GROUP BY member.memberId, memberDepartment.department
 			""")
 	List<Object[]> aggregateByMemberDepartment();
+
+	/** 전체 결과 행의 SUCCESS / 비-SUCCESS(FAIL_SOLDOUT) 개수 (도메인 지표) */
+	@Query("""
+			SELECT SUM(CASE WHEN member.status = 'SUCCESS' THEN 1 ELSE 0 END),
+			       SUM(CASE WHEN member.status <> 'SUCCESS' THEN 1 ELSE 0 END)
+			FROM MultigameRoundMemberEntity member
+			""")
+	List<Object[]> aggregateOverallResult();
+
+	/** 특정 라운드 집합의 start_time별 SUCCESS / 비-SUCCESS 개수 (도메인 지표) */
+	@Query("""
+			SELECT member.startTime,
+			       SUM(CASE WHEN member.status = 'SUCCESS' THEN 1 ELSE 0 END),
+			       SUM(CASE WHEN member.status <> 'SUCCESS' THEN 1 ELSE 0 END)
+			FROM MultigameRoundMemberEntity member
+			WHERE member.startTime IN :startTimes
+			GROUP BY member.startTime
+			""")
+	List<Object[]> aggregateResultByStartTimes(@Param("startTimes") Collection<String> startTimes);
 
 	@Modifying
 	@Query("DELETE FROM MultigameRoundMemberEntity member WHERE member.memberId = :oldMemberId AND member.startTime IN (SELECT target.startTime FROM MultigameRoundMemberEntity target WHERE target.memberId = :newMemberId)")

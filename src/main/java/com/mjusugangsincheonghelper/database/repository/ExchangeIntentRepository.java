@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ExchangeIntentRepository extends JpaRepository<ExchangeIntentEntity, ExchangeIntentId> {
 
+	/** 현재 학기 비삭제 교환 의도 수 (도메인 지표) */
+	long countByTermAndIsDeletedFalse(String term);
+
 	List<ExchangeIntentEntity> findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(String term, Long memberId);
 
 	List<ExchangeIntentEntity> findByTermAndIsDeletedFalse(String term);

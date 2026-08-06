@@ -23,4 +23,8 @@ public interface ExchangeRoomIntentRepository extends JpaRepository<ExchangeRoom
 
 	@Query("SELECT DISTINCT ri.memberId FROM ExchangeRoomIntentEntity ri WHERE ri.term = :term AND ri.roomId = :roomId")
 	List<Long> findDistinctMemberIdsByTermAndRoomId(@Param("term") String term, @Param("roomId") Long roomId);
+
+	/** 현재 학기 배통된(방에 묶인) 활성 Intent 수 (도메인 지표 - 매칭률 계산용) */
+	@Query("SELECT COUNT(DISTINCT ri.intentId) FROM ExchangeRoomIntentEntity ri WHERE ri.term = :term AND ri.isDeleted = false")
+	long countDistinctIntentIdByTermAndIsDeletedFalse(@Param("term") String term);
 }

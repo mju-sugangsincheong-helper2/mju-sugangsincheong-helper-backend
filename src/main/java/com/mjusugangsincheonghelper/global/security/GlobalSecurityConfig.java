@@ -4,6 +4,7 @@ import com.mjusugangsincheonghelper.global.security.filter.ConsentCheckFilter;
 import com.mjusugangsincheonghelper.global.security.filter.JwtAuthenticationFilter;
 import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
@@ -41,7 +42,13 @@ public class GlobalSecurityConfig {
 			"/swagger-ui/**",
 			"/v3/api-docs/**",
 			"/*.html",
-			"/*.js"
+			"/*.js",
+			/*
+			 * Actuator 전체 공개: 공개 프록시가 /api 경로만 백엔드로 라우팅하므로
+			 * actuator는 도커 네트워크/내부망에서만 접근 가능하다.
+			 * 추후 metrics 도구 스크레이핑과 내부 어드민 페이지(internal_system/index.html)가 사용한다.
+			 */
+			"/actuator/**"
 	};
 
 	/**
@@ -65,6 +72,9 @@ public class GlobalSecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final ConsentCheckFilter consentCheckFilter;
+
+	@Value("${app.cors.allowed-origins:}")
+	private String corsAllowedOrigins;
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
@@ -107,14 +117,11 @@ public class GlobalSecurityConfig {
 		http
 				.securityMatchers(matchers -> {
 					matchers.requestMatchers("/api/**");
-					matchers.requestMatchers("/actuator/**");
 				})
 				.csrf(csrf -> csrf.disable())
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
-							// Actuator는 관리자 전용 (PUBLIC_URLS에서 제거됨)
-							.requestMatchers("/actuator/**").hasRole("ADMIN")
 							.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterAfter(consentCheckFilter, JwtAuthenticationFilter.class);
@@ -130,7 +137,10 @@ public class GlobalSecurityConfig {
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource() {
 		CorsConfiguration configuration = new CorsConfiguration();
-		configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173"));
+		configuration.setAllowedOrigins(Arrays.stream(corsAllowedOrigins.split(","))
+				.map(String::trim)
+				.filter(origin -> !origin.isEmpty())
+				.toList());
 		configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 		configuration.setAllowedHeaders(Arrays.asList("*"));
 		configuration.setExposedHeaders(Arrays.asList(

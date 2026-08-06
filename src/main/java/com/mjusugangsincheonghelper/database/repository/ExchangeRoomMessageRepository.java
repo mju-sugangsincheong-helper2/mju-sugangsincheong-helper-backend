@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ExchangeRoomMessageRepository extends JpaRepository<ExchangeRoomMessageEntity, ExchangeRoomMessageId> {
 
+	/** 현재 학기 채팅/시스템 메시지 수 (도메인 지표) */
+	long countByTerm(String term);
+
 	List<ExchangeRoomMessageEntity> findByTermAndRoomIdAndIdLessThanOrderByIdDesc(String term, Long roomId, Long id, Pageable pageable);
 
 	List<ExchangeRoomMessageEntity> findByTermAndRoomIdOrderByIdDesc(String term, Long roomId, Pageable pageable);

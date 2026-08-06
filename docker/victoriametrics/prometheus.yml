@@ -1,0 +1,10 @@
+# VictoriaMetrics 스크레이핑 설정 (Prometheus 호환 포맷)
+# 참고: 백엔드가 컨테이너로 배포되면 대상 주소를 호스트(host.docker.internal)에서
+# 앱 서비스 이름(app:8080 등)으로 변경한다.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'mju-backend'
+    static_configs:
+      - targets: ['host.docker.internal:8080']

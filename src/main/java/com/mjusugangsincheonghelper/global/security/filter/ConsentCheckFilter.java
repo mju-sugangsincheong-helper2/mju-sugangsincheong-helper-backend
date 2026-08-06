@@ -50,8 +50,7 @@ public class ConsentCheckFilter extends OncePerRequestFilter {
 	private boolean isConsentExemptPath(HttpServletRequest request) {
 		String path = request.getRequestURI();
 		return path.contains("/auth/privacy/agree")
-				|| path.contains("/auth/logout")
-				|| path.startsWith("/actuator/");
+				|| path.contains("/auth/logout");
 	}
 
 	private void sendErrorResponse(HttpServletResponse response) throws IOException {

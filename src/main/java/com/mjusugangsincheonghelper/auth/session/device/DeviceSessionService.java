@@ -92,4 +92,13 @@ public class DeviceSessionService {
 	public void switchMember(Long memberId, Long newMemberId) {
 		memberDeviceRepository.findByMemberId(memberId).forEach(device -> device.switchMember(newMemberId));
 	}
+
+	/**
+	 * 만료된 기기 세션(세션 만료 시각이 지난 기기, FCM 토큰 포함)을 일괄 삭제한다.
+	 * 관리자 정리 버튼용: 삭제된 개수를 반환한다.
+	 */
+	@Transactional
+	public long deleteExpired() {
+		return memberDeviceRepository.deleteExpired(java.time.Instant.now());
+	}
 }

@@ -1,16 +1,15 @@
 package com.mjusugangsincheonghelper.exchange.service;
 
-import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
 import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
 import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.TaskScheduler;
@@ -18,6 +17,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 교환 도메인 캐싱.
+ *
+ * <p>피드(feed)는 읽기 전용 최신 목록이므로 Spring Cache({@code @Cacheable}/{@code @CacheEvict})로
+ * 관리한다(캐시 미스 시 DB에서 재구성). 회원별 메인 응답은 별도 키(memberId)의 값 캐시로 관리한다.</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -26,53 +31,32 @@ public class ExchangeCacheService {
 
 	private static final String CACHE_NAME_FEED = "exchange-feed";
 	private static final String CACHE_NAME_MAIN = "exchange-main";
-	private static final long FEED_MAX_SIZE = 50;
+	private static final int FEED_MAX_SIZE = 50;
 	private static final Duration DOUBLE_EVICT_DELAY = Duration.ofSeconds(2);
 
-	private final RedisTemplate<String, Object> redisTemplate;
 	private final ExchangeIntentRepository intentRepository;
-	private final TaskScheduler taskScheduler;
+	private final RedisTemplate<String, Object> redisTemplate;
 	private final CacheProperties cacheProperties;
+	private final TaskScheduler taskScheduler;
 	private final ObjectMapper objectMapper;
 
+	/**
+	 * 최신 교환 신청 피드(최대 50개). 캐시 히트 시 캐시된 목록, 미스 시 DB에서 재구성해 캐시한다.
+	 */
+	@Cacheable(cacheNames = CACHE_NAME_FEED, key = "#term")
 	public List<FeedCacheDto> getFeed(String term) {
-		String key = feedKey(term);
-		try {
-			List<Object> cached = redisTemplate.opsForList().range(key, 0, -1);
-			if (cached != null && !cached.isEmpty()) {
-				List<FeedCacheDto> dtos = cached.stream()
-						.map(this::toFeedCacheDto)
-						.filter(Objects::nonNull)
-						.toList();
-				if (!dtos.isEmpty()) {
-					return dtos;
-				}
-			}
-		} catch (Exception e) {
-			log.warn("Redis getFeed failed for key={}: {}", key, e.getMessage());
-		}
-		return rebuildFeed(term);
+		return intentRepository.findByTermAndIsDeletedFalseOrderByIdDesc(term, PageRequest.of(0, FEED_MAX_SIZE))
+				.stream()
+				.map(FeedCacheDto::from)
+				.toList();
 	}
 
-	public void pushFeed(String term, FeedCacheDto dto) {
-		String key = feedKey(term);
-		try {
-			redisTemplate.opsForList().leftPush(key, dto);
-			redisTemplate.opsForList().trim(key, 0, FEED_MAX_SIZE - 1);
-			redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_FEED));
-		} catch (Exception e) {
-			log.warn("Redis pushFeed failed for key={}: {}", key, e.getMessage());
-		}
-	}
-
+	/**
+	 * 피드가 바뀌는 쓰기(신청/삭제) 직후 호출 — 다음 {@link #getFeed(String)}에서 DB로 재구성된다.
+	 */
+	@CacheEvict(cacheNames = CACHE_NAME_FEED, key = "#term")
 	public void evictFeed(String term) {
-		String key = feedKey(term);
-		try {
-			redisTemplate.delete(key);
-		} catch (Exception e) {
-			log.warn("Redis evictFeed failed for key={}: {}", key, e.getMessage());
-		}
-		scheduleDoubleEvict(key);
+		// 무효화만 수행 (본문 필요 없음)
 	}
 
 	public MainResponse getMainCache(String term, Long memberId) {
@@ -111,24 +95,6 @@ public class ExchangeCacheService {
 		scheduleDoubleEvict(key);
 	}
 
-	private List<FeedCacheDto> rebuildFeed(String term) {
-		List<ExchangeIntentEntity> entities = intentRepository.findByTermAndIsDeletedFalseOrderByIdDesc(
-				term, PageRequest.of(0, (int) FEED_MAX_SIZE));
-		List<FeedCacheDto> dtos = entities.stream().map(FeedCacheDto::from).toList();
-		if (!dtos.isEmpty()) {
-			try {
-				String key = feedKey(term);
-				redisTemplate.delete(key);
-				List<Object> objects = new ArrayList<>(dtos);
-				redisTemplate.opsForList().rightPushAll(key, objects);
-				redisTemplate.expire(key, cacheProperties.getTtl(CACHE_NAME_FEED));
-			} catch (Exception e) {
-				log.warn("Redis rebuildFeed cache save failed: {}", e.getMessage());
-			}
-		}
-		return dtos;
-	}
-
 	private void scheduleDoubleEvict(String key) {
 		taskScheduler.schedule(() -> {
 			try {
@@ -137,22 +103,6 @@ public class ExchangeCacheService {
 				log.warn("Double evict failed for key={}: {}", key, e.getMessage());
 			}
 		}, java.time.Instant.now().plus(DOUBLE_EVICT_DELAY));
-	}
-
-	private FeedCacheDto toFeedCacheDto(Object obj) {
-		if (obj instanceof FeedCacheDto dto) return dto;
-		if (obj != null) {
-			try {
-				return objectMapper.convertValue(obj, FeedCacheDto.class);
-			} catch (Exception e) {
-				log.warn("Failed to convert feed cache object: {}", e.getMessage());
-			}
-		}
-		return null;
-	}
-
-	private String feedKey(String term) {
-		return "exchange::" + term + ":feed:cache";
 	}
 
 	private String mainKey(String term, Long memberId) {

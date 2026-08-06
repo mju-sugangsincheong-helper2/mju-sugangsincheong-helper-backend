@@ -25,4 +25,10 @@ public class NoticeRequest {
 
 	@NotBlank
 	private String content;
+
+	/**
+	 * 공지 생성 시에만 사용: true면 전체 사용자에게 FCM 푸시를 발송하고,
+	 * null/false면 공지 저장만 한다. 수정(update)에서는 무시된다.
+	 */
+	private Boolean broadcast;
 }

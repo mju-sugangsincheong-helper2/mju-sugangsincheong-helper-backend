@@ -716,8 +716,6 @@ updated_at   TIMESTAMP WITH TIME ZONE
 | 키 | 기본값 | 타입 | 설명 |
 |----|--------|------|------|
 | `current_term` | `"202620"` | STRING | 현재 학기 설정 (YYYY + 학기코드: 10=1학기, 15=여름학기, 20=2학기, 25=겨울학기) |
-| `notices` | `"[]"` | JSON | 공지사항 목록 |
-| `announcement` | `""` | STRING | 상단 배너 공지 텍스트 |
 
 > `expose_error_details`, `performance_thresholds`, `jwt_expiry_config`, `singlegame_reaction_time_config`는 더 이상 DB 기반 시스템 설정이 아닌 `application.yml` 프로퍼티로 관리됩니다. 각각 `app.expose-error-details`, `app.performance.slow-ms` / `app.performance.very-slow-ms`, `app.jwt.*`, `app.singlegame.reaction-time-*`를 참조하세요.
 
@@ -727,9 +725,7 @@ updated_at   TIMESTAMP WITH TIME ZONE
 public enum SettingDefinition {
     CURRENT_TERM("current_term", ConfigType.STRING, "현재 학기 설정", "202620",
             raw -> new TermCode(raw),
-            raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$")),
-    NOTICES("notices", ConfigType.JSON, "공지사항 목록", "[]", ...),
-    ANNOUNCEMENT("announcement", ConfigType.STRING, "상단 배너 공지 텍스트", "", ...);
+            raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$"));
 }
 ```
 

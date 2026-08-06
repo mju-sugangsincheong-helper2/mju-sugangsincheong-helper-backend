@@ -93,7 +93,7 @@ public class ExchangeService {
 		}
 
 		executeAfterCommit(() -> {
-			cacheService.pushFeed(term, FeedCacheDto.from(saved));
+			cacheService.evictFeed(term);
 			cacheService.evictMainCache(term, memberId);
 			cycleDetector.enqueueCycleDetection(CycleDetectionMessage.builder()
 					.term(term)

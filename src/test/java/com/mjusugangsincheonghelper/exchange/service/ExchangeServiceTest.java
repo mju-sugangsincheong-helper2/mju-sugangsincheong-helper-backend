@@ -217,7 +217,7 @@ class ExchangeServiceTest {
 			exchangeService.createIntent(memberId, request);
 
 			// Then
-			verify(cacheService).pushFeed(eq(term), any(FeedCacheDto.class));
+			verify(cacheService).evictFeed(term);
 			verify(cacheService).evictMainCache(term, memberId);
 			verify(cycleDetector).enqueueCycleDetection(any(CycleDetectionMessage.class));
 		}

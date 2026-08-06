@@ -56,7 +56,7 @@ public class NoticeController {
 	@PreAuthorize("hasRole('ADMIN')")
 	@Operation(
 			summary = "Create notice",
-			description = "공지사항을 등록하고 전체 사용자에게 푸시 알림을 발송합니다.",
+			description = "공지사항을 등록합니다. request.broadcast=true 이면 전체 사용자에게 푸시 알림도 함께 발송합니다.",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",

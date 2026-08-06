@@ -17,15 +17,6 @@ public enum SettingDefinition {
 			"202620",
 			raw -> new TermCode(raw),
 			raw -> raw != null && raw.matches("^20\\d{2}(10|15|20|25)$")
-	),
-
-	ANNOUNCEMENT(
-			"announcement",
-			ConfigType.STRING,
-			"상단 배너 공지 텍스트",
-			"",
-			raw -> raw,
-			raw -> true
 	);
 
 	private final String key;

@@ -15,6 +15,7 @@ x-variables:
   pgadmin_container: &PGADMIN_CONTAINER "mju-sugangsincheong-helper-pgadmin"
   redis_container: &REDIS_CONTAINER "mju-sugangsincheong-helper-redis"
   redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
+  vm_container: &VM_CONTAINER "mju-sugangsincheong-helper-victoria-metrics"
 
 services:
   db:
@@ -129,10 +130,29 @@ services:
       - redis
     restart: always
 
+  # 인프라 지표 수집: Spring Boot /actuator/prometheus 를 스크레이핑 (Grafana 없이 vmui로 조회)
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: *VM_CONTAINER
+    ports:
+      - "8428:8428"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - "-storageDataPath=/victoria-metrics-data"
+      - "-retentionPeriod=30d"
+      - "-memory.allowedPercent=20"
+      - "-promscrape.config=/etc/prometheus.yml"
+    volumes:
+      - ./docker/victoriametrics/prometheus.yml:/etc/prometheus.yml:ro
+      - victoriametrics_data:/victoria-metrics-data
+    restart: always
+
 volumes:
   postgres_data:
   redis_data:
   pgadmin_data:
+  victoriametrics_data:
 
 
   # 애플리케이션 서비스 (예시)
