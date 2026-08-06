@@ -8,9 +8,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DeviceSessionService {
@@ -112,6 +114,8 @@ public class DeviceSessionService {
 	 */
 	@Transactional
 	public long deleteExpired() {
-		return memberDeviceRepository.deleteExpired(java.time.Instant.now());
+		long deletedCount = memberDeviceRepository.deleteExpired(java.time.Instant.now());
+		log.info("Cleaned up expired device sessions. deletedCount={}", deletedCount);
+		return deletedCount;
 	}
 }

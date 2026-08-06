@@ -87,7 +87,7 @@ public class ExchangeEventListener {
 				.distinct()
 				.toList();
 		if (targetMemberIds.isEmpty()) {
-			log.debug("No active target members to receive FCM notification for roomId={}", event.roomId());
+			log.debug("No active target members to receive FCM notification. roomId={}", event.roomId());
 			return;
 		}
 		notificationPublisher.publishToMembers(targetMemberIds, "EXCHANGE_MESSAGE",

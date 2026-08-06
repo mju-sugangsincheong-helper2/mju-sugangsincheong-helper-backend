@@ -3,8 +3,10 @@ package com.mjusugangsincheonghelper.multigame.game.service;
 import com.mjusugangsincheonghelper.multigame.game.config.MultigameProperties;
 import com.mjusugangsincheonghelper.multigame.game.runtime.GameRuntimeStore;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class GameSupplyService {
@@ -32,6 +34,7 @@ public class GameSupplyService {
 			return true;
 		} catch (InterruptedException exception) {
 			Thread.currentThread().interrupt();
+			log.debug("Supply ramp-up interrupted.");
 			return false;
 		}
 	}

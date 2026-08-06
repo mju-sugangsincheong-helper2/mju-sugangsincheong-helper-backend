@@ -167,15 +167,46 @@ spring:
 
 | 상황 | 레벨 | 내용 | 비고 |
 |------|------|------|------|
-| 쓰기 작업 완료 | `DEBUG` | 엔티티 ID, 작업 타입 | create/update/delete |
-| 외부 API 호출 | `INFO` | 대상, 소요 시간, 응답 코드 | - |
+| 핵심 비즈니스 이벤트 | `INFO` | 식별자 중심 최소 필드 | 아래 체크리스트 참조 |
+| 단순 쓰기 작업 완료 | `DEBUG` | 엔티티 ID, 작업 타입 | create/update/delete 중 비즈니스 의미가 작은 것 |
+| 캐시 조작 (성공) | `DEBUG` | 키 또는 생략 | evict/put/get 성공은 기본 무로그, 필요 시 DEBUG |
+| 캐시 조작 (실패) | `WARN` | 키, 원인 메시지 | 캐시는 장애가 곧 서비스 장애가 아니므로 WARN |
+| 외부 API 호출 | `INFO` | 대상, 개수, 응답 코드 | FCM 배치 발송, Google OAuth 등 |
+| 경합으로 인한 정상 스킵 | `DEBUG` | 스킵 대상 ID | 예: 방 생성 전 intent가 이미 삭제됨 |
 | 예외 발생 | — | 서비스에서는 로깅 금지 | `GlobalExceptionHandler`가 일괄 처리 |
+
+### 도메인별 핵심 이벤트 체크리스트 (INFO 대상)
+
+운영에서 "무슨 일이 있었나"를 재구성할 수 있어야 하는 이벤트만 INFO로 남깁니다.
+
+| 도메인 | INFO 이벤트 | DEBUG로 충분 |
+|--------|-------------|--------------|
+| Auth | 세션 생성(로그인), 세션 파괴(로그아웃), 게스트 생성, 계정 병합, 회원 탈퇴, 만료 기기 정리 | 세션 갱신(refresh, 고빈도 발생) |
+| Account | — | 약관 동의 |
+| Exchange | Intent 등록/철회, **매칭 성사(Room 생성)** | 캐시 evict, 사이클 중복 스킵, Room 상태 전이, 메시지 전송/조회 |
+| Multigame | 라운드 ready/start/정산 완료 | 라운드 취소(인원 부족/not ready), Supply 루프 중간 상태 |
+| Notice/Course | 공지 생성/수정/삭제, 강좌 import/삭제 (admin 조작) | — |
+| Notification | 브로드캐스트 적재, FCM 배치 발송 | 개별 기기 단위 푸시 적재, FCM 토큰 등록/삭제 |
+| SingleGame | — | 게임 기록 저장 |
+| System | 시작 시 초기화, **시스템 설정 변경** | — |
+
+### 서드파티 로거 억제
+
+프레임워크가 찍는 자체 초기화/진단 로그는 `application-*.yml`의 `logging.level`에서 WARN으로 억제합니다.
+
+```yaml
+logging:
+  level:
+    org.springdoc: WARN   # "Init duration for springdoc-openapi" 등 초기화 로그 억제
+```
 
 ### 금지 사항
 
 - **DTO/Entity 전체를 로깅하지 않음**: 민감 정보 + 로그 폭발
 - **비즈니스 예외를 서비스에서 로깅하지 않음**: `GlobalExceptionHandler`에 위임
 - **요청 파라미터 전체 logging 금지**: 비밀번호, 토큰 등 유출 위험
+- **캐시 evict/put 성공을 INFO로 남기지 않음**: 내부 구현 디테일이며 폴링 서비스에서 로그 폭발의 주원인
+- **호출 빈도가 높은 경로의 로그는 INFO 금지**: 세션 refresh, 메시지 전송, 메인 폴링 등
 
 ---
 

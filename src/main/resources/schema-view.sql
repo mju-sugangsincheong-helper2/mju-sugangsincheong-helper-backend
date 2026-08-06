@@ -77,8 +77,8 @@ SELECT
     rp.created_at,
     rp.global_rank,
     rp.dept_rank,
-    (SELECT COUNT(*) FROM single_game WHERE total_courses = rp.total_courses AND is_completed = TRUE) AS total_global_players,
-    (SELECT COUNT(*) FROM single_game sg JOIN member m ON sg.member_id = m.id WHERE sg.total_courses = rp.total_courses AND m.department = rp.department AND sg.is_completed = TRUE) AS total_dept_players
+    COUNT(*) OVER (PARTITION BY rp.total_courses) AS total_global_players,
+    COUNT(*) OVER (PARTITION BY rp.total_courses, rp.department) AS total_dept_players
 FROM v_ranking_page rp;
 
 CREATE OR REPLACE VIEW v_analysis_page AS

@@ -133,8 +133,6 @@ CREATE TABLE IF NOT EXISTS course (
     PRIMARY KEY (term, coursecls)
 ) PARTITION BY LIST (term);
 
-CREATE INDEX IF NOT EXISTS idx_course_term ON course (term);
-
 -- course 파티션 생성 (default + 신학기 파티션은 하단 "신학기 term 파티션 자동 생성" DO 블록이 생성)
 CREATE TABLE IF NOT EXISTS course_default PARTITION OF course DEFAULT;
 
@@ -295,8 +293,8 @@ SELECT
     rp.created_at,
     rp.global_rank,
     rp.dept_rank,
-    (SELECT COUNT(*) FROM single_game WHERE total_courses = rp.total_courses AND is_completed = TRUE) AS total_global_players,
-    (SELECT COUNT(*) FROM single_game sg JOIN member m ON sg.member_id = m.id WHERE sg.total_courses = rp.total_courses AND m.department = rp.department AND sg.is_completed = TRUE) AS total_dept_players
+    COUNT(*) OVER (PARTITION BY rp.total_courses) AS total_global_players,
+    COUNT(*) OVER (PARTITION BY rp.total_courses, rp.department) AS total_dept_players
 FROM v_ranking_page rp;
 
 CREATE OR REPLACE VIEW v_analysis_page AS
@@ -410,8 +408,6 @@ CREATE TABLE IF NOT EXISTS exchange_room_message (
 
 CREATE INDEX IF NOT EXISTS idx_message_room_id_pagination
     ON exchange_room_message (term, room_id, id DESC);
-CREATE INDEX IF NOT EXISTS idx_message_term
-    ON exchange_room_message (term);
 
 -- exchange_room_message 파티션 생성 (기본 파티션만; 학기 파티션은 하단 DO 블록이 생성)
 CREATE TABLE IF NOT EXISTS exchange_room_message_default PARTITION OF exchange_room_message DEFAULT;

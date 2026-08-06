@@ -32,10 +32,10 @@ public class SingleGameDataMergeService {
 			if (cache != null) {
 				String cacheKey = memberId + ":page:0:size:10:cache";
 				cache.evict(cacheKey);
-				log.info("Evicted single game records cache for memberId: {}, key: {}", memberId, cacheKey);
+				log.debug("Evicted single game records cache. memberId={}, cacheKey={}", memberId, cacheKey);
 			}
 		} catch (Exception e) {
-			log.warn("Failed to evict single game records cache for memberId: {}", memberId, e);
+			log.warn("Failed to evict single game records cache. memberId={}", memberId, e);
 		}
 	}
 }

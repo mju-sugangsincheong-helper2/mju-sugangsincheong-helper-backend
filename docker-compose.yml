@@ -1,5 +1,9 @@
+# 개발 환경 docker compose
+# - DB는 dockerfile_inline 으로 pgmq 확장 포함 빌드 (앱이 실제로 쓰는 유일한 확장, prod와 동일)
+# - dev 전용 도구: pgadmin (prod는 pgweb), redis-commander
+# - 지표 수집(VictoriaMetrics)은 아직 도입 전. 설정은 docker/victoriametrics/prometheus.yml 에 유지
+
 x-variables:
-  app_name: &APP_NAME "mju-sugangsincheong-helper"
   postgres_db_name: &POSTGRES_DB_NAME "postgres"
   postgres_user: &POSTGRES_USER "postgres"
   postgres_password: &POSTGRES_PASSWORD "postgrespassword"
@@ -9,19 +13,31 @@ x-variables:
   test_db_name: &TEST_DB_NAME "mjusugangsincheonghelperdb_test"
   pgadmin_email: &PGADMIN_EMAIL "admin@admin.com"
   pgadmin_password: &PGADMIN_PASSWORD "1253"
-  # Container name anchors
   postgres_container: &POSTGRES_CONTAINER "mju-sugangsincheong-helper-postgres"
   db_setup_container: &DB_SETUP_CONTAINER "mju-sugangsincheong-helper-db-setup"
   pgadmin_container: &PGADMIN_CONTAINER "mju-sugangsincheong-helper-pgadmin"
   redis_container: &REDIS_CONTAINER "mju-sugangsincheong-helper-redis"
   redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
-  vm_container: &VM_CONTAINER "mju-sugangsincheong-helper-victoria-metrics"
+
+  # postgres:17 + pgmq 빌드 (docker-compose-prod.yml 과 동일)
+  postgres_with_pgmq_inline_dockerfile: &POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE |
+    FROM postgres:17
+    USER root
+    RUN apt-get update && apt-get install -y --no-install-recommends \
+          postgresql-server-dev-17 make gcc git ca-certificates \
+        && rm -rf /var/lib/apt/lists/* \
+        && git clone https://github.com/pgmq/pgmq.git /tmp/pgmq \
+        && cd /tmp/pgmq/pgmq-extension && make install \
+        && rm -rf /tmp/pgmq \
+        && apt-get purge -y --auto-remove make gcc git postgresql-server-dev-17 \
+        && rm -rf /var/lib/apt/lists/*
+    USER postgres
 
 services:
   db:
     build:
       context: .
-      dockerfile: ./docker/postgres/Dockerfile
+      dockerfile_inline: *POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE
     container_name: *POSTGRES_CONTAINER
     environment:
       POSTGRES_DB: *POSTGRES_DB_NAME
@@ -39,9 +55,8 @@ services:
       retries: 5
     restart: always
 
-
   db-setup:
-    image: postgres:latest
+    image: postgres:17
     container_name: *DB_SETUP_CONTAINER
     environment:
       POSTGRES_HOST: db
@@ -72,10 +87,7 @@ services:
         if ! psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_database WHERE datname='$$DEV_DB_NAME'\" | grep -q 1; then
           echo 'Creating dev database...'
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$DEV_DB_NAME OWNER $$DB_USER;\"
-          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
-          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_cron;\"
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
-          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS system_stats;\"
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"ALTER DATABASE $$DEV_DB_NAME SET search_path TO public;\"
         fi
 
@@ -83,7 +95,6 @@ services:
         if ! psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_database WHERE datname='$$TEST_DB_NAME'\" | grep -q 1; then
           echo 'Creating test database...'
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$TEST_DB_NAME OWNER $$DB_USER;\"
-          psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"ALTER DATABASE $$TEST_DB_NAME SET search_path TO public;\"
         fi
@@ -92,7 +103,7 @@ services:
         echo 'Database setup complete!'
       "
     restart: "no"
-    
+
   pgadmin:
     build:
       context: ./docker/pgadmin
@@ -130,45 +141,7 @@ services:
       - redis
     restart: always
 
-  # 인프라 지표 수집: Spring Boot /actuator/prometheus 를 스크레이핑 (Grafana 없이 vmui로 조회)
-  victoria-metrics:
-    image: victoriametrics/victoria-metrics:latest
-    container_name: *VM_CONTAINER
-    ports:
-      - "8428:8428"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command:
-      - "-storageDataPath=/victoria-metrics-data"
-      - "-retentionPeriod=30d"
-      - "-memory.allowedPercent=20"
-      - "-promscrape.config=/etc/prometheus.yml"
-    volumes:
-      - ./docker/victoriametrics/prometheus.yml:/etc/prometheus.yml:ro
-      - victoriametrics_data:/victoria-metrics-data
-    restart: always
-
 volumes:
   postgres_data:
   redis_data:
   pgadmin_data:
-  victoriametrics_data:
-
-
-  # 애플리케이션 서비스 (예시)
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: ./docker/app/Dockerfile # 실제 애플리케이션 Dockerfile 경로로 변경 필요
-  #   container_name: *APP_CONTAINER
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/*DEV_DB_NAME # 개발 DB 사용 예시
-  #     SPRING_DATASOURCE_USERNAME: *DB_USER
-  #     SPRING_DATASOURCE_PASSWORD: *DB_PASSWORD
-  #     # 다른 환경 변수들 추가
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     - db
-  #     - redis
-  #   restart: always

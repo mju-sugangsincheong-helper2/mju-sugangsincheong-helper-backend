@@ -55,7 +55,7 @@ public class GlobalExceptionHandler {
 			details = errorDetailFrom(errorCode);
 		}
 
-		log.warn("BaseException: code={}, message={}", errorCode.getCode(), errorCode.getMessage(), cause);
+		log.warn("BaseException occurred. code={}, message={}", errorCode.getCode(), errorCode.getMessage(), cause);
 		return errorResponse(errorCode, details);
 	}
 
@@ -66,7 +66,7 @@ public class GlobalExceptionHandler {
 				.collect(Collectors.toList());
 
 		ErrorCode errorCode = ErrorCode.GLOBAL_VALIDATION_ERROR;
-		log.warn("Validation failed: details={}", details.size());
+		log.warn("Validation failed. detailCount={}", details.size());
 		return errorResponse(errorCode, details);
 	}
 
@@ -77,63 +77,63 @@ public class GlobalExceptionHandler {
 				.collect(Collectors.toList());
 
 		ErrorCode errorCode = ErrorCode.GLOBAL_VALIDATION_ERROR;
-		log.warn("Constraint violation: details={}", details.size());
+		log.warn("Constraint violation. detailCount={}", details.size());
 		return errorResponse(errorCode, details);
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleMessageNotReadable(HttpMessageNotReadableException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
-		log.warn("Message not readable: {}", exception.getMessage());
+		log.warn("Message not readable. message={}", exception.getMessage());
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(MissingServletRequestParameterException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleMissingServletRequestParameter(MissingServletRequestParameterException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
-		log.warn("Missing request parameter: {}", exception.getMessage());
+		log.warn("Missing request parameter. message={}", exception.getMessage());
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
-		log.warn("Type mismatch: {}", exception.getMessage());
+		log.warn("Type mismatch. message={}", exception.getMessage());
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(NoResourceFoundException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleNoResourceFound(NoResourceFoundException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_NOT_FOUND;
-		log.warn("Resource not found: {}", exception.getMessage());
+		log.warn("Resource not found. message={}", exception.getMessage());
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleAccessDenied(AccessDeniedException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_SECURITY_FORBIDDEN;
-		log.warn("Access denied: {}", exception.getMessage());
+		log.warn("Access denied. message={}", exception.getMessage());
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(IllegalArgumentException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleIllegalArgument(IllegalArgumentException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
-		log.warn("Illegal argument: {}", exception.getMessage());
+		log.warn("Illegal argument. message={}", exception.getMessage());
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(IllegalStateException.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleIllegalState(IllegalStateException exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_BAD_REQUEST;
-		log.warn("Illegal state: {}", exception.getMessage());
+		log.warn("Illegal state. message={}", exception.getMessage());
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ErrorResponseEnvelope> handleUnexpected(Exception exception) {
 		ErrorCode errorCode = ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR;
-		log.error("Unexpected error", exception);
+		log.error("Unexpected internal server error.", exception);
 		return errorResponse(errorCode, errorDetailFrom(exception));
 	}
 

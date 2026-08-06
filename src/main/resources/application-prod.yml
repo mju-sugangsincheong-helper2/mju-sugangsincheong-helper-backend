@@ -10,16 +10,15 @@ spring:
 
   sql:
     init:
-      mode: always
-      schema-locations: classpath:schema-prod.sql
+      # 스키마는 docker-compose-prod.yml 의 db-setup 이 psql 로 적용한다.
+      # (Spring의 SQL 스크립트 파서는 schema-prod.sql 의 DO $$ 블록을 지원하지 않음)
+      mode: never
 
   jpa:
-    defer-datasource-initialization: true
     hibernate:
       ddl-auto: validate
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         log_slow_query: 1000
     open-in-view: false
 
@@ -47,6 +46,9 @@ management:
       show-details: always
     logfile:
       external-file: logs/${app.instance-id}-application.log
+  info:
+    env:
+      enabled: true
 
 springdoc:
   api-docs:

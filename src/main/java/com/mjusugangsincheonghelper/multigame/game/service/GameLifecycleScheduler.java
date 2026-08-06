@@ -10,10 +10,12 @@ import com.mjusugangsincheonghelper.multigame.result.service.RoundSettlementServ
 import java.time.Instant;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class GameLifecycleScheduler {
@@ -36,10 +38,12 @@ public class GameLifecycleScheduler {
 			long waitingCount = runtimeStore.removeExpiredHeartbeatsAndCount(Instant.now());
 			if (waitingCount < 2) {
 				runtimeStore.setState(RuntimeState.CANCELLED);
+				log.debug("Multigame round cancelled (not enough players). round={}, waitingCount={}", round, waitingCount);
 				return;
 			}
 			runtimeStore.saveWaitingCount(waitingCount);
 			runtimeStore.setState(RuntimeState.READY);
+			log.info("Multigame round ready. round={}, waitingCount={}", round, waitingCount);
 		});
 	}
 
@@ -56,11 +60,13 @@ public class GameLifecycleScheduler {
 		}
 		try (lock) {
 			if (runtimeStore.state() != RuntimeState.READY) {
+				log.debug("Multigame round cancelled (not ready). round={}, state={}", round, runtimeStore.state());
 				runtimeStore.setState(RuntimeState.CANCELLED);
 				return;
 			}
 			long waitingCount = runtimeStore.waitingCount();
 			runtimeStore.startProgress(capacity(waitingCount));
+			log.info("Multigame round started. round={}, waitingCount={}, capacity={}", round, waitingCount, capacity(waitingCount));
 			supplyService.run();
 		}
 	}
@@ -77,8 +83,10 @@ public class GameLifecycleScheduler {
 				return;
 			}
 			long waitingCount = runtimeStore.waitingCount();
-			settlementService.save(RoundSettlement.from(round, (int) runtimeStore.participants(), capacity(waitingCount), runtimeStore.eventLog()));
+			long participantCount = runtimeStore.participants();
+			settlementService.save(RoundSettlement.from(round, (int) participantCount, capacity(waitingCount), runtimeStore.eventLog()));
 			runtimeStore.clear();
+			log.info("Multigame round settled. round={}, participantCount={}, capacity={}", round, participantCount, capacity(waitingCount));
 		});
 	}
 

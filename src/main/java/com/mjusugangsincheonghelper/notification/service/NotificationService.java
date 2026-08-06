@@ -47,6 +47,7 @@ public class NotificationService {
 		});
 
 		device.updateFcmToken(newFcmToken);
+		log.debug("Registered FCM token. memberId={}, deviceId={}", memberId, deviceId);
 		return NotificationTokenResponse.from(device);
 	}
 
@@ -60,6 +61,7 @@ public class NotificationService {
 		}
 
 		device.clearFcmToken();
+		log.debug("Deleted FCM token. memberId={}, deviceId={}", memberId, deviceId);
 	}
 
 	@Transactional
@@ -98,7 +100,7 @@ public class NotificationService {
 					.build();
 			pgmqService.send(NotificationConsumerWorker.QUEUE_NAME, event);
 			queuedCount++;
-			log.info("Queued test notification for memberId={}, deviceId={}", memberId, device.getId());
+			log.debug("Queued test notification. memberId={}, deviceId={}", memberId, device.getId());
 		}
 
 		if (queuedCount == 0) {

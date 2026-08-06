@@ -19,7 +19,6 @@ spring:
       ddl-auto: update
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         generate_statistics: true
         log_slow_query: 1000
     open-in-view: false
@@ -36,6 +35,7 @@ logging:
     root: INFO
     com.mjusugangsincheonghelper: DEBUG
     org.hibernate.SQL: INFO
+    org.springdoc: WARN  # springdoc 초기화 로그 억제
   file:
     name: logs/${app.instance-id}-application.log
 
@@ -43,7 +43,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus,loggers,logfile,threaddump,httpexchanges,env,mappings,beans,configprops,caches,conditions
+        include: "*"
   endpoint:
     health:
       show-details: always
@@ -51,6 +51,10 @@ management:
       external-file: logs/${app.instance-id}-application.log
     env:
       show-values: always
+  info:
+    env:
+      enabled: true
+
 
 app:
   instance-id: ${INSTANCE_ID:app}
@@ -202,3 +206,10 @@ app:
     supply:
       total-ramp-up-duration: 30s
       step-sleep-interval: 1s
+
+info:
+  app:
+    name: mju-sugangsincheong-helper-backend
+    version: 1.0.0-SNAPSHOT
+    description: 명지대학교 수강신청 도우미 백엔드 내부 시스템
+    environment: dev

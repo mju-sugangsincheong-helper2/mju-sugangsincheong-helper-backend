@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -43,6 +44,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 public class SingleGameService {
@@ -144,6 +146,9 @@ public class SingleGameService {
 		singleGameDetailRepository.saveAll(details);
 
 		singleGameDataMergeService.evictSingleGameRecordCacheForMember(memberId);
+
+		log.debug("Saved single game record. memberId={}, gameId={}, totalCourses={}, completed={}, tTotal={}",
+				memberId, gameId, totalCourses, request.isCompleted(), tTotal);
 
 		return SingleGameSaveResponse.builder()
 				.gameId(gameId)

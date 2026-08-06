@@ -44,7 +44,7 @@ public class ExchangeRoomCreationService {
 					jakarta.persistence.LockModeType.PESSIMISTIC_WRITE
 			);
 			if (locked == null || locked.isDeleted()) {
-				log.warn("Intent {} was deleted before room creation, skipping cycle", intent.getId());
+				log.debug("Intent was deleted before room creation, skipping cycle. intentId={}", intent.getId());
 				return null;
 			}
 		}
@@ -101,6 +101,9 @@ public class ExchangeRoomCreationService {
 		List<Long> memberIds = distinctMemberIntents.stream().map(ExchangeIntentEntity::getMemberId).toList();
 
 		eventPublisher.publishEvent(new ExchangeEvents.RoomCreated(term, room.getId(), memberIds));
+
+		log.info("Exchange match created. term={}, roomId={}, cycleSize={}, memberIds={}",
+				term, room.getId(), cycle.size(), memberIds);
 
 		return room.getId();
 	}

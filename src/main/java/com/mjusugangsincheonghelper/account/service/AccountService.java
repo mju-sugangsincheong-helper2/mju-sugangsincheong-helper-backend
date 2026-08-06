@@ -12,9 +12,11 @@ import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -51,7 +53,6 @@ public class AccountService {
 
 		memberAgreementRepository.deleteById(memberId);
 
-		
 		List<MemberDevice> devices = memberDeviceRepository.findByMemberId(memberId);
 		memberDeviceRepository.deleteAllInBatch(devices);
 
@@ -59,5 +60,6 @@ public class AccountService {
 				.ifPresent(memberAuthRepository::delete);
 
 		memberRepository.delete(member);
+		log.info("Withdrew account. memberId={}, role={}", memberId, member.getRole());
 	}
 }

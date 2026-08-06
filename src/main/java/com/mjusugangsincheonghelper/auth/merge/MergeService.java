@@ -12,9 +12,11 @@ import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.multigame.service.MultigameDataMergeService;
 import com.mjusugangsincheonghelper.singlegame.service.SingleGameDataMergeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -55,6 +57,8 @@ public class MergeService {
 		deviceSessionService.switchMember(guestId, targetId);
 
 		memberRepository.delete(guestMember);
+
+		log.info("Merged guest account to target member. guestId={}, targetId={}", guestId, targetId);
 
 		return AuthenticatedIdentity.builder()
 				.memberId(targetId)

@@ -16,9 +16,11 @@ import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -47,6 +49,8 @@ public class SessionService {
 				savedDevice.getId());
 
 		tokenDeliveryStrategy.deliver(accessToken, refreshToken, response);
+
+		log.info("Created session. memberId={}, role={}, deviceId={}", member.getId(), member.getRole(), savedDevice.getId());
 
 		return SessionResult.builder()
 				.accessToken(accessToken)
@@ -81,6 +85,8 @@ public class SessionService {
 
 		tokenDeliveryStrategy.deliver(newAccessToken, newRefreshToken, response);
 
+		log.debug("Refreshed session. memberId={}, deviceId={}", member.getId(), device.getId());
+
 		return SessionResult.builder()
 				.accessToken(newAccessToken)
 				.refreshToken(newRefreshToken)
@@ -96,5 +102,6 @@ public class SessionService {
 	public void destroySession(String refreshToken, HttpServletResponse response) {
 		deviceSessionService.deleteByRefreshToken(refreshToken);
 		tokenDeliveryStrategy.clear(response);
+		log.info("Destroyed session.");
 	}
 }

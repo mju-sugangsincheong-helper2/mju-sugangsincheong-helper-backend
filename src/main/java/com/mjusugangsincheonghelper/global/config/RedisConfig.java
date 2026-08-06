@@ -77,22 +77,22 @@ public class RedisConfig implements CachingConfigurer {
 		return new CacheErrorHandler() {
 			@Override
 			public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
-				log.warn("Cache get error on {} for key {}: {}", cache.getName(), key, exception.getMessage());
+				log.warn("Cache get error. cache={}, key={}, message={}", cache.getName(), key, exception.getMessage());
 			}
 
 			@Override
 			public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
-				log.warn("Cache put error on {} for key {}: {}", cache.getName(), key, exception.getMessage());
+				log.warn("Cache put error. cache={}, key={}, message={}", cache.getName(), key, exception.getMessage());
 			}
 
 			@Override
 			public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
-				log.warn("Cache evict error on {} for key {}: {}", cache.getName(), key, exception.getMessage());
+				log.warn("Cache evict error. cache={}, key={}, message={}", cache.getName(), key, exception.getMessage());
 			}
 
 			@Override
 			public void handleCacheClearError(RuntimeException exception, Cache cache) {
-				log.warn("Cache clear error on {}: {}", cache.getName(), exception.getMessage());
+				log.warn("Cache clear error. cache={}, message={}", cache.getName(), exception.getMessage());
 			}
 		};
 	}

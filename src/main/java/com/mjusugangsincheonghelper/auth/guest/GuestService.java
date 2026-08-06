@@ -9,9 +9,11 @@ import com.mjusugangsincheonghelper.database.repository.MemberAuthRepository;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -37,6 +39,8 @@ public class GuestService {
 				.authKey(guestKey)
 				.build();
 		memberAuthRepository.save(memberAuth);
+
+		log.info("Created guest member. memberId={}, guestName={}", member.getId(), guestName);
 
 		return AuthenticatedIdentity.builder()
 				.memberId(member.getId())

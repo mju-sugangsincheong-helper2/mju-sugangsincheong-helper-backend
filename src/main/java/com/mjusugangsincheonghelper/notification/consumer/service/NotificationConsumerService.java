@@ -36,14 +36,14 @@ public class NotificationConsumerService {
 	@SuppressWarnings("deprecation")
 	private void sendFcmBatch(List<NotificationEventMessage> batch) {
 		if (FirebaseApp.getApps().isEmpty()) {
-			log.warn("FirebaseApp is not initialized. Skipping FCM send for batch size={}", batch.size());
+			log.warn("FirebaseApp is not initialized. Skipping FCM send. batchSize={}", batch.size());
 			return;
 		}
 
 		List<Message> fcmMessages = new ArrayList<>();
 		for (NotificationEventMessage event : batch) {
 			if (event.getToken() == null || event.getToken().isBlank()) {
-				log.warn("FCM token is empty in notification event message. Skipping.");
+				log.debug("FCM token is empty in notification event message. Skipping FCM send.");
 				continue;
 			}
 
@@ -75,10 +75,10 @@ public class NotificationConsumerService {
 		}
 
 		try {
-			log.info("Sending FCM batch messages: count={}", fcmMessages.size());
+			log.info("Sending FCM batch messages. count={}", fcmMessages.size());
 			FirebaseMessaging.getInstance().sendEach(fcmMessages);
 		} catch (Exception e) {
-			log.error("Failed to send FCM batch", e);
+			log.error("Failed to send FCM batch. count={}", fcmMessages.size(), e);
 			throw new BaseException(ErrorCode.NOTIFICATION_SEND_FAILED, e);
 		}
 	}

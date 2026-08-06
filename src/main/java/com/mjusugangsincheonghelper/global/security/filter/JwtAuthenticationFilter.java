@@ -48,7 +48,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				request.setAttribute("privacyAgreed", claims.agreed());
 				request.setAttribute("deviceId", claims.deviceId());
 			} catch (Exception e) {
-				log.debug("Invalid access token: {}", e.getMessage());
+				log.debug("Invalid access token. message={}", e.getMessage());
 			}
 		}
 

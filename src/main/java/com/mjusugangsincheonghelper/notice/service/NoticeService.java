@@ -37,6 +37,8 @@ public class NoticeService {
 				.content(request.getContent())
 				.build());
 
+		log.info("Created notice. noticeId={}, type={}, title={}", notice.getId(), notice.getType(), notice.getTitle());
+
 		// broadcast=true 일 때만 전체 사용자에게 푸시 (기본: 등록만).
 		// 커밋 후(AFTER_COMMIT) 리스너가 발행하므로 롤백된 공지의 푸시가 나가지 않는다.
 		if (Boolean.TRUE.equals(request.getBroadcast())) {
@@ -50,6 +52,7 @@ public class NoticeService {
 		NoticeEntity notice = noticeRepository.findById(id)
 				.orElseThrow(() -> new BaseException(ErrorCode.NOTICE_NOT_FOUND));
 		notice.update(request.getType(), request.getTitle(), request.getContent());
+		log.info("Updated notice. noticeId={}", notice.getId());
 		return NoticeResponse.from(notice);
 	}
 
@@ -58,5 +61,6 @@ public class NoticeService {
 		NoticeEntity notice = noticeRepository.findById(id)
 				.orElseThrow(() -> new BaseException(ErrorCode.NOTICE_NOT_FOUND));
 		noticeRepository.delete(notice);
+		log.info("Deleted notice. noticeId={}", notice.getId());
 	}
 }

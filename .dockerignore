@@ -1,0 +1,4 @@
+# docker build 컨텍스트 최소화: backend 이미지는 gradle 로 빌드된 실행 jar 만 필요로 한다.
+# (docker compose build 전에 ./gradlew bootJar 실행 필요)
+*
+!build/libs/*.jar

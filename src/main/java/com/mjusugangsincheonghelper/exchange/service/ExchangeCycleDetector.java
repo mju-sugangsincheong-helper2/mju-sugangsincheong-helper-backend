@@ -39,7 +39,7 @@ public class ExchangeCycleDetector {
 		ExchangeIntentEntity triggerIntent = intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)).orElse(null);
 
 		if (triggerIntent == null || triggerIntent.isDeleted()) {
-			log.debug("Intent {} was deleted before cycle detection, skipping", intentId);
+			log.debug("Intent was deleted before cycle detection, skipping. intentId={}", intentId);
 			return;
 		}
 
@@ -61,6 +61,8 @@ public class ExchangeCycleDetector {
 			String cycleHash = computeCycleHash(cycle);
 			if (roomRepository.findByTermAndCycleHash(term, cycleHash).isEmpty()) {
 				roomCreationService.createRoom(term, cycle, cycleHash);
+			} else {
+				log.debug("Cycle already matched, skipping room creation. term={}, cycleHash={}", term, cycleHash);
 			}
 		}
 	}

@@ -50,7 +50,7 @@ public class NotificationConsumerWorker {
 		for (PgmqMessageDto msg : messages) {
 			try {
 				if (msg.getReadCt() > config.getMaxRetryCount()) {
-					log.error("Notification message exceeded max retries. Archiving message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
+					log.error("Notification message exceeded max retries. Archiving message. msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
 					pgmqService.archive(queueName, msg.getMsgId());
 					continue;
 				}
@@ -59,7 +59,7 @@ public class NotificationConsumerWorker {
 				validEvents.add(event);
 				messageIdsToDelete.add(msg.getMsgId());
 			} catch (Exception e) {
-				log.error("Failed to deserialize notification message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt(), e);
+				log.error("Failed to deserialize notification message. msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt(), e);
 			}
 		}
 
@@ -70,7 +70,7 @@ public class NotificationConsumerWorker {
 					pgmqService.delete(queueName, msgId);
 				}
 			} catch (Exception e) {
-				log.error("Failed to process notification batch: count={}", validEvents.size(), e);
+				log.error("Failed to process notification batch. count={}", validEvents.size(), e);
 			}
 		}
 	}

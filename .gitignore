@@ -41,3 +41,6 @@ data/
 client_secret*.json
 .opencode
 k6/report/
+logs/
+# prod secrets
+.env

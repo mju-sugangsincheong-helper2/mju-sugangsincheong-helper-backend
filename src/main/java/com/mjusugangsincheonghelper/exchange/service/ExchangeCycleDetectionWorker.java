@@ -27,7 +27,7 @@ public class ExchangeCycleDetectionWorker {
 		try {
 			pgmqService.createQueue(pgmqProperties.getCycleDetection().getQueueName());
 		} catch (Exception e) {
-			log.debug("Queue may already exist: {}", e.getMessage());
+			log.debug("Queue may already exist. message={}", e.getMessage());
 		}
 	}
 
@@ -40,7 +40,7 @@ public class ExchangeCycleDetectionWorker {
 		for (PgmqMessageDto msg : messages) {
 			try {
 				if (msg.getReadCt() > config.getMaxRetryCount()) {
-					log.error("Exchange cycle detection message exceeded max retries. Archiving message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
+					log.error("Exchange cycle detection message exceeded max retries. Archiving message. msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt());
 					pgmqService.archive(queueName, msg.getMsgId());
 					continue;
 				}
@@ -55,7 +55,7 @@ public class ExchangeCycleDetectionWorker {
 				);
 				pgmqService.delete(queueName, msg.getMsgId());
 			} catch (Exception e) {
-				log.error("Failed to process cycle detection message: msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt(), e);
+				log.error("Failed to process cycle detection message. msgId={}, readCt={}", msg.getMsgId(), msg.getReadCt(), e);
 			}
 		}
 	}

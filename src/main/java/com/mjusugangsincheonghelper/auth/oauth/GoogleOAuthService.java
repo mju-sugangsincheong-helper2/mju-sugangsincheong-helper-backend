@@ -157,7 +157,7 @@ public class GoogleOAuthService {
 		} catch (BaseException e) {
 			throw e;
 		} catch (Exception e) {
-			log.warn("ID token verification failed: {}", e.getMessage());
+			log.warn("ID token verification failed. message={}", e.getMessage(), e);
 			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED, e);
 		}
 	}
@@ -205,7 +205,7 @@ public class GoogleOAuthService {
 			keyCache.putAll(newKeys);
 			keyCacheExpiresAt = System.currentTimeMillis() + 3600_000;
 		} catch (Exception e) {
-			log.error("Failed to fetch Google JWKS", e);
+			log.error("Failed to fetch Google JWKS. uri={}", GOOGLE_JWKS_URI, e);
 			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED, e);
 		}
 	}
@@ -213,7 +213,7 @@ public class GoogleOAuthService {
 	private void validateMjuDomain(Claims claims) {
 		String hd = claims.get("hd", String.class);
 		if (hd == null || !MJU_DOMAIN.equals(hd)) {
-			log.warn("Non-MJU domain attempted login: hd={}", hd);
+			log.warn("Non-MJU domain attempted login. hd={}", hd);
 			throw new BaseException(ErrorCode.AUTH_NOT_MJU_DOMAIN);
 		}
 	}
@@ -224,7 +224,7 @@ public class GoogleOAuthService {
 		}
 		String[] parts = rawName.split("/");
 		if (parts.length < 3) {
-			log.warn("Invalid name format: expected 'name/position/department', got '{}'", rawName);
+			log.warn("Invalid name format. expected='name/position/department', rawName={}", rawName);
 			throw new BaseException(ErrorCode.AUTH_GOOGLE_AUTH_FAILED);
 		}
 		String name = parts[0].trim();

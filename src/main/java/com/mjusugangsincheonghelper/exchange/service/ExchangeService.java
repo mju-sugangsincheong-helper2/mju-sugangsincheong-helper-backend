@@ -37,12 +37,14 @@ import com.mjusugangsincheonghelper.system.service.SystemConfigService;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -86,6 +88,9 @@ public class ExchangeService {
 		eventPublisher.publishEvent(new ExchangeEvents.IntentCreated(
 				term, saved.getId(), memberId, saved.getGiveCourseNo(), saved.getWantCourseNo()));
 
+		log.info("Created exchange intent. term={}, memberId={}, intentId={}, give={}, want={}",
+				term, memberId, saved.getId(), saved.getGiveCourseNo(), saved.getWantCourseNo());
+
 		return IntentCreateResponse.from(saved);
 	}
 
@@ -122,6 +127,8 @@ public class ExchangeService {
 		}
 
 		eventPublisher.publishEvent(new ExchangeEvents.IntentDeleted(term, memberId, affectedRoomIds, affectedMemberIds));
+
+		log.info("Deleted exchange intent. term={}, memberId={}, intentId={}", term, memberId, intentId);
 
 		return IntentDeleteResponse.builder()
 				.intentId(intentId)
@@ -396,6 +403,10 @@ public class ExchangeService {
 		String oldStatus = room.getStatus();
 		room.updateStatus(newStatus);
 		roomRepository.save(room);
+
+		if (!newStatus.equals(oldStatus)) {
+			log.debug("Exchange room status changed. term={}, roomId={}, from={}, to={}", term, roomId, oldStatus, newStatus);
+		}
 
 		String systemContent = null;
 		if (newStatus.equals("ALL_DELETE") && !oldStatus.equals("ALL_DELETE")) {

@@ -4,9 +4,11 @@ import com.mjusugangsincheonghelper.database.entity.MemberAgreement;
 import com.mjusugangsincheonghelper.database.repository.MemberAgreementRepository;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AccountAgreementService {
@@ -26,6 +28,7 @@ public class AccountAgreementService {
 				.orElseGet(() -> new MemberAgreement(memberId));
 		agreement.agree();
 		memberAgreementRepository.save(agreement);
+		log.debug("Privacy policy agreed. memberId={}", memberId);
 		return new ConsentStatus(agreement.isStatus(), agreement.getAgreedAt());
 	}
 

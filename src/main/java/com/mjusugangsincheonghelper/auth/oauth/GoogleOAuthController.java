@@ -176,7 +176,7 @@ public class GoogleOAuthController {
 				return claims.memberId();
 			}
 		} catch (Exception e) {
-			log.debug("Invalid access token for guest detection: {}", e.getMessage());
+			log.debug("Invalid access token for guest detection. message={}", e.getMessage());
 		}
 		return null;
 	}

@@ -134,7 +134,7 @@ public class ExchangeCacheService {
 				return objectMapper.convertValue(value, MainResponse.class);
 			}
 		} catch (Exception e) {
-			log.warn("Redis getMainCache failed for key={}: {}", key, e.getMessage());
+			log.warn("Redis getMainCache failed. key={}, message={}", key, e.getMessage(), e);
 		}
 		return null;
 	}
@@ -145,7 +145,7 @@ public class ExchangeCacheService {
 		try {
 			redisTemplate.opsForValue().set(key, response, cacheProperties.getTtl(CACHE_NAME_MAIN));
 		} catch (Exception e) {
-			log.warn("Redis putMainCache failed for key={}: {}", key, e.getMessage());
+			log.warn("Redis putMainCache failed. key={}, message={}", key, e.getMessage(), e);
 		}
 	}
 
@@ -154,7 +154,7 @@ public class ExchangeCacheService {
 		try {
 			redisTemplate.delete(key);
 		} catch (Exception e) {
-			log.warn("Redis evictMainCache failed for key={}: {}", key, e.getMessage());
+			log.warn("Redis evictMainCache failed. key={}, message={}", key, e.getMessage(), e);
 		}
 		scheduleDoubleEvict(key);
 	}
@@ -164,7 +164,7 @@ public class ExchangeCacheService {
 			try {
 				redisTemplate.delete(key);
 			} catch (Exception e) {
-				log.warn("Double evict failed for key={}: {}", key, e.getMessage());
+				log.warn("Double evict failed. key={}, message={}", key, e.getMessage(), e);
 			}
 		}, java.time.Instant.now().plus(cacheProperties.getDoubleEvictDelay()));
 	}

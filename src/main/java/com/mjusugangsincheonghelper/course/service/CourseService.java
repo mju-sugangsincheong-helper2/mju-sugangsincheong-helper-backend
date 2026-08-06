@@ -14,9 +14,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -42,6 +44,8 @@ public class CourseService {
 				.sorted()
 				.toList();
 
+		log.info("Imported course sections. count={}, terms={}", entities.size(), terms);
+
 		return CourseSectionImportResponse.builder()
 				.importedCount(entities.size())
 				.terms(terms)
@@ -51,6 +55,7 @@ public class CourseService {
 	@Transactional
 	public CourseSectionDeleteResponse deleteSectionsByTerm(String term) {
 		long deletedCount = courseRepository.deleteByTerm(term);
+		log.info("Deleted course sections by term. term={}, deletedCount={}", term, deletedCount);
 		return CourseSectionDeleteResponse.builder()
 				.deletedCount(deletedCount)
 				.build();

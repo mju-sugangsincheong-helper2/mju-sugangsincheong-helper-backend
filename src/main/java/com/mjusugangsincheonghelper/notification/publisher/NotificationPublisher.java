@@ -37,11 +37,10 @@ public class NotificationPublisher {
 					continue;
 				}
 				enqueue(token, type, path, title, body);
-				log.info("Queued FCM notification: type={}, memberId={}, deviceId={}, path={}",
-						type, memberId, device.getId(), path);
+				log.debug("Queued FCM notification. type={}, memberId={}, deviceId={}", type, memberId, device.getId());
 			}
 		} catch (Exception e) {
-			log.warn("FCM 알림 발행 중 오류 발생: type={}, memberId={}", type, memberId, e);
+			log.warn("Failed to publish FCM notification. type={}, memberId={}", type, memberId, e);
 		}
 	}
 
@@ -57,7 +56,7 @@ public class NotificationPublisher {
 		try {
 			List<String> tokens = memberDeviceRepository.findAllFcmTokens();
 			if (tokens.isEmpty()) {
-				log.info("No FCM tokens found. Skipping broadcast: type={}", type);
+				log.debug("No FCM tokens found. Skipping broadcast. type={}", type);
 				return;
 			}
 			for (String token : tokens) {
@@ -65,7 +64,7 @@ public class NotificationPublisher {
 			}
 			log.info("Queued broadcast: type={}, tokenCount={}", type, tokens.size());
 		} catch (Exception e) {
-			log.warn("FCM 브로드캐스트 발행 중 오류 발생: type={}", type, e);
+			log.warn("Failed to publish FCM broadcast. type={}", type, e);
 		}
 	}
 

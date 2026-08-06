@@ -38,14 +38,14 @@ public class SystemConfigService {
 						.configType(def.getType())
 						.description(def.getDescription())
 						.build());
-				log.info("Initialized default system config: {}={}", def.getKey(), def.getDefaultValue());
+				log.info("Initialized default system config. key={}, defaultValue={}", def.getKey(), def.getDefaultValue());
 			}
 		}
 
 		// 공지사항이 전용 notice 테이블로 이전됨. 기존 JSON 기반 notices 키가 남아 있으면 제거한다.
 		if (repository.existsById("notices")) {
 			repository.deleteById("notices");
-			log.info("Removed obsolete system config key: notices (migrated to notice table)");
+			log.info("Removed obsolete system config key. key=notices");
 		}
 	}
 
@@ -73,12 +73,15 @@ public class SystemConfigService {
 		SystemConfig config = repository.findById(configKey)
 				.orElseThrow(() -> new BaseException(ErrorCode.SYSTEM_CONFIG_NOT_FOUND));
 
+		String previousValue = config.getConfigValue();
 		config.updateValue(request.getConfigValue(), request.getDescription());
 
 		var cache = cacheManager.getCache(CacheProperties.SYSTEM_CONFIG);
 		if (cache != null) {
 			cache.evict(configKey + ":cache");
 		}
+
+		log.info("Updated system config. key={}, from={}, to={}", configKey, previousValue, config.getConfigValue());
 
 		return SystemConfigResponse.from(config);
 	}
