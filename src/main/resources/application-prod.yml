@@ -35,7 +35,7 @@ logging:
     root: INFO
     com.mjusugangsincheonghelper: INFO
   file:
-    name: logs/${app.instance-id}-application.log  # 컨테이너 내 /app/logs (backend_logs 볼륨에 영속)
+    name: logs/${app.instance-id}-application.log  # 컨테이너 내 /app/logs → compose 가 ./logs 에 마운트
 
 management:
   endpoints:

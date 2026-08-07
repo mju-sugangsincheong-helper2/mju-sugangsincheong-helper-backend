@@ -149,7 +149,7 @@ services:
     ports:
       - "10020:8080"
     volumes:
-      - backend_logs:/app/logs
+      - ./logs:/app/logs  # 로그 영속화 — 프로젝트 logs/ 디렉터리
     depends_on:
       db-setup:
         condition: service_completed_successfully
@@ -224,8 +224,6 @@ services:
   #     - victoriametrics_data:/victoria-metrics-data
   #   restart: always
 
-volumes:
-  # 백엔드 로그만 named volume 유지. postgres/redis 데이터는 ./data/<dir> 바인드 마운트 사용
-  backend_logs:
+# 명명 볼륨 없음 — 데이터(postgres/redis)는 ./data/<dir>, 로그는 ./logs 바인드 마운트로 영속화
   # victoria-metrics 활성화 시 함께 해제
   # victoriametrics_data:
