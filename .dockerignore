@@ -1,4 +1,8 @@
-# docker build 컨텍스트 최소화: backend 이미지는 gradle 로 빌드된 실행 jar 만 필요로 한다.
-# (docker compose build 전에 ./gradlew bootJar 실행 필요)
+# backend 멀티스테이지 빌드에 필요한 소스만 컨텍스트에 포함한다.
+# (빌드 산출물/캐시/로그/문서 등은 제외)
 *
-!build/libs/*.jar
+!build.gradle
+!settings.gradle
+!gradlew
+!gradle/
+!src/

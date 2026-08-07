@@ -33,11 +33,19 @@ x-variables:
         && rm -rf /var/lib/apt/lists/*
     USER postgres
 
-  # 백엔드 이미지: ./gradlew bootJar 로 빌드된 실행 jar 을 그대로 패키징한다
+  # 백엔드 이미지: gradle wrapper 로 소스를 컴파일해 실행 jar 를 만드는 멀티스테이지 빌드.
+  # 별도 ./gradlew bootJar 없이 docker compose up -d 만으로 소스에서 이미지까지 자동 빌드된다.
   backend_inline_dockerfile: &BACKEND_INLINE_DOCKERFILE |
+    FROM eclipse-temurin:21-jdk AS build
+    WORKDIR /app
+    COPY gradlew settings.gradle build.gradle ./
+    COPY gradle ./gradle
+    COPY src ./src
+    RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar --no-daemon
+
     FROM eclipse-temurin:21-jre
     WORKDIR /app
-    COPY build/libs/*.jar app.jar
+    COPY --from=build /app/build/libs/*.jar app.jar
     EXPOSE 8080
     ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 
