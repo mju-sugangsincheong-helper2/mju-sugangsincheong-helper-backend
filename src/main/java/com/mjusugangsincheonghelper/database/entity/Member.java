@@ -63,7 +63,9 @@ public class Member {
 	}
 
 	public void promoteToMember(String name, String position, String department) {
-		this.role = Role.MEMBER;
+		if (this.role == Role.GUEST) {
+			this.role = Role.MEMBER;
+		}
 		this.name = name;
 		this.position = position;
 		this.department = department;
