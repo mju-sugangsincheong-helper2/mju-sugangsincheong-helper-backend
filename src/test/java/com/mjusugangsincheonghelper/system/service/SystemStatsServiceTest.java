@@ -20,7 +20,6 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +29,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import org.mockito.ArgumentMatchers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -147,7 +148,7 @@ class SystemStatsServiceTest {
 		));
 		List<Object[]> byStartTimeRows = new java.util.ArrayList<>();
 		byStartTimeRows.add(new Object[] {"202604020010", 90L, 30L});
-		given(multigameRoundMemberRepository.aggregateResultByStartTimes(any(Collection.class))).willReturn(byStartTimeRows);
+		given(multigameRoundMemberRepository.aggregateResultByStartTimes(ArgumentMatchers.<Collection<String>>any())).willReturn(byStartTimeRows);
 		List<Object[]> overallRows = new java.util.ArrayList<>();
 		overallRows.add(new Object[] {900L, 300L});
 		given(multigameRoundMemberRepository.aggregateOverallResult()).willReturn(overallRows);

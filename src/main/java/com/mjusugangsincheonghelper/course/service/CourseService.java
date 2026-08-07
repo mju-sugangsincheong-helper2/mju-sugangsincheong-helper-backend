@@ -7,8 +7,6 @@ import com.mjusugangsincheonghelper.course.dto.CourseSectionImportResponse;
 import com.mjusugangsincheonghelper.course.dto.CourseSectionResponse;
 import com.mjusugangsincheonghelper.database.entity.CourseEntity;
 import com.mjusugangsincheonghelper.database.repository.CourseRepository;
-import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
-import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;

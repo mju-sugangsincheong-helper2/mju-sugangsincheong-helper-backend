@@ -447,7 +447,12 @@ BEGIN
                                'exchange_room_intent', 'exchange_room_message',
                                'exchange_room_read_status'] LOOP
         FOR y IN 2025 .. 2029 LOOP
-            FOREACH term IN ARRAY ARRAY[lpad(y::text, 4, '0') || '10', lpad(y::text, 4, '0') || '20'] LOOP
+            FOREACH term IN ARRAY ARRAY[
+                lpad(y::text, 4, '0') || '10',
+                lpad(y::text, 4, '0') || '15',
+                lpad(y::text, 4, '0') || '20',
+                lpad(y::text, 4, '0') || '25'
+            ] LOOP
                 EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF %I FOR VALUES IN (%L)',
                                tbl || '_' || term, tbl, term);
             END LOOP;

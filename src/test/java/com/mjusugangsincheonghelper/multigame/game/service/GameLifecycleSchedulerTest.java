@@ -70,7 +70,7 @@ class GameLifecycleSchedulerTest {
 	}
 
 	private void withNow(LocalDateTime fixed, Runnable testBody) {
-		try (MockedStatic<LocalDateTime> mocked = mockStatic(LocalDateTime.class)) {
+		try (MockedStatic<LocalDateTime> mocked = mockStatic(LocalDateTime.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
 			mocked.when(LocalDateTime::now).thenReturn(fixed);
 			testBody.run();
 		}

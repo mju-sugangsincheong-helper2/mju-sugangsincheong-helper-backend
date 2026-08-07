@@ -71,7 +71,18 @@ public class SystemConfigService {
 	@Transactional
 	public SystemConfigResponse update(String configKey, SystemConfigUpdateRequest request) {
 		SystemConfig config = repository.findById(configKey)
-				.orElseThrow(() -> new BaseException(ErrorCode.SYSTEM_CONFIG_NOT_FOUND));
+				.orElseGet(() -> {
+					SettingDefinition def = SettingDefinition.findByKey(configKey);
+					if (def == null) {
+						throw new BaseException(ErrorCode.SYSTEM_CONFIG_NOT_FOUND);
+					}
+					return repository.save(SystemConfig.builder()
+							.configKey(def.getKey())
+							.configValue(def.getDefaultValue())
+							.configType(def.getType())
+							.description(def.getDescription())
+							.build());
+				});
 
 		String previousValue = config.getConfigValue();
 		config.updateValue(request.getConfigValue(), request.getDescription());
