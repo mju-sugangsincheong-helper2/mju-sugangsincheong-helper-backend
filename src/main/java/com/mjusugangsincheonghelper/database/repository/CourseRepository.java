@@ -22,9 +22,9 @@ public interface CourseRepository extends JpaRepository<CourseEntity, CourseId> 
 	@Query("""
 		SELECT c FROM CourseEntity c
 		WHERE c.term = :term
-		  AND (:deptcd IS NULL OR c.deptcd = :deptcd)
-		  AND (:campus IS NULL OR c.campusdiv = :campus)
-		  AND (:likeKeyword IS NULL OR LOWER(c.curinm) LIKE LOWER(:likeKeyword) OR c.curinum LIKE :likeKeyword OR LOWER(c.profnm) LIKE LOWER(:likeKeyword))
+		  AND (CAST(:deptcd AS string) IS NULL OR c.deptcd = :deptcd)
+		  AND (CAST(:campus AS string) IS NULL OR c.campusdiv = :campus)
+		  AND (CAST(:likeKeyword AS string) IS NULL OR LOWER(c.curinm) LIKE LOWER(CAST(:likeKeyword AS string)) OR c.curinum LIKE CAST(:likeKeyword AS string) OR LOWER(c.profnm) LIKE LOWER(CAST(:likeKeyword AS string)))
 		ORDER BY c.curinm ASC, c.classdiv ASC
 	""")
 	List<CourseEntity> searchSections(@Param("term") String term, @Param("deptcd") String deptcd, @Param("campus") String campus, @Param("likeKeyword") String likeKeyword);
