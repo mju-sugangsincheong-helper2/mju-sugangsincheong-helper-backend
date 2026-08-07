@@ -3,6 +3,7 @@ spring:
     name: mjusugangsincheonghelper
 
   datasource:
+    # 로컬 docker compose (docker-compose.yml) 의 dev DB 에 직접 연결
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb_dev
     username: mjusugangsincheonghelperuser
@@ -11,15 +12,15 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:schema-view.sql
+      schema-locations: classpath:schema-view.sql  # DB 뷰만 생성 (테이블은 ddl-auto: update 가 관리)
 
   jpa:
     defer-datasource-initialization: true
     hibernate:
-      ddl-auto: update
+      ddl-auto: update  # dev 전용: 엔티티 변경을 스키마에 자동 반영 (prod 는 validate)
     properties:
       hibernate:
-        generate_statistics: true
+        generate_statistics: true  # Hibernate 통계 출력 (성능 확인용)
         log_slow_query: 1000
     open-in-view: false
 
@@ -43,14 +44,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: "*"  # dev 에서는 전체 actuator 엔드포인트 노출 (prod 는 명시 목록만)
   endpoint:
     health:
       show-details: always
     logfile:
       external-file: logs/${app.instance-id}-application.log
     env:
-      show-values: always
+      show-values: always  # dev 에서는 env 값을 노출해 설정 확인 (prod 는 기본값)
   info:
     env:
       enabled: true
@@ -94,13 +95,14 @@ app:
     allowed-origins: "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000"
 
   auth:
-    token-mode: header, cookie
-    cookie-secure: false
+    token-mode: header, cookie  # dev: 헤더/쿠키 모두 허용 + 응답 본문에 토큰 포함 (프론트 디버깅 편의)
+    cookie-secure: false  # 로컬 HTTP 에서도 쿠키 동작
     token-in-response: true
     cookie-max-age:
       access: 1h
       refresh: 7d
     test-accounts:
+      # 인증 없이 특정 사용자로 로그인해볼 수 있는 테스트 계정 (dev 전용)
       - name: "TEST_ADMIN/TEST_POSITION/TEST_DEPARTMENT"
         role: ADMIN
       - name: "TEST_MEMBER/TEST_POSITION/TEST_DEPARTMENT"
@@ -109,7 +111,7 @@ app:
         role: GUEST
 
   jwt:
-    secret: dev-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-prod
+    secret: dev-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-prod  # dev 고정 키 (prod 는 .env 주입)
     access-token-expiry-ms: 3600000       # 1시간
     refresh-token-expiry-ms: 604800000    # 7일
     merge-ticket-expiry-ms: 300000        # 5분

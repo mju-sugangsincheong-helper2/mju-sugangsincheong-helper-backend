@@ -35,19 +35,20 @@ x-variables:
 
 services:
   db:
+    # postgres:17 + pgmq 확장. 앱이 pgmq(메시지 큐)를 쓰므로 prod 와 동일하게 빌드
     build:
       context: .
       dockerfile_inline: *POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE
     container_name: *POSTGRES_CONTAINER
     environment:
-      POSTGRES_DB: *POSTGRES_DB_NAME
+      POSTGRES_DB: *POSTGRES_DB_NAME  # 기본 DB. 실제 dev/test DB 는 db-setup 이 생성
       POSTGRES_USER: *POSTGRES_USER
       POSTGRES_PASSWORD: *POSTGRES_PASSWORD
       PGPASSWORD: *POSTGRES_PASSWORD
     ports:
-      - "5432:5432"
+      - "5432:5432"  # IDE/로컬 psql 에서 바로 접속
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data  # dev 데이터는 named volume (삭제해도 무방)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -56,6 +57,7 @@ services:
     restart: always
 
   db-setup:
+    # 1회성 초기화: role + dev/test DB + pgmq 확장을 멱등 생성 후 종료 (재실행해도 안전)
     image: postgres:17
     container_name: *DB_SETUP_CONTAINER
     environment:
@@ -105,6 +107,7 @@ services:
     restart: "no"
 
   pgadmin:
+    # DB 관리 UI — http://localhost:8005 (prod 는 pgweb 사용)
     build:
       context: ./docker/pgadmin
       dockerfile: Dockerfile
@@ -115,21 +118,23 @@ services:
     ports:
       - "8005:80"
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - pgadmin_data:/var/lib/pgadmin  # 서버 연결 설정/세션 영속화
     depends_on:
       - db
     restart: always
 
   redis:
+    # 로컬 캐시/세션용 (별도 인증 없음 — localhost 전용)
     image: redis:7-alpine
     container_name: *REDIS_CONTAINER
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis_data:/data  # dev 데이터는 named volume
     restart: always
 
   redis-commander:
+    # Redis 관리 UI — http://localhost:8006
     image: ghcr.io/joeferner/redis-commander:latest
     platform: linux/amd64
     container_name: *REDIS_COMMANDER_CONTAINER

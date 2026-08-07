@@ -51,19 +51,20 @@ x-variables:
 
 services:
   db:
+    # postgres:17 + pgmq 확장 이미지. pgmq 는 앱의 메시지 큐가 필수로 사용하는 유일한 확장
     build:
       context: .
       dockerfile_inline: *POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE
     container_name: *DB_CONTAINER
     environment:
-      POSTGRES_DB: *POSTGRES_DB_NAME
+      POSTGRES_DB: *POSTGRES_DB_NAME  # 초기 접속용 기본 DB. 실제 운영 DB(prod)는 db-setup 이 생성
       POSTGRES_USER: *POSTGRES_USER
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in .env}  # 슈퍼유저 비밀번호 (.env)
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in .env}
     ports:
-      - "10021:5432"
+      - "10021:5432"  # 운영 DB 외부 포트 — 내부망/SSH 터널 전용 (방화벽 차단 권장)
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data  # DB 데이터 영속화 — 백업/마이그레이션 대상
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -72,6 +73,7 @@ services:
     restart: always
 
   db-setup:
+    # 1회성 초기화 작업: role/운영 DB/확장/스키마를 멱등 적용 후 종료 (재실행해도 안전)
     image: postgres:17
     container_name: *DB_SETUP_CONTAINER
     environment:
@@ -118,15 +120,16 @@ services:
     restart: "no"
 
   backend:
+    # 소스에서 jar 를 빌드해 실행하는 앱 서버. 앞단 프록시가 /api 경로만 이 컨테이너로 전달
     build:
       context: .
       dockerfile_inline: *BACKEND_INLINE_DOCKERFILE
     container_name: *BACKEND_CONTAINER
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      INSTANCE_ID: backend
+      SPRING_PROFILES_ACTIVE: prod  # application-prod.yml 활성화
+      INSTANCE_ID: backend  # 로그 파일명/인스턴스 구분용
       TZ: Asia/Seoul
-      # application-prod.yml 이 요구하는 환경변수 (.env)
+      # application-prod.yml 이 요구하는 환경변수 (.env 에서 치환)
       DB_URL: ${DB_URL:?DB_URL required in .env}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME required in .env}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD required in .env}
@@ -162,12 +165,13 @@ services:
     restart: always
 
   redis:
+    # 앱의 캐시/세션 저장소. 데이터는 ./data/redis 에 영속화
     image: redis:7-alpine
     container_name: *REDIS_CONTAINER
     ports:
       - "10022:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data  # RDB 스냅샷/appendonly 저장 경로
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -177,6 +181,7 @@ services:
     restart: always
 
   redis-commander:
+    # Redis 관리 UI (내부망 전용)
     image: ghcr.io/joeferner/redis-commander:latest
     platform: linux/amd64
     container_name: *REDIS_COMMANDER_CONTAINER
@@ -220,8 +225,7 @@ services:
   #   restart: always
 
 volumes:
-  postgres_data:
-  redis_data:
+  # 백엔드 로그만 named volume 유지. postgres/redis 데이터는 ./data/<dir> 바인드 마운트 사용
   backend_logs:
   # victoria-metrics 활성화 시 함께 해제
   # victoriametrics_data:

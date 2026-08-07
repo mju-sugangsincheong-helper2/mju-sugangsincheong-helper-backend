@@ -3,6 +3,7 @@ spring:
     name: mjusugangsincheonghelper
 
   datasource:
+    # 운영 DB 접속 정보 — .env → docker-compose-prod.yml 환경변수 → 여기서 치환
     driver-class-name: org.postgresql.Driver
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -16,25 +17,25 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: validate  # 운영에서는 스키마 자동 생성/수정 금지. db-setup 결과와 일치하는지만 검증
     properties:
       hibernate:
-        log_slow_query: 1000
-    open-in-view: false
+        log_slow_query: 1000  # 1초 이상 걸린 쿼리를 로그에 남김
+    open-in-view: false  # OSIV 비활성화: 뷰 렌더링까지 DB 커넥션을 붙잡지 않음
 
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       repositories:
-        enabled: false
+        enabled: false  # Spring Data Redis 리포지토리 미사용 (RedisTemplate 으로 직접 접근)
 
 logging:
   level:
     root: INFO
     com.mjusugangsincheonghelper: INFO
   file:
-    name: logs/${app.instance-id}-application.log
+    name: logs/${app.instance-id}-application.log  # 컨테이너 내 /app/logs (backend_logs 볼륨에 영속)
 
 management:
   endpoints:
@@ -51,13 +52,14 @@ management:
       enabled: true
 
 springdoc:
+  # 운영에서는 API 문서 비공개 (swagger-ui, /v3/api-docs off)
   api-docs:
     enabled: false
   swagger-ui:
     enabled: false
 
 app:
-  instance-id: ${INSTANCE_ID:app}
+  instance-id: ${INSTANCE_ID:app}  # 로그 파일명 등 인스턴스 구분자 (compose 에서 backend 로 주입)
   # expose-error-details: false
   performance:
     slow-ms: 1000
@@ -68,6 +70,7 @@ app:
   # ==========================================
   security:
     public-urls:
+      # 인증 없이 접근 가능한 경로 (게스트 로그인/토큰 갱신/OAuth 시작·콜백/헬스체크)
       - /api/*/auth/guest
       - /api/*/auth/refresh
       - /api/*/auth/login/google/merge
@@ -81,6 +84,7 @@ app:
       # - /*.js
       - /actuator/**
     public-get-urls:
+      # GET 한정 인증 없이 허용 (조회성 공개 API)
       - "/api/*/course/sections"
       - "/api/*/course/department"
       - "/api/*/exchange/intents/recent"
@@ -94,17 +98,17 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://xn--hq1b21kh2g.com}
 
   auth:
-    token-mode: cookie
-    cookie-secure: true
+    token-mode: cookie  # JWT 를 헤더가 아닌 HttpOnly 쿠키로 전달 (XSS 방어)
+    cookie-secure: true  # HTTPS 에서만 쿠키 전송
     cookie-max-age:
       access: 1h
       refresh: 7d
 
   jwt:
-    secret: ${JWT_SECRET}
-    access-token-expiry-ms: 3600000
-    refresh-token-expiry-ms: 604800000
-    merge-ticket-expiry-ms: 300000
+    secret: ${JWT_SECRET}  # .env 에서 주입 (256bit 이상 필수)
+    access-token-expiry-ms: 3600000        # 1시간
+    refresh-token-expiry-ms: 604800000     # 7일
+    merge-ticket-expiry-ms: 300000         # 계정 병합 티켓 유효기간 5분
 
   oauth2:
     google:
@@ -123,14 +127,14 @@ app:
       pool-size: 2
       thread-name-prefix: "global-scheduler-"
     pgmq:
-      pool-size: 2
+      pool-size: 2  # PGMQ 폴링 워커 스레드 수
       thread-name-prefix: "pgmq-worker-"
     multigame:
       pool-size: 1
       thread-name-prefix: "multigame-scheduler-"
 
   cache:
-    double-evict-delay: 2s
+    double-evict-delay: 2s  # (교환 로직) 이중 캐시 무효화 간격
     default-ttl: 24h
     ttls:
       system-config: 24h
@@ -146,18 +150,18 @@ app:
   # 3. 비동기 메시징 & 외부 서비스 (PGMQ / Firebase)
   # ==========================================
   pgmq:
-    archive-cleanup-cron: "0 30 3 * * *"
+    archive-cleanup-cron: "0 30 3 * * *"  # 매일 03:30 처리 완료 메시지 아카이브 정리
     notification:
       queue-name: "notification_queue"
       poll-interval: 1s
-      visibility-timeout: 30
+      visibility-timeout: 30   # 소비 후 재시도 대기 시간(초)
       batch-size: 400
       max-retry-count: 5
     cycle-detection:
       queue-name: "exchange_cycle_detection"
       poll-interval: 1s
       visibility-timeout: 30
-      batch-size: 1
+      batch-size: 1  # 교환 사이클 감지는 순차 처리
       max-retry-count: 5
 
   firebase:
