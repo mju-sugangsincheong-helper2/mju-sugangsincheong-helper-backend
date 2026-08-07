@@ -198,7 +198,8 @@ CREATE TABLE IF NOT EXISTS multigame_round_log (
     attempt_status VARCHAR(20) NOT NULL,
     attempt_seq    BIGINT      NOT NULL,
     current_limit  INT         NOT NULL,
-    attempted_at   TIMESTAMP   NOT NULL
+    attempted_at   TIMESTAMP   NOT NULL,
+    CONSTRAINT  chk_multigame_round_log_attempt_status CHECK (attempt_status IN ('ENQUEUED', 'SUCCESS', 'FAIL_SOLDOUT', 'FAIL_DUPLICATE'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_multigame_round_member_member_id ON multigame_round_member (member_id);
