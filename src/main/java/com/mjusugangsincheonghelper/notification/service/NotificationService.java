@@ -40,11 +40,11 @@ public class NotificationService {
 			throw new BaseException(ErrorCode.GLOBAL_SECURITY_FORBIDDEN);
 		}
 
-		memberDeviceRepository.findByFcmToken(newFcmToken).ifPresent(existingDevice -> {
+		for (MemberDevice existingDevice : memberDeviceRepository.findAllByFcmToken(newFcmToken)) {
 			if (!existingDevice.getMemberId().equals(memberId)) {
 				existingDevice.clearFcmToken();
 			}
-		});
+		}
 
 		device.updateFcmToken(newFcmToken);
 		log.debug("Registered FCM token. memberId={}, deviceId={}", memberId, deviceId);

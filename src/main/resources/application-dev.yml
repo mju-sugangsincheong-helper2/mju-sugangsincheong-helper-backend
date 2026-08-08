@@ -149,8 +149,7 @@ app:
       exchange-user-intents: 24h
       exchange-room-meta: 24h
       singlegame-rank: 5m
-      singlegame-records: 5m
-      singlegame-analysis: 5m
+      singlegame-stats: 5m
       multigame-rank: 5m
 
   # ==========================================

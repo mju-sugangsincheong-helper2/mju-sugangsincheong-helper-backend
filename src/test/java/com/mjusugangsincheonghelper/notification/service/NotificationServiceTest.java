@@ -7,6 +7,7 @@ import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenDeleteRequest;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenRegisterRequest;
 import com.mjusugangsincheonghelper.notification.dto.NotificationTokenResponse;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,7 +48,7 @@ class NotificationServiceTest {
 				.build();
 
 		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
-		given(memberDeviceRepository.findByFcmToken(token)).willReturn(Optional.empty());
+		given(memberDeviceRepository.findAllByFcmToken(token)).willReturn(List.of());
 
 		NotificationTokenRegisterRequest request = NotificationTokenRegisterRequest.builder()
 				.fcmToken(token)

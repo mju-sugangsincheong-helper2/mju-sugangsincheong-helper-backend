@@ -42,13 +42,16 @@
 | `exchange-room-meta` (`{term}:room:{roomId}:meta`) | 방 동적 상태(메시지/토글/참여자) | **L1(잦은 쓰기)**: 이벤트 빈도가 높아 실질 신선도는 **evict가 아니라 캐시 조회 시작점 확보**가 핵심. "어떤 쓰기 후 evict 호출이 빠졌는가"를 봐야 함 |
 | `exchange-main` (`{term}:member:{memberId}:...`) | 회원별 화면 전체 렌더 스냅샷 (수동 Redis, double-evict) | **L5 우선**: 재생성이 무거움 → evict 타이밍 정밀화 + `doubleEvictDelay`(재캐시 역전 방지)가 있는지, **L4**: 회원 수에 비례한 유계. 뷰: "**evict와 재캐시 쓰기 경합을 어떻게 막았는가**" |
 
-### singlegame — 랭킹/기록/분석
+### singlegame — 랭킹/통계
 
 | 키 | 성격 | 바라보는 시점 |
 |---|---|---|
-| `singlegame-rank` (`{totalCourses}:{scope}:{dept}:cache`) | 전역/학과 리더보드 집계의 스냅샷 | **L2(집계 스냅샷)**: 단건 저장으로 값이 "틀리지" 않고 그저 낡는다 → **evict 불필요**, TTL(5m)이 유일한 신선도 수단. 주의: 응답에 `myRank`(개인 스코프)가 포함되어 키에 memberId 없이 공유되는 **정합성 오염** 여부를 봐야 함 |
-| `singlegame-records` (`{memberId}:page:0:size:10`) | 본인 기록 + 랭킹 | **L1(Read-Your-Writes)**: 게임 저장 직후 목록에 보여야 함 → **저장/이전 시점에 소유자 키 evict 필수** |
-| `singlegame-analysis` (`{gameId}:{memberId}`) | 게임 분석 리포트 (원본 불변 + 통계 이동) | **L2 + L4(핵심)**: 원본 반응 시간은 불변이라 낡아도 무해하나, 키가 **gameId×조회자로 무한** → 메모리 절규는 TTL이 유일. 예외로 guest→member "소속 전환" 때는 값이 달라져 **그 시점만 evict 필요** |
+| `singlegame-rank` (`{totalCourses}:{scope}:{dept}:cache`) | 전역/학과 리더보드 집계의 스냅샷 | **L2(집계 스냅샷)**: 단건 저장으로 값이 "틀리지" 않고 그저 낡는다 → **evict 불필요**, TTL(5m)이 유일한 신선도 수단. 응답에 `myRank`(개인 스코프)가 포함되어 키에 memberId 없이 공유되므로, myRank는 요청마다 별도 계산 |
+| `singlegame-stats` (`{totalCourses}:global:cache`, `{totalCourses}:dept:{dept}:cache`) | 통계 데이터 (percentile, aggregates) | **L2 + L5**: 통계 계산 비용이 매우 높으므로 캐시 필수. 새 게임 저장 시 해당 totalCourses의 캐시 evict. 키 공간은 totalCourses(5개) × (1 + 학과 수)로 유계 |
+
+**캐시하지 않는 데이터:**
+- **내 기록 (my records)**: 페이징 API로 부하 제한 + L5 재생성 비용 낮음 → 캐시 비효율
+- **분석 (analysis)**: 원본(game, details)은 불변 + stats 이미 캐시 + 조합 비용 낮음 → 매번 조합
 
 ### multigame — 
 
@@ -69,7 +72,7 @@
 | auth | 일회성 → TTL이 생명주기, evict 는 볼 필요 없음 |
 | system | 설정은 쓰기 이벤트 → evict, 조회는 스냅샷 → TTL |
 | exchange | feed/main은 공용·렌더(쓰기즉시+무거움), intents/room은 개인·동적(쓰기 즉시 반영) — **evict가 정합성의 본체** |
-| singlegame | rank=집계 L2(evict 불요), records=L1(즉시), analysis=L2+L4(TTL), identity 전환만 예외 evict |
+| singlegame | rank=집계 L2(evict 불요, TTL 5m), stats=L2+L5(계산 비용 매우 높음, evict 필요) |
 | multigame | 실제 실시간 도메인 — **Redis가 원본(ledger/control)이므로 eviction 금지 + 원자성(Lua)·복구 관점**이 최우선 |
 
 ---
