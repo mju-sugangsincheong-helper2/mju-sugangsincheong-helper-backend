@@ -136,7 +136,6 @@ services:
   redis-commander:
     # Redis 관리 UI — http://localhost:8006
     image: ghcr.io/joeferner/redis-commander:latest
-    platform: linux/amd64
     container_name: *REDIS_COMMANDER_CONTAINER
     environment:
       REDIS_HOSTS: "local:redis:6379"
