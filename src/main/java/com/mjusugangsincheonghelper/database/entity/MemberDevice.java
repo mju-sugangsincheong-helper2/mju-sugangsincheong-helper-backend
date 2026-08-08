@@ -104,6 +104,15 @@ public class MemberDevice {
 		this.lastAccessedAt = Instant.now();
 	}
 
+	/**
+	 * 세션 만료 시각을 연장한다 (rolling refresh / 재로그인 시 재사용).
+	 * RTK 회전 및 동일 기기 재로그인 시 만료 시각이 갱신되지 않으면
+	 * 최초 생성 시점+7일 이후로 디바이스가 영구 만료 상태가 되는 버그를 방지한다.
+	 */
+	public void extendExpiry(Instant expiresAt) {
+		this.expiresAt = expiresAt;
+	}
+
 	public void updateAccessInfo(String refreshTokenHash,
 			String platformJsName, String platformJsVersion,
 			String platformJsLayout, String platformJsPrerelease,

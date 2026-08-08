@@ -69,7 +69,9 @@ public class SessionService {
 				.orElseThrow(() -> new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN));
 
 		if (device.getExpiresAt() != null && device.getExpiresAt().isBefore(Instant.now())) {
-			memberDeviceRepository.delete(device);
+			// 별도 트랜잭션에서 삭제(커밋)한 뒤 throw. 같은 트랜잭션에서 delete 후 throw하면
+			// rollback되어 만료 디바이스가 잔존·재사용되는 버그가 있었다.
+			deviceSessionService.purgeDevice(device.getId());
 			throw new BaseException(ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
 		}
 
@@ -78,6 +80,9 @@ public class SessionService {
 
 		String newRefreshToken = tokenProvider.createRefreshToken();
 		device.updateRefreshTokenHash(RefreshTokenHasher.hash(newRefreshToken));
+		// rolling refresh: RTK 회전마다 세션 만료 시각도 7일 연장.
+		// (회전 시 연장하지 않으면 최초 생성+7일 이후 디바이스가 영구 만료된다.)
+		device.extendExpiry(Instant.now().plusMillis(tokenProvider.getRefreshTokenExpiryMs()));
 
 		boolean privacyAgreed = accountAgreementService.isAgreed(member.getId());
 		String newAccessToken = tokenProvider.createAccessToken(member.getId(), member.getRole().name(), privacyAgreed,
