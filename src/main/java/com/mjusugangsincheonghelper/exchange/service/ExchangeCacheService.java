@@ -8,6 +8,7 @@ import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
+import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
 import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
@@ -51,6 +52,7 @@ public class ExchangeCacheService {
 	private final ExchangeRoomIntentRepository roomIntentRepository;
 	private final ExchangeRoomMessageRepository messageRepository;
 	private final ExchangeRoomRepository roomRepository;
+	private final MemberRepository memberRepository;
 	private final RedisTemplate<String, Object> redisTemplate;
 	private final CacheProperties cacheProperties;
 	private final TaskScheduler taskScheduler;
@@ -94,7 +96,8 @@ public class ExchangeCacheService {
 		ExchangeRoomMessageEntity lastMessage = messageRepository.findTopByTermAndRoomIdOrderByIdDesc(term, roomId).orElse(null);
 		List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, roomId);
 		return RoomMetaCacheDto.from(room, lastMessage, roomIntents,
-				intentId -> intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)).orElse(null));
+				intentId -> intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)).orElse(null),
+				memberId -> memberRepository.findById(memberId).orElse(null));
 	}
 
 	// ============ 쓰기 (evict) ============

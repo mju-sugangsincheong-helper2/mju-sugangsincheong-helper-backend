@@ -19,10 +19,11 @@
 ## 2. 도메인별 세부 구조 및 책임
 
 ### 2.1 Security (보안 및 필터)
-- **JwtAuthenticationFilter**: 모든 인증이 필요한 요청에 대해 JWT 서명과 유효성을 검증합니다. DB 조회를 일절 배제하여 무상태성을 보장하며, `agreed` 클레임을 `request.setAttribute("privacyAgreed", ...)`로, `deviceId` 클레임을 `request.setAttribute("deviceId", ...)`로 저장합니다. `deviceId`는 `member_device.id`로 요청 기기를 식별합니다.
+- **JwtAuthenticationFilter**: 모든 인증이 필요한 요청에 대해 JWT 서명과 유효성을 검증합니다. DB 조회를 일절 배제하여 무상태성을 보장하며, `agreed` 클레임을 `request.setAttribute("privacyAgreed", ...)`로, `deviceId` 클레임을 `request.setAttribute("deviceId", ...)`로 저장합니다. `deviceId`는 `member_device.id`로 요청 기기를 식별합니다. 만료/무효 토큰은 예외를 던지지 않고 조용히 무시(log.debug)해 인증 없이 다음 필터로 진행합니다.
 - **ConsentCheckFilter**: SecurityContext의 권한과 `privacyAgreed` 플래그를 종합해 MEMBER/ADMIN 권한 사용자가 동의하지 않은 경우 403(`AUTH_PRIVACY_POLICY_REQUIRED`)을 반환합니다. 단, `/auth/privacy/agree`, `/auth/logout` 경로는 차단을 면제합니다.
+- **SecurityErrorWriter**: 필터 체인 레벨의 인증/인가 오류를 표준 에러 봉투 JSON으로 직렬화하는 단일 작성기입니다. `ConsentCheckFilter`의 403 응답과 `GlobalSecurityConfig`의 `exceptionHandling`이 함께 사용합니다.
 - **TokenExtractor**: 환경별(개발/운영) 토큰 추출 전략을 캡슐화합니다.
-- **GlobalSecurityConfig**: ① 공개 URL용 SecurityFilterChain, ② `/api/**` 인증 필수 SecurityFilterChain 두 개의 체인을 등록하며 CORS, CSRF, 세션 정책 및 역할 계층(Role Hierarchy)을 설정합니다.
+- **GlobalSecurityConfig**: ① 공개 URL용 SecurityFilterChain, ② `/api/**` 인증 필수 SecurityFilterChain 두 개의 체인을 등록하며 CORS, CSRF, 세션 정책, 역할 계층(Role Hierarchy), 그리고 **인증/인가 실패 시 시멘틱 응답**을 설정합니다. 미인증(토큰 없음/만료/무효) 요청은 `authenticationEntryPoint` → **401 `GLOBAL_SECURITY_001`**, 인증됨·권한 부족은 `accessDeniedHandler`/`GlobalExceptionHandler` → **403 `GLOBAL_SECURITY_002`**로 응답합니다. 이 401 응답이 프론트의 `401 → refresh` 트리거가 동작하게 만드는 핵심입니다.
 
 ### 2.2 Auth (인증 기능 분리 - Feature-driven)
 - **guest**: 서버측에서 고유 임의 키(UUID)를 발급하여 임시 게스트 회원 세션을 형성합니다.

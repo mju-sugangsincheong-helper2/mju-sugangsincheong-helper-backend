@@ -1,20 +1,19 @@
 package com.mjusugangsincheonghelper.global.security.filter;
 
-import tools.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
-import com.mjusugangsincheonghelper.global.api.envelope.ErrorResponseEnvelope;
+import com.mjusugangsincheonghelper.global.security.SecurityErrorWriter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 @RequiredArgsConstructor
@@ -38,7 +37,8 @@ public class ConsentCheckFilter extends OncePerRequestFilter {
 				boolean agreed = agreedAttr == null || Boolean.TRUE.equals(agreedAttr);
 
 				if (!agreed && !isConsentExemptPath(request)) {
-					sendErrorResponse(response);
+					// 403 + AUTH_PRIVACY_POLICY_REQUIRED JSON 봉투 (SecurityErrorWriter 사용)
+					SecurityErrorWriter.write(response, objectMapper, ErrorCode.AUTH_PRIVACY_POLICY_REQUIRED);
 					return;
 				}
 			}
@@ -51,16 +51,5 @@ public class ConsentCheckFilter extends OncePerRequestFilter {
 		String path = request.getRequestURI();
 		return path.contains("/auth/privacy/agree")
 				|| path.contains("/auth/logout");
-	}
-
-	private void sendErrorResponse(HttpServletResponse response) throws IOException {
-		response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-		response.setCharacterEncoding("UTF-8");
-
-		ErrorResponseEnvelope errorEnvelope = ErrorResponseEnvelope.from(ErrorCode.AUTH_PRIVACY_POLICY_REQUIRED);
-		String json = objectMapper.writeValueAsString(errorEnvelope);
-
-		response.getWriter().write(json);
 	}
 }

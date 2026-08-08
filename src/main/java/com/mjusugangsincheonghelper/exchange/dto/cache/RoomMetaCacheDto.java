@@ -5,6 +5,7 @@ import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
+import com.mjusugangsincheonghelper.database.entity.Member;
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.List;
@@ -58,6 +59,8 @@ public class RoomMetaCacheDto implements Serializable {
 		private static final long serialVersionUID = 1L;
 
 		private Long memberId;
+		private String name;
+		private String department;
 		private Long intentId;
 		private String giveCourseNo;
 		private String wantCourseNo;
@@ -73,7 +76,8 @@ public class RoomMetaCacheDto implements Serializable {
 			ExchangeRoomEntity room,
 			ExchangeRoomMessageEntity lastMessage,
 			List<ExchangeRoomIntentEntity> roomIntents,
-			Function<Long, ExchangeIntentEntity> intentLoader) {
+			Function<Long, ExchangeIntentEntity> intentLoader,
+			Function<Long, Member> memberLoader) {
 		MessageSummary lastMessageSummary = null;
 		if (lastMessage != null) {
 			lastMessageSummary = MessageSummary.builder()
@@ -88,8 +92,11 @@ public class RoomMetaCacheDto implements Serializable {
 		List<Participant> participants = roomIntents.stream()
 				.map(roomIntent -> {
 					ExchangeIntentEntity intent = intentLoader.apply(roomIntent.getIntentId());
+					Member member = memberLoader.apply(roomIntent.getMemberId());
 					return Participant.builder()
 							.memberId(roomIntent.getMemberId())
+							.name(member != null ? member.getName() : null)
+							.department(member != null ? member.getDepartment() : null)
 							.intentId(roomIntent.getIntentId())
 							.giveCourseNo(intent != null ? intent.getGiveCourseNo() : null)
 							.wantCourseNo(intent != null ? intent.getWantCourseNo() : null)

@@ -302,8 +302,23 @@ public class ExchangeService {
 
 		eventPublisher.publishEvent(new ExchangeEvents.RoomViewed(term, roomId, memberId));
 
+		RoomMetaCacheDto roomMeta = cacheService.getRoomMeta(term, roomId);
+		List<MessageResponse.ParticipantItem> participantItems = roomMeta != null ? roomMeta.getParticipants().stream()
+				.map(participant -> MessageResponse.ParticipantItem.builder()
+						.memberId(participant.getMemberId())
+						.name(participant.getName())
+						.department(participant.getDepartment())
+						.intentId(participant.getIntentId())
+						.giveCourseNo(participant.getGiveCourseNo())
+						.wantCourseNo(participant.getWantCourseNo())
+						.isDeleted(participant.isDeleted())
+						.isOn(participant.isOn())
+						.build())
+				.toList() : List.of();
+
 		return MessageResponse.builder()
 				.roomId(roomId)
+				.participants(participantItems)
 				.messages(items)
 				.nextBeforeMessageId(nextBeforeMessageId)
 				.hasNext(hasNext)
