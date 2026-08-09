@@ -56,6 +56,7 @@ public class GlobalMetaFilter extends OncePerRequestFilter {
 
 		MDC.put("requestId", requestId);
 		MDC.put("instanceId", instanceIdProvider.getInstanceId());
+		MDC.put("ipAddress", ipAddress != null ? ipAddress : "");
 
 		response.setHeader("X-Request-Id", requestId);
 		if (apiVersion != null) {

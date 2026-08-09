@@ -7,6 +7,8 @@ import com.mjusugangsincheonghelper.multigame.result.domain.RoundEvent;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement.MemberSubject;
 import java.sql.Timestamp;
+import java.util.Calendar;
+import java.util.TimeZone;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -54,7 +56,10 @@ public class RoundSettlementService {
 		statement.setString(4, event.status());
 		statement.setLong(5, event.sequence());
 		statement.setInt(6, event.limit());
-		statement.setTimestamp(7, Timestamp.from(event.attemptedAt()));
+		// attempted_at 컬럼은 tz 없는 TIMESTAMP이며 Hibernate는 Instant를 UTC 리터럴로 저장한다.
+		// raw JdbcTemplate도 동일하게 UTC로 바인딩한다(캘린더 UTC 오버로드) — JVM 시간대(KST) 주입을 방지.
+		statement.setTimestamp(7, Timestamp.from(event.attemptedAt()),
+				Calendar.getInstance(TimeZone.getTimeZone("UTC")));
 	}
 
 	private void bindMember(java.sql.PreparedStatement statement, String startTime, MemberSubject key,

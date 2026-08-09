@@ -17,7 +17,7 @@ import com.mjusugangsincheonghelper.multigame.game.domain.RuntimeState;
 import com.mjusugangsincheonghelper.multigame.game.runtime.GameRuntimeStore;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement;
 import com.mjusugangsincheonghelper.multigame.result.service.RoundSettlementService;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,7 +58,7 @@ class GameLifecycleSchedulerTest {
 
 	@BeforeEach
 	void setUp() {
-		// 미운영 시간대 판정은 GameStatusResolver 기본 설정(02:00 ~ 05:00)을 그대로 사용한다
+		// 미운영 시간대 판정은 GameStatusResolver 기본 설정(한국 표준시 02:00 ~ 05:00)을 그대로 사용한다
 		scheduler = new GameLifecycleScheduler(advisoryLockService, transactionTemplate, runtimeStore, supplyService, settlementService, new GameStatusResolver());
 		// TransactionTemplate.executeWithoutResult가 실제로 Consumer를 실행하도록 한다
 		doAnswer(invocation -> {
@@ -69,9 +69,9 @@ class GameLifecycleSchedulerTest {
 		given(advisoryLockService.tryXactLock(anyString(), anyString())).willReturn(true);
 	}
 
-	private void withNow(LocalDateTime fixed, Runnable testBody) {
-		try (MockedStatic<LocalDateTime> mocked = mockStatic(LocalDateTime.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
-			mocked.when(LocalDateTime::now).thenReturn(fixed);
+	private void withNow(Instant fixed, Runnable testBody) {
+		try (MockedStatic<Instant> mocked = mockStatic(Instant.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+			mocked.when(Instant::now).thenReturn(fixed);
 			testBody.run();
 		}
 	}
@@ -89,7 +89,7 @@ class GameLifecycleSchedulerTest {
 		void it_readies_when_enough_waiting() {
 			given(runtimeStore.removeExpiredHeartbeatsAndCount(any())).willReturn(5L);
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 9, 55), scheduler::ready);
+			withNow(Instant.parse("2026-08-01T12:09:55Z"), scheduler::ready);
 
 			verify(runtimeStore).saveWaitingCount(5);
 			verify(runtimeStore).setState(RuntimeState.READY);
@@ -100,7 +100,7 @@ class GameLifecycleSchedulerTest {
 		void it_cancels_when_not_enough_waiting() {
 			given(runtimeStore.removeExpiredHeartbeatsAndCount(any())).willReturn(1L);
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 9, 55), scheduler::ready);
+			withNow(Instant.parse("2026-08-01T12:09:55Z"), scheduler::ready);
 
 			verify(runtimeStore).setState(RuntimeState.CANCELLED);
 			verify(runtimeStore, never()).saveWaitingCount(any(Long.class));
@@ -112,7 +112,7 @@ class GameLifecycleSchedulerTest {
 			given(advisoryLockService.tryXactLock(anyString(), anyString())).willReturn(false);
 			given(runtimeStore.removeExpiredHeartbeatsAndCount(any())).willReturn(5L);
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 9, 55), scheduler::ready);
+			withNow(Instant.parse("2026-08-01T12:09:55Z"), scheduler::ready);
 
 			verify(runtimeStore, never()).setState(any(RuntimeState.class));
 			verify(runtimeStore, never()).saveWaitingCount(any(Long.class));
@@ -135,7 +135,7 @@ class GameLifecycleSchedulerTest {
 			given(runtimeStore.state()).willReturn(RuntimeState.READY);
 			given(runtimeStore.waitingCount()).willReturn(10L);
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 0, 0), scheduler::start);
+			withNow(Instant.parse("2026-08-01T12:00:00Z"), scheduler::start);
 
 			// capacity = max(1, round(10 / 2)) = 5
 			verify(runtimeStore).startProgress(5);
@@ -150,7 +150,7 @@ class GameLifecycleSchedulerTest {
 					.willReturn(mock(SessionLock.class));
 			given(runtimeStore.state()).willReturn(RuntimeState.CANCELLED);
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 0, 0), scheduler::start);
+			withNow(Instant.parse("2026-08-01T12:00:00Z"), scheduler::start);
 
 			verify(runtimeStore).setState(RuntimeState.CANCELLED);
 			verify(runtimeStore, never()).startProgress(any(Integer.class));
@@ -162,7 +162,7 @@ class GameLifecycleSchedulerTest {
 		void it_skips_when_session_lock_not_acquired() {
 			given(advisoryLockService.trySessionLockHeld(anyString(), anyString())).willReturn(null);
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 0, 0), scheduler::start);
+			withNow(Instant.parse("2026-08-01T12:00:00Z"), scheduler::start);
 
 			verify(runtimeStore, never()).startProgress(any(Integer.class));
 			verify(supplyService, never()).run();
@@ -185,7 +185,7 @@ class GameLifecycleSchedulerTest {
 			given(runtimeStore.waitingCount()).willReturn(10L);
 			given(runtimeStore.eventLog()).willReturn(List.of("1:ENQUEUED:1:1:1:0", "1:SUCCESS:1:2:1:1"));
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 0, 30), scheduler::finish);
+			withNow(Instant.parse("2026-08-01T12:00:30Z"), scheduler::finish);
 
 			ArgumentCaptor<RoundSettlement> settlementCaptor = ArgumentCaptor.forClass(RoundSettlement.class);
 			verify(settlementService).save(settlementCaptor.capture());
@@ -204,7 +204,7 @@ class GameLifecycleSchedulerTest {
 		void it_skips_when_not_progress() {
 			given(runtimeStore.state()).willReturn(RuntimeState.CANCELLED);
 
-			withNow(LocalDateTime.of(2026, 8, 1, 12, 0, 30), scheduler::finish);
+			withNow(Instant.parse("2026-08-01T12:00:30Z"), scheduler::finish);
 
 			verify(settlementService, never()).save(any(RoundSettlement.class));
 			verify(runtimeStore, never()).clear();
@@ -212,18 +212,18 @@ class GameLifecycleSchedulerTest {
 	}
 
 	// ---------------------------------------------------------------------
-	// 미운영 시간대 (CLOSED): 새벽 2시 ~ 5시
+	// 미운영 시간대 (CLOSED): 한국 표준시 새벽 2시 ~ 5시 (= UTC 17:00 ~ 20:00)
 	// ---------------------------------------------------------------------
 
 	@Nested
-	@DisplayName("미운영 시간대(02:00 ~ 05:00)에는")
+	@DisplayName("미운영 시간대(한국 표준시 02:00 ~ 05:00)에는")
 	class Describe_closed {
 
 		@Test
 		@DisplayName("ready()가 아무것도 하지 않는다")
 		void ready_is_noop() {
-			// CLOSED 판정은 GameStatusResolver 기본 설정(02:00 ~ 05:00) 기반
-			withNow(LocalDateTime.of(2026, 8, 1, 3, 0, 0), scheduler::ready);
+			// CLOSED 판정은 GameStatusResolver 기본 설정(02:00+09:00 ~ 05:00+09:00) 기반
+			withNow(Instant.parse("2026-08-01T18:00:00Z"), scheduler::ready); // UTC 18:00 = 한국 03:00
 
 			verify(runtimeStore, never()).removeExpiredHeartbeatsAndCount(any());
 			verify(runtimeStore, never()).setState(any(RuntimeState.class));
@@ -232,7 +232,7 @@ class GameLifecycleSchedulerTest {
 		@Test
 		@DisplayName("start()가 아무것도 하지 않는다")
 		void start_is_noop() {
-			withNow(LocalDateTime.of(2026, 8, 1, 3, 0, 0), scheduler::start);
+			withNow(Instant.parse("2026-08-01T18:00:00Z"), scheduler::start);
 
 			verify(advisoryLockService, never()).trySessionLockHeld(anyString(), anyString());
 		}
@@ -240,7 +240,7 @@ class GameLifecycleSchedulerTest {
 		@Test
 		@DisplayName("finish()가 아무것도 하지 않는다")
 		void finish_is_noop() {
-			withNow(LocalDateTime.of(2026, 8, 1, 3, 0, 0), scheduler::finish);
+			withNow(Instant.parse("2026-08-01T18:00:00Z"), scheduler::finish);
 
 			verify(settlementService, never()).save(any(RoundSettlement.class));
 			verify(runtimeStore, never()).clear();

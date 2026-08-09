@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
@@ -220,7 +221,8 @@ class RoundSettlementServiceTest {
 			verify(ps).setString(4, event.status());
 			verify(ps).setLong(5, event.sequence());
 			verify(ps).setInt(6, event.limit());
-			verify(ps).setTimestamp(7, Timestamp.from(event.attemptedAt()));
+			// attempted_at 은 UTC 캘린더 오버로드로 바인딩된다(JVM 시간대 주입 방지).
+			verify(ps).setTimestamp(eq(7), eq(Timestamp.from(event.attemptedAt())), any(java.util.Calendar.class));
 		}
 
 		@Test
