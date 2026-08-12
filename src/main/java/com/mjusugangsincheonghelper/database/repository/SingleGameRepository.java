@@ -48,23 +48,37 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	long countByMemberId(Long memberId);
 
 	@Query(value = """
-			SELECT sg.id, sg.member_id, m.name AS member_name, m.department,
-			       sg.total_courses, sg.t_total, sg.t_enter_main, sg.created_at
-			FROM single_game sg
-			JOIN member m ON sg.member_id = m.id
-			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			ORDER BY sg.t_total ASC, sg.created_at ASC
+			WITH ranked AS (
+			    SELECT sg.id, sg.member_id, m.name AS member_name, m.department,
+			           sg.total_courses, sg.t_total, sg.t_enter_main, sg.created_at,
+			           ROW_NUMBER() OVER (PARTITION BY sg.member_id ORDER BY sg.t_total ASC, sg.created_at ASC) AS rn
+			    FROM single_game sg
+			    JOIN member m ON sg.member_id = m.id
+			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			)
+			SELECT id, member_id, member_name, department,
+			       total_courses, t_total, t_enter_main, created_at
+			FROM ranked
+			WHERE rn = 1
+			ORDER BY t_total ASC, created_at ASC
 			""", nativeQuery = true)
 	List<Object[]> findRankingRaw(@Param("totalCourses") int totalCourses);
 
 	@Query(value = """
-			SELECT sg.id, sg.member_id, m.name AS member_name, m.department,
-			       sg.total_courses, sg.t_total, sg.t_enter_main, sg.created_at
-			FROM single_game sg
-			JOIN member m ON sg.member_id = m.id
-			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			  AND m.department = :department
-			ORDER BY sg.t_total ASC, sg.created_at ASC
+			WITH ranked AS (
+			    SELECT sg.id, sg.member_id, m.name AS member_name, m.department,
+			           sg.total_courses, sg.t_total, sg.t_enter_main, sg.created_at,
+			           ROW_NUMBER() OVER (PARTITION BY sg.member_id ORDER BY sg.t_total ASC, sg.created_at ASC) AS rn
+			    FROM single_game sg
+			    JOIN member m ON sg.member_id = m.id
+			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			      AND m.department = :department
+			)
+			SELECT id, member_id, member_name, department,
+			       total_courses, t_total, t_enter_main, created_at
+			FROM ranked
+			WHERE rn = 1
+			ORDER BY t_total ASC, created_at ASC
 			""", nativeQuery = true)
 	List<Object[]> findDeptRankingRaw(@Param("totalCourses") int totalCourses,
 	                                  @Param("department") String department);
