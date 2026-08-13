@@ -8,12 +8,12 @@ import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
 import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
+import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.exchange.dto.MainResponse;
 import com.mjusugangsincheonghelper.exchange.dto.cache.FeedCacheDto;
 import com.mjusugangsincheonghelper.exchange.dto.cache.IntentCacheDto;
 import com.mjusugangsincheonghelper.exchange.dto.cache.RoomMetaCacheDto;
 import com.mjusugangsincheonghelper.global.config.CacheProperties;
-import java.time.Duration;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +52,7 @@ public class ExchangeCacheService {
 	private final ExchangeRoomIntentRepository roomIntentRepository;
 	private final ExchangeRoomMessageRepository messageRepository;
 	private final ExchangeRoomRepository roomRepository;
+	private final MemberRepository memberRepository;
 	private final RedisTemplate<String, Object> redisTemplate;
 	private final CacheProperties cacheProperties;
 	private final TaskScheduler taskScheduler;
@@ -62,7 +63,7 @@ public class ExchangeCacheService {
 	/**
 	 * 최근 등록된 교환 신청 피드(최대 50개). 캐시 히트 시 캐시된 목록, 미스 시 DB에서 재구성해 캐시한다.
 	 */
-	@Cacheable(cacheNames = CACHE_NAME_FEED, key = "#term")
+	@Cacheable(cacheNames = CACHE_NAME_FEED, key = "#term", condition = "#term != null")
 	public List<FeedCacheDto> getFeed(String term) {
 		return intentRepository.findByTermAndIsDeletedFalseOrderByIdDesc(term, PageRequest.of(0, FEED_MAX_SIZE))
 				.stream()
@@ -74,7 +75,7 @@ public class ExchangeCacheService {
 	 * 회원의 비삭제 교환 의도 목록 (exchange-user-intents).
 	 * evict: 의도 등록/철회 시 {@link #evictMemberIntents(String, Long)}
 	 */
-	@Cacheable(cacheNames = CACHE_NAME_USER_INTENTS, key = "#term + ':member:' + #memberId + ':intents:cache'")
+	@Cacheable(cacheNames = CACHE_NAME_USER_INTENTS, key = "#term + ':member:' + #memberId + ':intents:cache'", condition = "#term != null")
 	public List<IntentCacheDto> getMemberIntents(String term, Long memberId) {
 		return intentRepository.findByTermAndMemberIdAndIsDeletedFalseOrderByIdDesc(term, memberId)
 				.stream()
@@ -86,7 +87,7 @@ public class ExchangeCacheService {
 	 * 방 단위 메타데이터 — 정적 정보(cycleHash, createdAt) + 동적 정보(상태, 마지막 메시지, 참여자 목록)
 	 * (exchange-room-meta). evict: 메시지 전송/방 토글/의도 철회 시 {@link #evictRoomMeta(String, Long)}
 	 */
-	@Cacheable(cacheNames = CACHE_NAME_ROOM_META, key = "#term + ':room:' + #roomId + ':meta:cache'")
+	@Cacheable(cacheNames = CACHE_NAME_ROOM_META, key = "#term + ':room:' + #roomId + ':meta:cache'", condition = "#term != null")
 	public RoomMetaCacheDto getRoomMeta(String term, Long roomId) {
 		ExchangeRoomEntity room = roomRepository.findById(new ExchangeRoomEntity.ExchangeRoomId(term, roomId)).orElse(null);
 		if (room == null) {
@@ -95,7 +96,8 @@ public class ExchangeCacheService {
 		ExchangeRoomMessageEntity lastMessage = messageRepository.findTopByTermAndRoomIdOrderByIdDesc(term, roomId).orElse(null);
 		List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, roomId);
 		return RoomMetaCacheDto.from(room, lastMessage, roomIntents,
-				intentId -> intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)).orElse(null));
+				intentId -> intentRepository.findById(new ExchangeIntentEntity.ExchangeIntentId(term, intentId)).orElse(null),
+				memberId -> memberRepository.findById(memberId).orElse(null));
 	}
 
 	// ============ 쓰기 (evict) ============
@@ -103,21 +105,21 @@ public class ExchangeCacheService {
 	/**
 	 * 피드가 바뀌는 쓰기(신청/삭제) 직후 호출 — 다음 {@link #getFeed(String)}에서 DB로 재구성된다.
 	 */
-	@CacheEvict(cacheNames = CACHE_NAME_FEED, key = "#term")
+	@CacheEvict(cacheNames = CACHE_NAME_FEED, key = "#term", condition = "#term != null")
 	public void evictFeed(String term) {
 	}
 
 	/**
 	 * 회원 의도 목록이 바뀌는 쓰기(등록/철회) 직후 호출.
 	 */
-	@CacheEvict(cacheNames = CACHE_NAME_USER_INTENTS, key = "#term + ':member:' + #memberId + ':intents:cache'")
+	@CacheEvict(cacheNames = CACHE_NAME_USER_INTENTS, key = "#term + ':member:' + #memberId + ':intents:cache'", condition = "#term != null")
 	public void evictMemberIntents(String term, Long memberId) {
 	}
 
 	/**
 	 * 방 메타데이터가 바뀌는 쓰기(메시지 전송/방 토글/의도 철회) 직후 호출.
 	 */
-	@CacheEvict(cacheNames = CACHE_NAME_ROOM_META, key = "#term + ':room:' + #roomId + ':meta:cache'")
+	@CacheEvict(cacheNames = CACHE_NAME_ROOM_META, key = "#term + ':room:' + #roomId + ':meta:cache'", condition = "#term != null")
 	public void evictRoomMeta(String term, Long roomId) {
 	}
 

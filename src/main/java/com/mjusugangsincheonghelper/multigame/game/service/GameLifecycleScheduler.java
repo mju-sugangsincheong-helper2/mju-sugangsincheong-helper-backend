@@ -8,7 +8,6 @@ import com.mjusugangsincheonghelper.multigame.game.runtime.GameRuntimeStore;
 import com.mjusugangsincheonghelper.multigame.result.domain.RoundSettlement;
 import com.mjusugangsincheonghelper.multigame.result.service.RoundSettlementService;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -27,9 +26,9 @@ public class GameLifecycleScheduler {
 	private final RoundSettlementService settlementService;
 	private final GameStatusResolver statusResolver;
 
-	@Scheduled(cron = "${app.multigame.schedule.game-ready-cron:${app.schedule.game-ready.cron:55 9/10 * * * *}}", scheduler = "multigameScheduler")
+	@Scheduled(cron = "${app.multigame.schedule.game-ready-cron:${app.schedule.game-ready.cron:55 9/10 * * * *}}", zone = "Asia/Seoul", scheduler = "multigameScheduler")
 	void ready() {
-		LocalDateTime now = LocalDateTime.now();
+		Instant now = Instant.now();
 		if (statusResolver.isClosed(now)) {
 			return;
 		}
@@ -47,9 +46,9 @@ public class GameLifecycleScheduler {
 		});
 	}
 
-	@Scheduled(cron = "${app.multigame.schedule.game-start-cron:${app.schedule.game-start.cron:0 0/10 * * * *}}", scheduler = "multigameScheduler")
+	@Scheduled(cron = "${app.multigame.schedule.game-start-cron:${app.schedule.game-start.cron:0 0/10 * * * *}}", zone = "Asia/Seoul", scheduler = "multigameScheduler")
 	void start() {
-		LocalDateTime now = LocalDateTime.now();
+		Instant now = Instant.now();
 		if (statusResolver.isClosed(now)) {
 			return;
 		}
@@ -71,9 +70,9 @@ public class GameLifecycleScheduler {
 		}
 	}
 
-	@Scheduled(cron = "${app.multigame.schedule.game-finish-cron:${app.schedule.game-finish.cron:30 0/10 * * * *}}", scheduler = "multigameScheduler")
+	@Scheduled(cron = "${app.multigame.schedule.game-finish-cron:${app.schedule.game-finish.cron:30 0/10 * * * *}}", zone = "Asia/Seoul", scheduler = "multigameScheduler")
 	void finish() {
-		LocalDateTime now = LocalDateTime.now();
+		Instant now = Instant.now();
 		if (statusResolver.isClosed(now)) {
 			return;
 		}

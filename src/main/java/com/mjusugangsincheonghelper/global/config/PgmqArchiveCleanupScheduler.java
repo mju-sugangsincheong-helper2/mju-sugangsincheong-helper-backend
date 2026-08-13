@@ -1,7 +1,5 @@
 package com.mjusugangsincheonghelper.global.config;
 
-import com.mjusugangsincheonghelper.exchange.service.ExchangeCycleDetector;
-import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

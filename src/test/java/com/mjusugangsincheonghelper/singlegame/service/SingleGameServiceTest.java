@@ -15,8 +15,10 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.StatsBundle;
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +31,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -57,6 +60,12 @@ class SingleGameServiceTest {
 	@Mock
 	private SingleGameDataMergeService singleGameDataMergeService;
 
+	@Mock
+	private SingleGameStatsService singleGameStatsService;
+
+	@Mock
+	private CacheManager cacheManager;
+
 	private SingleGameService singleGameService;
 
 	@Captor
@@ -68,7 +77,7 @@ class SingleGameServiceTest {
 	@BeforeEach
 	void setUp() {
 		singleGameService = new SingleGameService(
-				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameFeedbackEngine(), new SingleGameProperties(), singleGameDataMergeService);
+				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameFeedbackEngine(), new SingleGameProperties(), singleGameDataMergeService, singleGameStatsService, cacheManager);
 	}
 
 	@Nested
@@ -727,6 +736,59 @@ class SingleGameServiceTest {
 	@DisplayName("getAnalysis 메서드는")
 	class Describe_getAnalysis {
 
+		/** 테스트용 StatsBundle 생성 헬퍼: raw details로부터 aggregates를 계산 */
+		private StatsBundle statsBundleFromRawDetails(List<Object[]> allDetails) {
+			Map<Long, List<Object[]>> detailsByGame = new java.util.HashMap<>();
+			for (Object[] row : allDetails) {
+				long gameId = (row[0] instanceof Number n) ? n.longValue() : 0L;
+				detailsByGame.computeIfAbsent(gameId, k -> new java.util.ArrayList<>()).add(row);
+			}
+			List<double[]> aggregates = new java.util.ArrayList<>();
+			for (List<Object[]> gameDetails : detailsByGame.values()) {
+				gameDetails.sort(java.util.Comparator.comparingInt(r -> {
+					Object o = r[1];
+					return (o instanceof Number n) ? n.intValue() : 0;
+				}));
+				int gN = gameDetails.size();
+				double sumCC = 0, sumCY = 0, sumCOK = 0;
+				List<Integer> gTotals = new java.util.ArrayList<>();
+				for (Object[] d : gameDetails) {
+					int cc = ((Number) d[2]).intValue(), cy = ((Number) d[3]).intValue(), cok = ((Number) d[4]).intValue();
+					sumCC += cc; sumCY += cy; sumCOK += cok;
+					gTotals.add(cc + cy + cok);
+				}
+				double avgCC = sumCC / gN, avgCY = sumCY / gN, avgCOK = sumCOK / gN;
+				double avgBurst = (sumCY + sumCOK) / gN;
+				int t1Total = gTotals.isEmpty() ? 0 : gTotals.get(0);
+				double paceStddev = 0, initialSprint = 0, fatigueIndex = 0;
+				if (gN >= 3) {
+					double mean = gTotals.stream().mapToInt(Integer::intValue).average().orElse(0);
+					double variance = gTotals.stream().mapToDouble(t -> Math.pow(t - mean, 2)).sum() / gN;
+					paceStddev = Math.sqrt(variance);
+					double laterAvg = gTotals.subList(1, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
+					initialSprint = gTotals.get(0) - laterAvg;
+					int half = gN / 2;
+					double firstHalfAvg = gTotals.subList(0, half).stream().mapToInt(Integer::intValue).average().orElse(0);
+					double secondHalfAvg = gTotals.subList(gN - half, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
+					fatigueIndex = secondHalfAvg - firstHalfAvg;
+				}
+				aggregates.add(new double[]{avgCC, avgCY, avgCOK, avgBurst, t1Total, paceStddev, initialSprint, fatigueIndex});
+			}
+			return StatsBundle.builder()
+					.seqPercentileStats(Map.of())
+					.enterMainPercentileStats(null)
+					.aggregates(aggregates)
+					.build();
+		}
+
+		private StatsBundle emptyStatsBundle() {
+			return StatsBundle.builder()
+					.seqPercentileStats(Map.of())
+					.enterMainPercentileStats(null)
+					.aggregates(List.of())
+					.build();
+		}
+
 		@Test
 		@DisplayName("유효한 게임 ID에 대해 분석 결과를 반환한다")
 		void it_returns_analysis() {
@@ -745,8 +807,7 @@ class SingleGameServiceTest {
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 12000))
 					.willReturn(List.of(1L, 2L, 3L, 4L, 5L));
-			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(List.of());
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000))
 					.willReturn(List.of(1L, 2L, 3L));
 
@@ -768,7 +829,7 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("존재하지 않는 게임 ID면 예외를 던진다")
+		@DisplayName("god tier physical 피드백이 반환된다")
 		void it_returns_god_tier_physical_feedback() {
 			SingleGameEntity game = SingleGameEntity.builder()
 					.memberId(1L).tTotal(5000).tEnterMain(200)
@@ -788,9 +849,7 @@ class SingleGameServiceTest {
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000)).willReturn(List.of(1L));
-			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
 
-			// Mock details for 100 players so aimP <= 30 and burstP <= 30
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 100L; gId++) {
 				int clickCC = (gId == 1L) ? 100 : (int) gId * 50;
@@ -798,7 +857,7 @@ class SingleGameServiceTest {
 				int clickOk = (gId == 1L) ? 50 : (int) gId * 20;
 				allDetails.add(new Object[]{gId, 1, clickCC, clickY, clickOk});
 			}
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 200)).willReturn(List.of(1L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
@@ -824,7 +883,6 @@ class SingleGameServiceTest {
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 50000)).willReturn(List.of(1L));
-			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -833,7 +891,7 @@ class SingleGameServiceTest {
 				int cok = (gId == 1L) ? 2000 : (int) gId * 50;
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
@@ -858,7 +916,6 @@ class SingleGameServiceTest {
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 20000)).willReturn(List.of(1L));
-			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -867,7 +924,7 @@ class SingleGameServiceTest {
 				int cok = (gId == 1L) ? 50 : (int) gId * 500;
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
@@ -885,16 +942,14 @@ class SingleGameServiceTest {
 
 			List<SingleGameDetailEntity> details = List.of(
 					SingleGameDetailEntity.builder().gameId(1L).sequence(1)
-							.tClickCourse(500).tClickYes(50).tClickOk(50).build() // T1 = 600
+							.tClickCourse(500).tClickYes(50).tClickOk(50).build()
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 600)).willReturn(List.of(1L));
-			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
 
-			// Mock 10 players details so player 1 has aimP=40%, burstP=40%, startP=0%
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
 				int cc = (gId == 1L) ? 500 : (int) gId * 100;
@@ -902,7 +957,7 @@ class SingleGameServiceTest {
 				int cok = (gId == 1L) ? 50 : (int) gId * 200;
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 100)).willReturn(List.of(1L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
@@ -928,18 +983,17 @@ class SingleGameServiceTest {
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 3000)).willReturn(List.of(1L));
-			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
 				for (int seq = 1; seq <= 3; seq++) {
 					int cc = (gId == 1L) ? 500 : (int) gId * 100;
-					int cy = (gId == 1L) ? 250 : (int) gId * 50 + seq * 10; // other players have paceStddev > 0
+					int cy = (gId == 1L) ? 250 : (int) gId * 50 + seq * 10;
 					int cok = (gId == 1L) ? 250 : (int) gId * 50;
 					allDetails.add(new Object[]{gId, seq, cc, cy, cok});
 				}
 			}
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(allDetails);
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 1000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
@@ -969,7 +1023,6 @@ class SingleGameServiceTest {
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(7)).willReturn(10L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(7, 6900)).willReturn(List.of(1L));
-			given(singleGameRepository.findSequencePercentileStats(7)).willReturn(List.of());
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -980,7 +1033,7 @@ class SingleGameServiceTest {
 					allDetails.add(new Object[]{gId, seq, cc, cy, cok});
 				}
 			}
-			given(singleGameRepository.findAllDetailsByTotalCourses(7)).willReturn(allDetails);
+			given(singleGameStatsService.getGlobalStats(7)).willReturn(statsBundleFromRawDetails(allDetails));
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(7, 1000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
@@ -1007,8 +1060,7 @@ class SingleGameServiceTest {
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
 			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(3200L);
 			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000)).willReturn(new java.util.ArrayList<>(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L, 13L, 14L, 15L, 16L, 17L, 18L, 19L, 20L, 21L, 22L, 23L, 24L, 25L, 26L, 27L, 28L, 29L, 30L, 31L, 32L, 33L, 34L, 35L, 36L, 37L, 38L, 39L, 40L, 41L, 42L, 43L, 44L, 45L, 46L, 47L, 48L, 49L, 50L, 51L, 52L, 53L, 54L, 55L, 56L, 57L, 58L, 59L, 60L, 61L, 62L, 63L, 64L, 65L, 66L, 67L, 68L, 69L, 70L, 71L, 72L, 73L, 74L, 75L, 76L, 77L, 78L, 79L, 80L, 81L, 82L, 83L, 84L, 85L, 86L, 87L, 88L, 89L, 90L, 91L, 92L, 93L, 94L, 95L, 96L, 97L, 98L, 99L, 100L, 101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L, 110L, 111L, 112L, 113L, 114L, 115L, 116L, 117L, 118L, 119L, 120L, 121L, 122L, 123L, 124L, 125L, 126L, 127L, 128L, 129L, 130L, 131L, 132L, 133L, 134L, 135L, 136L, 137L, 138L, 139L, 140L, 141L, 142L)));
-			given(singleGameRepository.findSequencePercentileStats(6)).willReturn(List.of());
-			given(singleGameRepository.findAllDetailsByTotalCourses(6)).willReturn(List.of());
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
 			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);

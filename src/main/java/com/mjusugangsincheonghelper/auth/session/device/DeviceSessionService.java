@@ -10,6 +10,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -43,6 +44,9 @@ public class DeviceSessionService {
 					if (info.getFcmToken() != null) {
 						device.updateFcmToken(info.getFcmToken());
 					}
+					// 동일 기기 재로그인: 만료 시각도 함께 연장하지 않으면
+					// 최초 생성 시점+7일 이후로 디바이스가 영구 만료 상태가 된다.
+					device.extendExpiry(Instant.now().plusMillis(expiryMs));
 					return device;
 				})
 				.orElseGet(() -> {
@@ -117,5 +121,19 @@ public class DeviceSessionService {
 		long deletedCount = memberDeviceRepository.deleteExpired(java.time.Instant.now());
 		log.info("Cleaned up expired device sessions. deletedCount={}", deletedCount);
 		return deletedCount;
+	}
+
+	/**
+	 * 만료된 디바이스 세션을 별도 트랜잭션(REQUIRES_NEW)에서 즉시 삭제한다.
+	 * <p>{@code SessionService.refreshSession}의 만료 분기에서 호출된다.
+	 * 호출 컨텍스트(refresh)가 이어서 예외를 던지며 rollback되더라도,
+	 * 이 삭제는 별도 트랜잭션에서 이미 커밋됐으므로 취소되지 않는다.
+	 * <p>(이전 구현은 같은 트랜잭션에서 delete 후 throw해 rollback되어
+	 * 만료 디바이스가 DB에 잔존하며 계속 재사용되는 버그가 있었다.)
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public void purgeDevice(Long deviceId) {
+		memberDeviceRepository.findById(deviceId).ifPresent(memberDeviceRepository::delete);
+		log.info("Purged expired device session. deviceId={}", deviceId);
 	}
 }

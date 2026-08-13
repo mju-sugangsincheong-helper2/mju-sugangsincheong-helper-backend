@@ -3,7 +3,6 @@ package com.mjusugangsincheonghelper.notification.publisher;
 import com.mjusugangsincheonghelper.database.entity.MemberDevice;
 import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
-import com.mjusugangsincheonghelper.notification.consumer.NotificationConsumerWorker;
 import com.mjusugangsincheonghelper.notification.consumer.dto.NotificationEventMessage;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;

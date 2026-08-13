@@ -11,7 +11,6 @@ import com.mjusugangsincheonghelper.multigame.game.dto.GameWaitingResponse;
 import com.mjusugangsincheonghelper.multigame.game.runtime.GameApplyScript;
 import com.mjusugangsincheonghelper.multigame.game.runtime.GameRuntimeStore;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,7 +25,7 @@ public class GameSessionService {
 	private final GameStatusResolver statusResolver;
 
 	public GameWaitingResponse waitingRoom(long memberId) {
-		LocalDateTime now = LocalDateTime.now();
+		Instant now = Instant.now();
 		GameStatus status = status(now);
 		long participation = participationFor(status);
 		if (status == GameStatus.WAITING || status == GameStatus.READY) {
@@ -37,7 +36,7 @@ public class GameSessionService {
 	}
 
 	public GameEnterResponse enter(long memberId) {
-		LocalDateTime now = LocalDateTime.now();
+		Instant now = Instant.now();
 		GameStatus status = status(now);
 		assertProgress(status);
 		return GameEnterResponse.builder()
@@ -52,7 +51,7 @@ public class GameSessionService {
 	}
 
 	public GameApplyResponse apply(long memberId, int subjectId) {
-		GameStatus status = status(LocalDateTime.now());
+		GameStatus status = status(Instant.now());
 		if (status != GameStatus.PROGRESS) {
 			return GameApplyResponse.builder().status("BLOCKED").currentState(status.name()).build();
 		}
@@ -71,7 +70,7 @@ public class GameSessionService {
 		}
 	}
 
-	private GameStatus status(LocalDateTime now) {
+	private GameStatus status(Instant now) {
 		GameStatus withoutRedis = statusResolver.resolve(now, null);
 		return withoutRedis == GameStatus.STARTING ? statusResolver.resolve(now, runtimeStore.state()) : withoutRedis;
 	}

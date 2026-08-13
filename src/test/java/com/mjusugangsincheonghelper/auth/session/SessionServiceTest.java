@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.mjusugangsincheonghelper.account.service.AccountAgreementService;
@@ -148,6 +149,32 @@ class SessionServiceTest {
 			assertThatThrownBy(() -> sessionService.refreshSession(invalidRefreshToken, response))
 					.isInstanceOf(BaseException.class)
 					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
+		}
+
+		@Test
+		@DisplayName("만료된 디바이스는 별도 트랜잭션에서 삭제(purge)하고 예외를 던진다")
+		void it_purges_and_throws_for_expired_device() {
+			String refreshToken = "expired-refresh-token";
+			HttpServletResponse response = new MockHttpServletResponse();
+
+			MemberDevice device = MemberDevice.builder()
+					.memberId(1L)
+					.refreshTokenHash(RefreshTokenHasher.hash(refreshToken))
+					.expiresAt(java.time.Instant.now().minusMillis(1000)) // 과거 = 만료
+					.build();
+			ReflectionTestUtils.setField(device, "id", 10L);
+
+			given(memberDeviceRepository.findByRefreshTokenHash(RefreshTokenHasher.hash(refreshToken)))
+					.willReturn(Optional.of(device));
+
+			assertThatThrownBy(() -> sessionService.refreshSession(refreshToken, response))
+					.isInstanceOf(BaseException.class)
+					.hasFieldOrPropertyWithValue("errorCode", ErrorCode.AUTH_INVALID_REFRESH_TOKEN);
+
+			// 별도 트랜잭션에서 삭제되어야 한다 (rollback 방지)
+			verify(deviceSessionService).purgeDevice(10L);
+			// 이전 구현의 same-tx delete는 더 이상 호출되지 않는다
+			verify(memberDeviceRepository, never()).delete(any(MemberDevice.class));
 		}
 	}
 }

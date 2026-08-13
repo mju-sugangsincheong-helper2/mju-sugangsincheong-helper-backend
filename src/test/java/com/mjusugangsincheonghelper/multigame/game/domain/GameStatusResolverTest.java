@@ -2,8 +2,9 @@ package com.mjusugangsincheonghelper.multigame.game.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.time.Instant;
+import java.time.OffsetTime;
+import java.time.ZoneOffset;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -14,16 +15,18 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class GameStatusResolverTest {
 
-	/** 기본 미운영 시간대(02:00 ~ 05:00)로 생성된 리졸버. yml 미설정 시의 기본값과 동일하다. */
+	/** 기본 미운영 시간대(한국 표준시 02:00+09:00 ~ 05:00+09:00)로 생성된 리졸버. yml 미설정 시의 기본값과 동일하다. */
 	private static final GameStatusResolver DEFAULT = new GameStatusResolver();
 
-	/** T(10분 마크) = 21:10 게임을 기준으로 하는 시각 헬퍼. */
-	private static LocalDateTime at(int minute, int second) {
-		return LocalDateTime.of(2026, 8, 1, 21, minute, second);
+	/** UTC 21:M:S — 페이즈(분/초) 판정용. 한국 오프셋이 정수 시간이므로 UTC/KST 분·초가 동일하다. */
+	private static Instant at(int minute, int second) {
+		return Instant.parse("2026-08-01T21:%02d:%02dZ".formatted(minute, second));
 	}
 
-	private static LocalDateTime at(int minute, int second, int hour) {
-		return LocalDateTime.of(2026, 8, 1, hour, minute, second);
+	/** 한국 표준시(KST) 벽시계 M:H:S 에 해당하는 순간. 미운영 시간대 판정용. */
+	private static Instant at(int minute, int second, int kstHour) {
+		int utcHour = Math.floorMod(kstHour - 9, 24);
+		return Instant.parse("2026-08-01T%02d:%02d:%02dZ".formatted(utcHour, minute, second));
 	}
 
 	// ---------------------------------------------------------------------
@@ -31,7 +34,7 @@ class GameStatusResolverTest {
 	// ---------------------------------------------------------------------
 
 	@Nested
-	@DisplayName("미운영 시간대 (기본 02:00 ~ 05:00)")
+	@DisplayName("미운영 시간대 (기본 02:00+09:00 ~ 05:00+09:00)")
 	class ClosedWindow {
 
 		@Test
@@ -64,7 +67,9 @@ class GameStatusResolverTest {
 
 		@Test
 		void closesAcrossMidnight() {
-			GameStatusResolver resolver = new GameStatusResolver(LocalTime.of(23, 0), LocalTime.of(1, 0));
+			GameStatusResolver resolver = new GameStatusResolver(
+					OffsetTime.of(23, 0, 0, 0, ZoneOffset.ofHours(9)),
+					OffsetTime.of(1, 0, 0, 0, ZoneOffset.ofHours(9)));
 			assertThat(resolver.resolve(at(30, 0, 23), null)).isEqualTo(GameStatus.CLOSED);
 			assertThat(resolver.resolve(at(59, 59, 23), null)).isEqualTo(GameStatus.CLOSED);
 			assertThat(resolver.resolve(at(0, 0, 0), null)).isEqualTo(GameStatus.CLOSED);
@@ -73,7 +78,9 @@ class GameStatusResolverTest {
 
 		@Test
 		void opensOutsideMidnightWindow() {
-			GameStatusResolver resolver = new GameStatusResolver(LocalTime.of(23, 0), LocalTime.of(1, 0));
+			GameStatusResolver resolver = new GameStatusResolver(
+					OffsetTime.of(23, 0, 0, 0, ZoneOffset.ofHours(9)),
+					OffsetTime.of(1, 0, 0, 0, ZoneOffset.ofHours(9)));
 			assertThat(resolver.resolve(at(59, 59, 22), null)).isNotEqualTo(GameStatus.CLOSED);
 			assertThat(resolver.resolve(at(0, 0, 1), null)).isNotEqualTo(GameStatus.CLOSED);
 		}
@@ -81,7 +88,9 @@ class GameStatusResolverTest {
 		@Test
 		void disablesClosedWindowWhenStartEqualsEnd() {
 			// start-close == end-close 이면 미운영 시간대 없음 (24시간 운영)
-			GameStatusResolver resolver = new GameStatusResolver(LocalTime.of(0, 0), LocalTime.of(0, 0));
+			GameStatusResolver resolver = new GameStatusResolver(
+					OffsetTime.of(0, 0, 0, 0, ZoneOffset.ofHours(9)),
+					OffsetTime.of(0, 0, 0, 0, ZoneOffset.ofHours(9)));
 			for (int hour : new int[] {0, 2, 5, 12, 23}) {
 				assertThat(resolver.resolve(at(0, 0, hour), null)).isNotEqualTo(GameStatus.CLOSED);
 			}
@@ -203,7 +212,7 @@ class GameStatusResolverTest {
 	@ParameterizedTest(name = "{0} -> {1}")
 	@MethodSource("tenMinuteLifecycle")
 	@DisplayName("10분 라이프사이클 전체 경계 매트릭스")
-	void tenMinuteLifecycle(LocalDateTime now, GameStatus expected) {
+	void tenMinuteLifecycle(Instant now, GameStatus expected) {
 		assertThat(DEFAULT.resolve(now, RuntimeState.PROGRESS)).isEqualTo(expected);
 	}
 
@@ -240,7 +249,7 @@ class GameStatusResolverTest {
 	@ParameterizedTest(name = "{0} + {1} -> {2}")
 	@MethodSource("stateMatrix")
 	@DisplayName("시간 x Redis 상태 최종 판정 매트릭스")
-	void stateMatrix(LocalDateTime now, RuntimeState redisState, GameStatus expected) {
+	void stateMatrix(Instant now, RuntimeState redisState, GameStatus expected) {
 		assertThat(DEFAULT.resolve(now, redisState)).isEqualTo(expected);
 	}
 
@@ -275,7 +284,7 @@ class GameStatusResolverTest {
 	@Test
 	@DisplayName("대기 구간의 타겟 라운드는 다음 10분 마크이다")
 	void waitingTargetsTheNextRound() {
-		LocalDateTime now = LocalDateTime.of(2026, 8, 1, 12, 4, 30);
+		Instant now = Instant.parse("2026-08-01T12:04:30Z");
 		assertThat(RoundTime.target(now)).isEqualTo("20260801121000");
 		assertThat(DEFAULT.resolve(now, null)).isEqualTo(GameStatus.WAITING);
 	}
@@ -283,7 +292,7 @@ class GameStatusResolverTest {
 	@Test
 	@DisplayName("진행/종료 구간의 타겟 라운드는 직전 10분 마크이다")
 	void progressTargetsTheCurrentRound() {
-		LocalDateTime now = LocalDateTime.of(2026, 8, 1, 12, 0, 45);
+		Instant now = Instant.parse("2026-08-01T12:00:45Z");
 		assertThat(RoundTime.target(now)).isEqualTo("20260801120000");
 		assertThat(DEFAULT.resolve(now, RuntimeState.PROGRESS)).isEqualTo(GameStatus.ENDED);
 	}

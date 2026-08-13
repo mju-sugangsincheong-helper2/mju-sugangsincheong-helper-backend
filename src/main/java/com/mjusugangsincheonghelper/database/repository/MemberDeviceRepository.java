@@ -17,7 +17,7 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 
 	List<MemberDevice> findByMemberId(Long memberId);
 
-	Optional<MemberDevice> findByFcmToken(String fcmToken);
+	List<MemberDevice> findAllByFcmToken(String fcmToken);
 
 	/** 전체 사용자의 등록된 FCM 토큰 목록 (broadcast 알림용) */
 	@Query("select d.fcmToken from MemberDevice d where d.fcmToken is not null and d.fcmToken <> ''")

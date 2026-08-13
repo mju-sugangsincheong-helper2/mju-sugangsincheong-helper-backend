@@ -74,8 +74,14 @@ class SingleGameRepositoryTest {
 	class Describe_findRankingRaw {
 
 		@Test
-		@DisplayName("완료된 게임을 t_total 오름차순으로 반환한다")
+		@DisplayName("완료된 게임 중 사용자별 최고 기록만 t_total 오름차순으로 반환한다")
 		void it_returns_completed_games_ordered_by_t_total() {
+			Member otherMember = memberRepository.save(Member.builder()
+					.role(Member.Role.MEMBER)
+					.name("다른유저")
+					.department("컴퓨터공학과")
+					.build());
+
 			singleGameRepository.save(SingleGameEntity.builder()
 					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
 					.isCompleted(true).totalCourses(6).build());
@@ -83,14 +89,14 @@ class SingleGameRepositoryTest {
 					.memberId(testMember.getId()).tTotal(3000).tEnterMain(150)
 					.isCompleted(true).totalCourses(6).build());
 			singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(testMember.getId()).tTotal(4000).tEnterMain(100)
-					.isCompleted(false).totalCourses(6).build());
+					.memberId(otherMember.getId()).tTotal(4000).tEnterMain(100)
+					.isCompleted(true).totalCourses(6).build());
 
 			List<Object[]> rankings = singleGameRepository.findRankingRaw(6);
 
 			assertThat(rankings).hasSize(2);
 			assertThat(((Number) rankings.get(0)[5]).intValue()).isEqualTo(3000);
-			assertThat(((Number) rankings.get(1)[5]).intValue()).isEqualTo(5000);
+			assertThat(((Number) rankings.get(1)[5]).intValue()).isEqualTo(4000);
 		}
 
 		@Test

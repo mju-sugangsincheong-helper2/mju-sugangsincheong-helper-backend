@@ -18,15 +18,17 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 인증(토큰) 없이 접근 가능해야 하는 공개(Public) API를 검증한다.
- * 공개 체인(publicSecurityFilterChain)과 GET 전용 매칭(PUBLIC_GET_URLS)을 통해
- * 인증 없이도 200을 반환하며, 같은 경로의 비공개 메서드(POST)는 여전히 차단됨을 함께 확인한다.
+ * 인증(토큰) 없이 접근 가능해야 하는 공개(Public) API와,
+ * 인증이 필요한 엔드포인트의 미인증 응답(401 + GLOBAL_SECURITY_001)을 검증한다.
+ *
+ * <p>공개 체인(publicSecurityFilterChain)과 GET 전용 매칭(PUBLIC_GET_URLS)을 통해
+ * 인증 없이도 200을 반환하며, 같은 경로의 비공개 메서드(POST)는 401로 차단됨을 함께 확인한다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
-@DisplayName("공개 API 통합 테스트")
+@DisplayName("공개 API 및 미인증 응답 통합 테스트")
 class PublicApiIntegrationTest {
 
 	@Autowired
@@ -76,14 +78,30 @@ class PublicApiIntegrationTest {
 	class Describe_nonPublicMethods {
 
 		@Test
-		@DisplayName("POST /api/v1/course/sections는 인증 없이 차단된다")
+		@DisplayName("POST /api/v1/course/sections는 인증 없이 401 + GLOBAL_SECURITY_001 봉투로 차단된다")
 		void it_blocks_post_without_authentication() throws Exception {
 			SecurityContextHolder.clearContext();
 
 			mockMvc.perform(post("/api/v1/course/sections")
 							.contentType(MediaType.APPLICATION_JSON)
 							.content("[]"))
-					.andExpect(status().is4xxClientError());
+					.andExpect(status().isUnauthorized())
+					.andExpect(jsonPath("$.error.code").value("GLOBAL_SECURITY_001"));
+		}
+	}
+
+	@Nested
+	@DisplayName("인증이 필요한 임의 엔드포인트는")
+	class Describe_securedEndpoints {
+
+		@Test
+		@DisplayName("토큰 없이 GET /api/v1/accounts/me를 호출하면 401 + GLOBAL_SECURITY_001 봉투를 반환한다")
+		void it_returns_401_unauthorized_without_token() throws Exception {
+			SecurityContextHolder.clearContext();
+
+			mockMvc.perform(get("/api/v1/accounts/me"))
+					.andExpect(status().isUnauthorized())
+					.andExpect(jsonPath("$.error.code").value("GLOBAL_SECURITY_001"));
 		}
 	}
 }

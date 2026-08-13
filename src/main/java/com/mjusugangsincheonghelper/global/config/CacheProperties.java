@@ -20,8 +20,7 @@ public class CacheProperties {
 	public static final String EXCHANGE_USER_INTENTS = "exchange-user-intents";
 	public static final String EXCHANGE_ROOM_META = "exchange-room-meta";
 	public static final String SINGLEGAME_RANK = "singlegame-rank";
-	public static final String SINGLEGAME_RECORDS = "singlegame-records";
-	public static final String SINGLEGAME_ANALYSIS = "singlegame-analysis";
+	public static final String SINGLEGAME_STATS = "singlegame-stats";
 	public static final String MULTIGAME_RANK = "multigame-rank";
 
 	private Duration defaultTtl = Duration.ofHours(24);

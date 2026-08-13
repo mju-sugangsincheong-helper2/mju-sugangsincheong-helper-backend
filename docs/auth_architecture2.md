@@ -52,47 +52,27 @@
 @RequiredArgsConstructor
 public class GlobalSecurityConfig {
 
-    public static final String[] PUBLIC_URLS = {
-            "/api/*/auth/guest",
-            "/api/*/auth/refresh",
-            "/api/*/auth/login/google/merge",
-            "/api/*/auth/oauth/start",
-            "/api/*/auth/token",
-            "/api/*/auth/config/google",
-            "/api/*/auth/test-**",
-            "/api/*/example/**",
-            "/swagger-ui/**",
-            "/v3/api-docs/**",
-            "/actuator/**",
-            "/*.html",
-            "/*.js"
-    };
-
-    /** 인증 없이 조회 가능한 공개 GET API (HttpMethod.GET 에 한해 매칭) */
-    public static final String[] PUBLIC_GET_URLS = {
-            "/api/*/course/sections",      // 강좌 목록 조회
-            "/api/*/course/department",    // 학과 목록 조회
-            "/api/*/exchange/intents/recent" // 최근 교환 의사 피드
-    };
-
+    /**
+     * 공개 URL 규칙은 yml(app.security.*)에서 관리한다.
+     * 엔드포인트를 공개/비공개로 바꾸려면 Java 수정 없이 yml만 수정하면 된다.
+     */
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ConsentCheckFilter consentCheckFilter;
+    private final CorsProperties corsProperties;
+    private final AppSecurityProperties securityProperties;
+    private final SecurityErrorWriter securityErrorWriter;
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+    public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
 
     @Bean
     @Order(1)
     public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
         http
-                .securityMatchers(matchers -> matchers
-                        .requestMatchers(PUBLIC_URLS)
-                        .requestMatchers(HttpMethod.GET, PUBLIC_GET_URLS))
+                .securityMatchers(matchers -> /* yml: public-urls / public-{get,post,put,patch,delete}-urls */)
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
@@ -104,8 +84,15 @@ public class GlobalSecurityConfig {
                 .securityMatchers(matchers -> matchers.requestMatchers("/api/**"))
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                // 필터 체인 레벨 인증/인가 실패는 DispatcherServlet 바깥이라 @RestControllerAdvice에 닿지 않는다.
+                // 시멘틱 응답을 여기서 직접 내린다. (SecurityErrorWriter가 JSON 봉투로 직렬화)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((req, res, e) ->
+                                securityErrorWriter.write(res, ErrorCode.GLOBAL_SECURITY_UNAUTHORIZED_ACCESS)) // 401
+                        .accessDeniedHandler((req, res, e) ->
+                                securityErrorWriter.write(res, ErrorCode.GLOBAL_SECURITY_FORBIDDEN)))           // 403
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(consentCheckFilter, JwtAuthenticationFilter.class);
         return http.build();
@@ -116,23 +103,7 @@ public class GlobalSecurityConfig {
         return RoleHierarchyImpl.fromHierarchy("ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST");
     }
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("*"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setExposedHeaders(Arrays.asList(
-                "Authorization", "X-Access-Token", "X-Refresh-Token",
-                "X-Request-Id", "X-Api-Version", "Set-Cookie"
-        ));
-        configuration.setMaxAge(3600L);
-        configuration.setAllowCredentials(true);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
+    // corsConfigurationSource(): CorsProperties(yml) 기반. 노출 헤더에 Set-Cookie 포함.
 }
 ```
 
@@ -150,6 +121,45 @@ public class GlobalSecurityConfig {
 - **ConsentCheckFilter**는 SecurityContext의 인증 객체가 `Long`(memberId) principal을 가지며 `ROLE_MEMBER`/`ROLE_ADMIN` 권한을 가질 때만 `privacyAgreed` 플래그를 검사합니다. 동의하지 않은 사용자가 비면제 경로로 접근하면 `AUTH_PRIVACY_POLICY_REQUIRED`(403) 응답을 즉시 반환합니다. 면제 경로는 `/auth/privacy/agree`, `/auth/logout`입니다.
 - 세부 인가는 컨트롤러/메서드에 정의된 `@PreAuthorize("hasRole('MEMBER')")` 등에 의해 스프링 AOP 단에서 최종 검증됩니다.
 
+### 2.3 인증/인가 실패 응답 시멘틱 (401 vs 403)
+
+필터 체인 레벨의 인증/인가 실패는 `DispatcherServlet` 바깥(`ExceptionTranslationFilter`)에서 처리되므로 `@RestControllerAdvice`(`GlobalExceptionHandler`)에 닿지 않는다. 따라서 `securedSecurityFilterChain`의 `.exceptionHandling(...)`에서 시멘틱 응답을 직접 내린다. 응답 본문은 모두 표준 에러 봉투(`{ meta, error: { code, message, details? } }`)로 직렬화하며, 직렬화는 `SecurityErrorWriter`가 담당한다(`ConsentCheckFilter`의 403 응답과 동일한 작성기).
+
+| 상황 | 발생 지점 | 응답 | ErrorCode |
+|---|---|---|---|
+| 미인증 (ATK 없음/만료/무효 → `JwtAuthenticationFilter`가 인증 세팅 못 함) | `AuthorizationFilter` → `ExceptionTranslationFilter` → `authenticationEntryPoint` | **401** + JSON | `GLOBAL_SECURITY_UNAUTHORIZED_ACCESS` (`GLOBAL_SECURITY_001`) |
+| 인증됨·권한 부족 (필터 체인 레벨, 드문 케이스) | `ExceptionTranslationFilter` → `accessDeniedHandler` | 403 + JSON | `GLOBAL_SECURITY_FORBIDDEN` (`GLOBAL_SECURITY_002`) |
+| 인증됨·`@PreAuthorize` 위반 (컨트롤러 메서드 레벨) | `DispatcherServlet` → `GlobalExceptionHandler.handleAccessDenied` | 403 + JSON | `GLOBAL_SECURITY_FORBIDDEN` (`GLOBAL_SECURITY_002`) |
+| 인증됨 MEMBER+·개인정보 미동의 | `ConsentCheckFilter` (직접 응답) | 403 + JSON | `AUTH_PRIVACY_POLICY_REQUIRED` (`AUTH_001`) |
+| RTK 무효/만료로 refresh 실패 | `SessionService.refreshSession` → `BaseException` | 401 + JSON | `AUTH_INVALID_REFRESH_TOKEN` (`AUTH_004`) |
+
+> **주의**: `GLOBAL_SECURITY_UNAUTHORIZED_ACCESS`(401)는 이전엔 `ErrorCode` enum과 Swagger `@OperationErrorCodes`에만 존재하고 **실제로 방출하는 코드가 없었**다(미인증이 기본 `Http403ForbiddenEntryPoint` 때문에 403으로 떨어졌음). 위 `.exceptionHandling` 설정으로 비로소 실제 방출 경로가 생겼다. 이것이 프론트의 `401 → refresh` 트리거가 동작하게 만드는 핵심이다.
+
+### 2.4 전 시나리오 매트릭스 (ATK/RTK 수명 주기)
+
+ATK 1h / RTK 7d, 프론트 `apiFetch`는 401 → `refreshAuthenticationToken()`(single-flight) → 원래 요청 1회 재시도. `isAuthenticationEndpoint` 예외(`/auth/login`, `/auth/test-login`, `/auth/refresh`)는 refresh 재귀 방지. **`/auth/logout`은 예외가 아니므로** ATK 만료 시에도 refresh→재시도로 서버 측 세션 파괴가 일어난다.
+
+| # | 상태 | 백엔드 응답 | 프론트 동작 | 결과 |
+|---|---|---|---|---|
+| 1 | ATK 유효·정상 권한 | 200 | 그대로 사용 | 정상 ✅ |
+| 2 | ATK 유효·GUEST가 MEMBER 전용 호출 | 403 `GLOBAL_SECURITY_002` | refresh 안 함 → `ApiError` throw | 권한 부족 표시 ✅ |
+| 3 | ATK 유효·MEMBER+ 미동의 | 403 `AUTH_001` | `fetchMe` 특수 처리(`privacyPolicyAgreed=false`, user 유지) | 동의 모달 ✅ |
+| 4 | ATK 만료·RTK 유효 (1h+ idle) | **401 `GLOBAL_SECURITY_001`** | refresh 성공 → 원래 요청 1회 재시도 → 200 | 자동 갱신 ✅ (해결됨) |
+| 5 | ATK 만료·RTK 만료 (7d+ idle) | 401 → refresh 401 `AUTH_004` | refresh 실패 → `ApiError(401)` → `fetchMe` `user=null` | 로그인으로 이동 ✅ (의도됨) |
+| 6 | ATK 만료 상태에서 로그아웃 | 401 → refresh → `/auth/logout` 재시도 → 200 `clear()` | `user=null` | 정상 로그아웃 + 서버 device 파괴 ✅ |
+| 7 | ATK 만료 상태에서 회원탈퇴 | 401 → refresh → `/accounts/me` DELETE 재시도 → 200 | `user=null` | 정상 탈퇴 + DB 정리 ✅ |
+| 8 | RTK 변조/불일치로 refresh | 401 `AUTH_004` | `isAuthenticationEndpoint`(`/auth/refresh`) → refresh 재시도 안 함 → `ApiError(401)` → 로그인 | 로그인으로 이동 ✅ |
+
+> (4)와 (5)는 이제 401 본문 `code`로 자연 분기된다 — RTK가 살아 있으면 refresh 성공→재시도 200, RTK도 죽었으면 refresh 401→로그인. 프론트의 추측성 분기 없이 시멘틱 응답만으로 구분된다.
+
+### 2.5 프론트 토큰 갱신 흐름 (apiFetch + proactive refresh)
+
+**B (반응형)**: `apiFetch`는 401 수신 시 `refreshAuthenticationToken()`(single-flight `tokenRefreshPromise`) 호출. 동시 다수 401에도 refresh는 1회만. 성공 시 원래 요청 1회 재시도. `markLastActiveAt()`로 마지막 2xx 시각을 localStorage에 기록.
+
+**C (선제형)**: `initProactiveRefresh()`가 `visibilitychange`(탭 복귀) + 5분 간격 타이머로 `maybeProactiveRefresh()` 호출. 로그인 상태이고 `Date.now() - lastActiveAt >= 50min`(ATK 1h 대비 10분 여유)일 때 선제 refresh. 이 시점엔 RTK(7d)가 살아 있어 갱신이 성공하며, 첫 요청 1회 실패(401) UX를 줄인다.
+
+> `lastActiveAt`은 페이지 리로드에도 유지되도록 localStorage(`mju:auth:lastActiveAt`)에 보관. 공개 API 호출도 2xx면 갱신되지만, `maybeProactiveRefresh`는 `authStore.isAuthenticated`에서만 동작하므로 비로그인 상태에선 의미 없다.
+
 ---
 
 ## 3. Auth & Account 레이어 (Mechanism)
@@ -159,7 +169,9 @@ public class GlobalSecurityConfig {
 ```
 com.mjusugangsincheonghelper/
 ├── global/security/                          # [보안 인프라 패키지]
-│   ├── GlobalSecurityConfig.java             #   - 2개 SecurityFilterChain (public/secured) 설정
+│   ├── GlobalSecurityConfig.java             #   - 2개 SecurityFilterChain (public/secured) + exceptionHandling(401/403 시멘틱)
+│   ├── SecurityErrorWriter.java              #   - 필터 체인 인증/인가 오류 → JSON 봉투 직렬화 (ConsentCheckFilter 공유)
+│   ├── AppSecurityProperties.java             #   - 공개 URL yml 바인딩 (app.security.*)
 │   ├── filter/
 │   │   ├── JwtAuthenticationFilter.java      #   - 무상태 JWT 인증 필터 (agreed 클레임 전파)
 │   │   └── ConsentCheckFilter.java           #   - MEMBER+ 사용자 동의 감사 강제
@@ -215,7 +227,8 @@ com.mjusugangsincheonghelper/
     │   ├── device/
     │   │   └── DeviceSessionService.java     #   - member_device upsert(반환 MemberDevice)/switchMember/deleteByRefreshToken
     │   ├── token/
-    │   │   └── TokenProvider.java            #   - JWT 서명/발급 (ATK/RTK/MergeTicket) + TokenClaims VO
+    │   │   ├── TokenProvider.java            #   - JWT 서명/발급 (ATK/RTK/MergeTicket) + TokenClaims VO
+│   │   └── RefreshTokenHasher.java          #   - RTK → DB 저장 해시 변환 (단방향)
     │   ├── delivery/
     │   │   ├── TokenDeliveryStrategy.java    #   - 쿠키/헤더 토큰 전달 전략 인터페이스
     │   │   └── HttpTokenDelivery.java        #   - TokenTransportMode 기준 전달 (쿠키+헤더, Secure 제어)
@@ -651,8 +664,10 @@ POST /api/{version}/auth/refresh
          ├→ tokenProvider.createRefreshToken() (UUID 회전)
          ├→ device.updateRefreshToken(newRtk)
          ├→ tokenProvider.createAccessToken(memberId, role, privacyAgreed, device.getId())  (deviceId 포함)
-         └→ TokenDeliveryStrategy.deliver(...)
+         └→ TokenDeliveryStrategy.deliver(...)  (Set-Cookie 2개 재발급)
 ```
+
+> **호출 시점**: `/auth/refresh`는 public URL이라 만료된 ATK로도 진입 가능(RTK 쿠키만 유효하면 됨). 프론트 `apiFetch`는 보호 엔드포인트에서 401(`GLOBAL_SECURITY_001`)을 받으면 single-flight로 이 엔드포인트를 호출한 뒤 원래 요청을 1회 재시도한다. 또한 `initProactiveRefresh()`가 탭 복귀/5분 타이머로 만료 임박(≥50분 비활성) 시 선제 호출해 401 빈도를 줄인다. RTK가 무효/만료면 `AUTH_INVALID_REFRESH_TOKEN`(401)을 반환해 프론트가 로그인으로 이동하도록 한다.
 
 ### 9.5 개인정보 동의 및 토큰 재발급
 ```
@@ -766,15 +781,13 @@ POST /api/{version}/auth/test-accounts {role}
 ### 12.1 주요 비즈니스 에러
 | 에러코드 | HTTP 상태 | 코드 | 설명 |
 |---|---|---|---|
-| `AUTH_PRIVACY_POLICY_REQUIRED` | 403 | AUTH_001 | MEMBER+ 사용자가 개인정보 동의 없이 보호된 리소스 접근 시도 (ConsentCheckFilter) |
+| `AUTH_PRIVACY_POLICY_REQUIRED` | 403 | AUTH_001 | MEMBER+ 사용자가 개인정보 동의 없이 보호된 리소스 접근 (ConsentCheckFilter → SecurityErrorWriter 직접 응답) |
 | `AUTH_GOOGLE_AUTH_FAILED` | 401 | AUTH_002 | Google 서버 연동 실패 / JWKS 조회 실패 / ID Token 파싱 실패 |
-| `AUTH_INVALID_TOKEN_SIGNATURE` | 401 | AUTH_003 | JWT 서명 검증 실패 |
-| `AUTH_INVALID_REFRESH_TOKEN` | 401 | AUTH_004 | DB 세션 기한 만료 혹은 일치하지 않는 RTK |
+| `AUTH_INVALID_REFRESH_TOKEN` | 401 | AUTH_004 | DB 세션 기한 만료 혹은 일치하지 않는 RTK (refresh 엔드포인트에서만 방출) |
 | `AUTH_MERGE_REQUIRED` | 409 | AUTH_005 | 게스트 데이터를 구글 계정으로 병합해야 함 |
 | `AUTH_MERGE_TICKET_EXPIRED` | 400 | AUTH_006 | 데이터 병합용 일회성 JWT 만료/파싱 실패 |
 | `AUTH_MEMBER_NOT_FOUND` | 404 | AUTH_007 | 지정된 ID의 회원이 시스템 내 존재하지 않음 |
 | `AUTH_GUEST_NOT_FOUND` | 404 | AUTH_008 | 병합 대상 게스트 회원이 존재하지 않음 |
-| `AUTH_ALREADY_EXISTS` | 409 | AUTH_009 | 이미 존재하는 인증 키 |
 | `AUTH_NOT_MJU_DOMAIN` | 403 | AUTH_010 | Google ID Token의 hd 클레임이 `mju.ac.kr`이 아님 |
-| `GLOBAL_SECURITY_UNAUTHORIZED_ACCESS` | 401 | GLOBAL_SECURITY_001 | 인증 헤더 혹은 쿠키가 유실된 무인증 상태 요청 |
-| `GLOBAL_SECURITY_FORBIDDEN` | 403 | GLOBAL_SECURITY_002 | 요구하는 역할 등급(예: ROLE_MEMBER) 미달 |
+| `GLOBAL_SECURITY_UNAUTHORIZED_ACCESS` | 401 | GLOBAL_SECURITY_001 | **미인증(토큰 없음/만료/무효)** 요청. `securedSecurityFilterChain`의 `authenticationEntryPoint`(`SecurityErrorWriter`)에서 방출. 프론트 `apiFetch`의 `401 → refresh` 트리거가 기다리는 코드. |
+| `GLOBAL_SECURITY_FORBIDDEN` | 403 | GLOBAL_SECURITY_002 | 인증됨·권한 부족. (a) `accessDeniedHandler`(필터 체인 레벨) 또는 (b) `GlobalExceptionHandler.handleAccessDenied`(`@PreAuthorize` 위반)에서 방출. refresh 대상 아님. |

@@ -5,7 +5,7 @@
     <springProfile name="dev">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %logger{36} - [req=%X{requestId:-}] [inst=%X{instanceId:-}] %msg%n%ex</pattern>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %logger{36} - [req=%X{requestId:-}] [inst=%X{instanceId:-}] [ip=%X{ipAddress:-}] %msg%n%ex</pattern>
             </encoder>
         </appender>
 

@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS multigame_round_log (
     attempt_seq    BIGINT      NOT NULL,
     current_limit  INT         NOT NULL,
     attempted_at   TIMESTAMP   NOT NULL,
-    CONSTRAINT  chk_multigame_round_log_attempt_status CHECK (attempt_status IN ('SUCCESS', 'FAIL_SOLDOUT', 'FAIL_DUPLICATE'))
+    CONSTRAINT  chk_multigame_round_log_attempt_status CHECK (attempt_status IN ('ENQUEUED', 'SUCCESS', 'FAIL_SOLDOUT', 'FAIL_DUPLICATE'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_multigame_round_member_member_id ON multigame_round_member (member_id);
@@ -447,7 +447,12 @@ BEGIN
                                'exchange_room_intent', 'exchange_room_message',
                                'exchange_room_read_status'] LOOP
         FOR y IN 2025 .. 2029 LOOP
-            FOREACH term IN ARRAY ARRAY[lpad(y::text, 4, '0') || '10', lpad(y::text, 4, '0') || '20'] LOOP
+            FOREACH term IN ARRAY ARRAY[
+                lpad(y::text, 4, '0') || '10',
+                lpad(y::text, 4, '0') || '15',
+                lpad(y::text, 4, '0') || '20',
+                lpad(y::text, 4, '0') || '25'
+            ] LOOP
                 EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF %I FOR VALUES IN (%L)',
                                tbl || '_' || term, tbl, term);
             END LOOP;

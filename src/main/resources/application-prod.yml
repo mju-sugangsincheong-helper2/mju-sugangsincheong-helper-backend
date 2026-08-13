@@ -143,7 +143,7 @@ app:
       exchange-user-intents: 24h
       exchange-room-meta: 24h
       singlegame-rank: 5m
-      singlegame-records: 5m
+      singlegame-stats: 5m
       multigame-rank: 5m
 
   # ==========================================
@@ -192,8 +192,8 @@ app:
         max-ms: 60000
 
   multigame:
-    start-close: "02:00"
-    end-close: "05:00"
+    start-close: "02:00:00+09:00"
+    end-close: "05:00:00+09:00"
     schedule:
       game-ready-cron: "55 9/10 * * * *"
       game-start-cron: "0 0/10 * * * *"
