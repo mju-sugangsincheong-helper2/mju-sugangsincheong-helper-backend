@@ -30,9 +30,9 @@ spring:
       repositories:
         enabled: false  # Spring Data Redis 리포지토리 미사용 (RedisTemplate 으로 직접 접근)
   
-  threads:
-    virtual:
-      enabled: true
+  # threads:
+  #   virtual:
+  #     enabled: true
 
 server:
   tomcat:
