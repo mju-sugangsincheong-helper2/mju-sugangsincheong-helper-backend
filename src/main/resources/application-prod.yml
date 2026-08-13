@@ -30,6 +30,11 @@ spring:
       repositories:
         enabled: false  # Spring Data Redis 리포지토리 미사용 (RedisTemplate 으로 직접 접근)
 
+server:
+  tomcat:
+    threads:
+      min-spare: 5
+
 logging:
   level:
     root: INFO
