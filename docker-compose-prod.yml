@@ -10,7 +10,6 @@ x-variables:
   postgres_db_name: &POSTGRES_DB_NAME "postgres"
   postgres_user: &POSTGRES_USER "postgres"
   prod_db_name: &PROD_DB_NAME "mjusugangsincheonghelperdb_prod"
-  # YAML alias는 쓸 수 없으므로 compose 변수 치환(${VAR})으로 조합한다
   pgweb_database_url: &PGWEB_DATABASE_URL "postgres://${DB_USERNAME:?DB_USERNAME required in .env}:${DB_PASSWORD:?DB_PASSWORD required in .env}@db:5432/mjusugangsincheonghelperdb_prod?sslmode=disable"
   backend_container: &BACKEND_CONTAINER "mju-sugangsincheong-helper-backend"
   db_container: &DB_CONTAINER "mju-sugangsincheong-helper-db"
@@ -19,11 +18,12 @@ x-variables:
   redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
   pgweb_container: &PGWEB_CONTAINER "mju-sugangsincheong-helper-pgweb"
 
+  # postgres:17 + pgmq 빌드
   postgres_with_pgmq_inline_dockerfile: &POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE |
     FROM postgres:17
     USER root
     RUN apt-get update && apt-get install -y --no-install-recommends \
-          postgresql-server-dev-17 make gcc git ca-certificates \
+        postgresql-server-dev-17 make gcc git ca-certificates \
         && rm -rf /var/lib/apt/lists/* \
         && git clone https://github.com/pgmq/pgmq.git /tmp/pgmq \
         && cd /tmp/pgmq/pgmq-extension && make install \
@@ -32,7 +32,7 @@ x-variables:
         && rm -rf /var/lib/apt/lists/*
     USER postgres
 
-  # 백엔드 이미지: gradle wrapper 로 소스를 컴파일해 실행 jar 를 만드는 빌드.
+  # [수정] x-variables 안으로 들여쓰기 맞춤 + IBM Semeru에 curl 설치
   backend_inline_dockerfile: &BACKEND_INLINE_DOCKERFILE |
     FROM eclipse-temurin:21-jdk AS build
     WORKDIR /app
@@ -40,32 +40,31 @@ x-variables:
     COPY gradle ./gradle
     COPY src ./src
     RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar --no-daemon
-    
-    # 1. 실행 베이스 이미지를 OpenJ9 기반 IBM Semeru로 변경
+
     FROM ibm-semeru-runtimes:open-21-jre-jammy
     WORKDIR /app
+    USER root
+    RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+    USER 1001
     COPY --from=build /app/build/libs/*.jar app.jar
     EXPOSE 8080
-    
-    # 2. OpenJ9 전용 가상화 최적화 옵션(-Xtune:virtualized) 및 스택 최적화(-Xss512k) 적용
     ENTRYPOINT ["java", "-Xtune:virtualized", "-Xss512k", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 
 services:
   db:
-    # postgres:17 + pgmq 확장 이미지. pgmq 는 앱의 메시지 큐가 필수로 사용하는 유일한 확장
     build:
       context: .
       dockerfile_inline: *POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE
     container_name: *DB_CONTAINER
     environment:
-      POSTGRES_DB: *POSTGRES_DB_NAME  # 초기 접속용 기본 DB. 실제 운영 DB(prod)는 db-setup 이 생성
+      POSTGRES_DB: *POSTGRES_DB_NAME
       POSTGRES_USER: *POSTGRES_USER
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in .env}  # 슈퍼유저 비밀번호 (.env)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in .env}
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required in .env}
     ports:
-      - "10021:5432"  # 운영 DB 외부 포트 — 내부망/SSH 터널 전용 (방화벽 차단 권장)
+      - "10021:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data  # DB 데이터 영속화 — 백업/마이그레이션 대상
+      - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -74,7 +73,6 @@ services:
     restart: always
 
   db-setup:
-    # 1회성 초기화 작업: role/운영 DB/확장/스키마를 멱등 적용 후 종료 (재실행해도 안전)
     image: postgres:17
     container_name: *DB_SETUP_CONTAINER
     environment:
@@ -99,44 +97,37 @@ services:
         done
         echo 'PostgreSQL is up - executing setup commands...'
 
-        # 1. 역할(Role) 존재 여부 체크 후 생성
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$$DB_USER'\" | grep -q 1 || \
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE ROLE $$DB_USER WITH LOGIN PASSWORD '$$DB_PASSWORD' SUPERUSER;\"
 
-        # 2. 운영용 DB 존재 여부 체크 후 생성 및 확장 설정
         if ! psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_database WHERE datname='$$PROD_DB_NAME'\" | grep -q 1; then
           echo 'Creating prod database...'
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$PROD_DB_NAME OWNER $$DB_USER;\"
         fi
-        # 운영에서 실제 사용하는 확장은 pgmq뿐 (pg_cron/system_stats/pg_stat_statements는 앱 코드에서 미사용)
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$PROD_DB_NAME -c \"CREATE EXTENSION IF NOT EXISTS pgmq;\"
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$PROD_DB_NAME -c \"ALTER DATABASE $$PROD_DB_NAME SET search_path TO public;\"
 
-        # 3. 스키마 적용 (멱등). 신규 DB에서 앱의 ddl-auto: validate 가 스키마 생성보다 먼저 도는 것을 방지한다
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$PROD_DB_NAME -v ON_ERROR_STOP=1 -f /schema-prod.sql
 
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public, '$$DB_USER';\"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public;\"
         echo 'Database setup complete!'
       "
     restart: "no"
 
   backend:
-    # 소스에서 jar 를 빌드해 실행하는 앱 서버. 앞단 프록시가 /api 경로만 이 컨테이너로 전달
     build:
       context: .
       dockerfile_inline: *BACKEND_INLINE_DOCKERFILE
     container_name: *BACKEND_CONTAINER
     environment:
-      SPRING_PROFILES_ACTIVE: prod  # application-prod.yml 활성화
-      INSTANCE_ID: backend  # 로그 파일명/인스턴스 구분용
+      SPRING_PROFILES_ACTIVE: prod
+      INSTANCE_ID: backend
       TZ: Asia/Seoul
-      # application-prod.yml 이 요구하는 환경변수 (.env 에서 치환)
       DB_URL: ${DB_URL:?DB_URL required in .env}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME required in .env}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD required in .env}
       REDIS_HOST: ${REDIS_HOST:?REDIS_HOST required in .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required in .env (256bit 이상)}
-      # 선택 (.env, 비워두면 앱 기본값 적용)
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://xn--hq1b21kh2g.com}
       MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID:-}
       MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET:-}
@@ -150,15 +141,15 @@ services:
     ports:
       - "10020:8080"
     volumes:
-      - ./logs:/app/logs  # 로그 영속화 — 프로젝트 logs/ 디렉터리
+      - ./logs:/app/logs
     depends_on:
       db-setup:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
-      # eclipse-temurin 이미지에 curl/wget 이 없어 bash 내장 /dev/tcp 로 포트 확인
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080' || exit 1"]
+      # [수정] curl 기반 포트/응답 확인으로 변경
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -166,13 +157,12 @@ services:
     restart: always
 
   redis:
-    # 앱의 캐시/세션 저장소. 데이터는 ./data/redis 에 영속화
     image: redis:7-alpine
     container_name: *REDIS_CONTAINER
     ports:
       - "10022:6379"
     volumes:
-      - ./data/redis:/data  # RDB 스냅샷/appendonly 저장 경로
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -182,7 +172,6 @@ services:
     restart: always
 
   redis-commander:
-    # Redis 관리 UI (내부망 전용)
     image: ghcr.io/joeferner/redis-commander:latest
     container_name: *REDIS_COMMANDER_CONTAINER
     environment:
@@ -193,8 +182,6 @@ services:
       - redis
     restart: always
 
-  # DB 관리 UI (가벼운 단일 바이너리, 내부망 전용 — dev의 pgadmin 대체)
-  # - 접근: ssh -L 10023:localhost:10023 user@server 후 브라우저에서 http://localhost:10023
   pgweb:
     image: sosedoff/pgweb:latest
     container_name: *PGWEB_CONTAINER
@@ -207,23 +194,51 @@ services:
         condition: service_healthy
     restart: always
 
-  # 인프라 지표 수집: Spring Boot /actuator/prometheus 스크레이핑 (vmui: http://localhost:8428)
-  # TODO(나중에 활성화): prometheus.yml 의 scrape 대상을 backend:8080 으로 맞추고 주석 해제
-  # victoria-metrics:
-  #   image: victoriametrics/victoria-metrics:latest
-  #   container_name: mju-sugangsincheong-helper-victoria-metrics
-  #   ports:
-  #     - "8428:8428"
-  #   command:
-  #     - "-storageDataPath=/victoria-metrics-data"
-  #     - "-retentionPeriod=30d"
-  #     - "-memory.allowedPercent=20"
-  #     - "-promscrape.config=/etc/prometheus.yml"
-  #   volumes:
-  #     - ./docker/victoriametrics/prometheus.yml:/etc/prometheus.yml:ro
-  #     - victoriametrics_data:/victoria-metrics-data
-  #   restart: always
+# ==============================================================================
+# [인프라 지표 수집 스택] VictoriaMetrics (Spring Boot Actuator Prometheus 메트릭 수집)
+# ------------------------------------------------------------------------------
+# [상태] 현재 비활성화 (나중에 활성화 시 주석 해제하여 사용)
+# 
+# [사전 준비사항]
+# 1. Spring Boot 백엔드 build.gradle 에 Prometheus 의존성 추가 필요:
+#    implementation 'io.micrometer:micrometer-registry-prometheus'
+# 2. application-prod.yml 메트릭 엔드포인트 노출 확인:
+#    management.endpoints.web.exposure.include: "health,info,prometheus"
+# 3. 서버 로컬 디렉터리 생성 및 설정 파일 준비:
+#    mkdir -p ./docker/victoriametrics
+#    cat << 'EOF' > ./docker/victoriametrics/prometheus.yml
+# global:
+#   scrape_interval: 15s
+# scrape_configs:
+#   - job_name: 'spring-backend'
+#     metrics_path: '/actuator/prometheus'
+#     static_configs:
+#       - targets: ['backend:8080']
+# EOF
+#
+# [주요 특징 및 접근]
+# - 메모리 사용량 제한: -memory.allowedPercent=20 (RAM 소비 극소화)
+# - 데이터 보관 기간: 30일 (-retentionPeriod=30d)
+# - vmui (내부 모니터링 UI): http://localhost:8428/vmui
+# ==============================================================================
 
-# 명명 볼륨 없음 — 데이터(postgres/redis)는 ./data/<dir>, 로그는 ./logs 바인드 마운트로 영속화
-  # victoria-metrics 활성화 시 함께 해제
-  # victoriametrics_data:
+# victoria-metrics:
+#   image: victoriametrics/victoria-metrics:latest
+#   container_name: mju-sugangsincheong-helper-victoria-metrics
+#   ports:
+#     - "8428:8428"
+#   command:
+#     - "-storageDataPath=/victoria-metrics-data"
+#     - "-retentionPeriod=30d"
+#     - "-memory.allowedPercent=20"
+#     - "-promscrape.config=/etc/prometheus.yml"
+#   volumes:
+#     - ./docker/victoriametrics/prometheus.yml:/etc/prometheus.yml:ro
+#     - victoriametrics_data:/victoria-metrics-data
+#   depends_on:
+#     backend:
+#       condition: service_healthy
+#   restart: always
+
+# volumes:
+#   victoriametrics_data:
