@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app.scheduling")
 public class SchedulingProperties {
 
-	private Pool task = pool(2, "global-scheduler-");
+	private Pool task = pool(1, "global-scheduler-");
 	private Pool pgmq = pool(2, "pgmq-worker-");
 	private Pool multigame = pool(1, "multigame-scheduler-");
 

@@ -1,9 +1,10 @@
 # 개발 환경 docker compose
-# - DB는 dockerfile_inline 으로 pgmq 확장 포함 빌드 (앱이 실제로 쓰는 유일한 확장, prod와 동일)
-# - dev 전용 도구: pgadmin (prod는 pgweb), redis-commander
-# - 지표 수집(VictoriaMetrics)은 아직 도입 전. 설정은 docker/victoriametrics/prometheus.yml 에 유지
+# DB: postgres:17 + pgmq 확장 (prod와 동일 빌드)
+# dev 전용 도구: pgadmin(:8005), redis-commander(:8006)
+# 데이터: named volume 사용 (docker volume rm 으로 초기화 가능)
 
 x-variables:
+  # ── DB 식별자 ──
   postgres_db_name: &POSTGRES_DB_NAME "postgres"
   postgres_user: &POSTGRES_USER "postgres"
   postgres_password: &POSTGRES_PASSWORD "postgrespassword"
@@ -11,15 +12,20 @@ x-variables:
   db_password: &DB_PASSWORD "mjusugangsincheonghelperpassword"
   dev_db_name: &DEV_DB_NAME "mjusugangsincheonghelperdb_dev"
   test_db_name: &TEST_DB_NAME "mjusugangsincheonghelperdb_test"
+
+  # ── pgadmin 접속 정보 ──
   pgadmin_email: &PGADMIN_EMAIL "admin@admin.com"
   pgadmin_password: &PGADMIN_PASSWORD "1253"
+
+  # ── 컨테이너 이름 ──
   postgres_container: &POSTGRES_CONTAINER "mju-sugangsincheong-helper-postgres"
   db_setup_container: &DB_SETUP_CONTAINER "mju-sugangsincheong-helper-db-setup"
   pgadmin_container: &PGADMIN_CONTAINER "mju-sugangsincheong-helper-pgadmin"
   redis_container: &REDIS_CONTAINER "mju-sugangsincheong-helper-redis"
   redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
 
-  # postgres:17 + pgmq 빌드 (docker-compose-prod.yml 과 동일)
+  # ── 인라인 Dockerfile: postgres:17 + pgmq 확장 ──
+  # 앱이 메시지 큐로 pgmq를 사용하므로 확장 포함 이미지가 필수 (prod와 동일)
   postgres_with_pgmq_inline_dockerfile: &POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE |
     FROM postgres:17
     USER root
@@ -34,21 +40,21 @@ x-variables:
     USER postgres
 
 services:
+  # ── PostgreSQL 17 + pgmq ──
   db:
-    # postgres:17 + pgmq 확장. 앱이 pgmq(메시지 큐)를 쓰므로 prod 와 동일하게 빌드
     build:
       context: .
       dockerfile_inline: *POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE
     container_name: *POSTGRES_CONTAINER
     environment:
-      POSTGRES_DB: *POSTGRES_DB_NAME  # 기본 DB. 실제 dev/test DB 는 db-setup 이 생성
+      POSTGRES_DB: *POSTGRES_DB_NAME  # 초기 DB, 실제 dev/test DB는 db-setup이 생성
       POSTGRES_USER: *POSTGRES_USER
       POSTGRES_PASSWORD: *POSTGRES_PASSWORD
       PGPASSWORD: *POSTGRES_PASSWORD
     ports:
-      - "5432:5432"  # IDE/로컬 psql 에서 바로 접속
+      - "5432:5432"  # IDE/로컬 psql 직접 접속용
     volumes:
-      - postgres_data:/var/lib/postgresql/data  # dev 데이터는 named volume (삭제해도 무방)
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
@@ -56,8 +62,14 @@ services:
       retries: 5
     restart: always
 
+  # ── DB 초기화 (1회성) ──
+  # db healthy 후 실행되어 아래 작업을 멱등 수행 후 자동 종료:
+  #   1. 앱 전용 Role 생성 (없으면)
+  #   2. dev DB 생성 + pgmq 확장 활성화
+  #   3. test DB 생성 + pgmq 확장 활성화
+  #   4. Role의 search_path 설정
+  # 재실행해도 안전 (존재 여부 체크 후 생성)
   db-setup:
-    # 1회성 초기화: role + dev/test DB + pgmq 확장을 멱등 생성 후 종료 (재실행해도 안전)
     image: postgres:17
     container_name: *DB_SETUP_CONTAINER
     environment:
@@ -81,11 +93,11 @@ services:
         done
         echo 'PostgreSQL is up - executing setup commands...'
 
-        # 1. 역할(Role) 존재 여부 체크 후 생성
+        # 1. Role 생성 (멱등)
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$$DB_USER'\" | grep -q 1 || \
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE ROLE $$DB_USER WITH LOGIN PASSWORD '$$DB_PASSWORD' SUPERUSER;\"
 
-        # 2. 개발용 DB 존재 여부 체크 후 생성 및 확장 설정
+        # 2. dev DB 생성 + pgmq 확장 활성화
         if ! psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_database WHERE datname='$$DEV_DB_NAME'\" | grep -q 1; then
           echo 'Creating dev database...'
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$DEV_DB_NAME OWNER $$DB_USER;\"
@@ -93,7 +105,7 @@ services:
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c \"ALTER DATABASE $$DEV_DB_NAME SET search_path TO public;\"
         fi
 
-        # 3. 테스트용 DB 존재 여부 체크 후 생성 및 확장 설정
+        # 3. test DB 생성 + pgmq 확장 활성화
         if ! psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -tAc \"SELECT 1 FROM pg_database WHERE datname='$$TEST_DB_NAME'\" | grep -q 1; then
           echo 'Creating test database...'
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"CREATE DATABASE $$TEST_DB_NAME OWNER $$DB_USER;\"
@@ -101,13 +113,14 @@ services:
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"ALTER DATABASE $$TEST_DB_NAME SET search_path TO public;\"
         fi
 
-        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public, '$$DB_USER';\"
+        # 4. Role의 search_path 설정
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public;\"
         echo 'Database setup complete!'
       "
     restart: "no"
 
+  # ── pgadmin (PostgreSQL 웹 UI) — http://localhost:8005 ──
   pgadmin:
-    # DB 관리 UI — http://localhost:8005 (prod 는 pgweb 사용)
     build:
       context: ./docker/pgadmin
       dockerfile: Dockerfile
@@ -118,23 +131,30 @@ services:
     ports:
       - "8005:80"
     volumes:
-      - pgadmin_data:/var/lib/pgadmin  # 서버 연결 설정/세션 영속화
+      - pgadmin_data:/var/lib/pgadmin
     depends_on:
       - db
     restart: always
 
+  # ── Redis 7 ──
+  # 로컬 캐시/세션용, 인증 없음 (localhost 전용)
   redis:
-    # 로컬 캐시/세션용 (별도 인증 없음 — localhost 전용)
     image: redis:7-alpine
     container_name: *REDIS_CONTAINER
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data  # dev 데이터는 named volume
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     restart: always
 
+  # ── Redis 관리 UI — http://localhost:8006 ──
   redis-commander:
-    # Redis 관리 UI — http://localhost:8006
     image: ghcr.io/joeferner/redis-commander:latest
     container_name: *REDIS_COMMANDER_CONTAINER
     environment:

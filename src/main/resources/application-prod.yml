@@ -3,53 +3,55 @@ spring:
     name: mjusugangsincheonghelper
 
   datasource:
-    # 운영 DB 접속 정보 — .env → docker-compose-prod.yml 환경변수 → 여기서 치환
     driver-class-name: org.postgresql.Driver
-    url: ${DB_URL}
+    url: ${DB_URL}  # .env → docker-compose 환경변수 → 여기서 치환
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
   sql:
     init:
-      # 스키마는 docker-compose-prod.yml 의 db-setup 이 psql 로 적용한다.
-      # (Spring의 SQL 스크립트 파서는 schema-prod.sql 의 DO $$ 블록을 지원하지 않음)
+      # schema-prod.sql 은 db-setup 컨테이너에서 psql 로 적용 (Spring 파서가 DO $$ 블록 미지원)
       mode: never
 
   jpa:
     hibernate:
-      ddl-auto: validate  # 운영에서는 스키마 자동 생성/수정 금지. db-setup 결과와 일치하는지만 검증
+      ddl-auto: validate  # 스키마 자동 수정 금지, db-setup 결과와 일치하는지만 검증
     properties:
       hibernate:
-        log_slow_query: 1000  # 1초 이상 걸린 쿼리를 로그에 남김
-    open-in-view: false  # OSIV 비활성화: 뷰 렌더링까지 DB 커넥션을 붙잡지 않음
+        log_slow_query: 1000  # 1초 이상 쿼리 로그
+    open-in-view: false  # OSIV 비활성화: 뷰 렌더링까지 커넥션 유지 안 함
 
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       repositories:
-        enabled: false  # Spring Data Redis 리포지토리 미사용 (RedisTemplate 으로 직접 접근)
-  
+        enabled: false  # Spring Data 리포지토리 미사용, RedisTemplate 직접 사용
+
   # threads:
   #   virtual:
   #     enabled: true
+  # IBM Semeru(OpenJ9) JDK 21+는 가상 스레드(JEP 444) 정식 지원.
+  # 고부하 시 메모리 이득이 있으나, 저부하(대부분의 상황)에서는 이득 미미.
+  # 아직 가상 스레드에 대한 확신이 없어 비활성화 유지.
 
 server:
   tomcat:
     threads:
-      min-spare: 5
+      min-spare: 5  # 최소 유지 스레드 (유휴 연결 처리)
 
 logging:
   level:
     root: INFO
-    com.mjusugangsincheonghelper: INFO
+    com.mjusugangsincheonghelper: INFO  # dev는 DEBUG, prod는 INFO
   file:
-    name: logs/${app.instance-id}-application.log  # 컨테이너 내 /app/logs → compose 가 ./logs 에 마운트
+    name: logs/${app.instance-id}-application.log  # 컨테이너 /app/logs → compose가 ./logs에 마운트
 
 management:
   endpoints:
     web:
       exposure:
+        # 모니터링/디버깅에 필요한 엔드포인트만 노출 (dev는 전체 "*")
         include: health,info,metrics,prometheus,loggers,logfile,threaddump,httpexchanges,env,mappings,beans,configprops,caches,conditions
   endpoint:
     health:
@@ -61,39 +63,31 @@ management:
       enabled: true
 
 springdoc:
-  # 운영에서는 API 문서 비공개 (swagger-ui, /v3/api-docs off)
+  # 운영에서는 API 문서 비공개
   api-docs:
     enabled: false
   swagger-ui:
     enabled: false
 
 app:
-  instance-id: ${INSTANCE_ID:app}  # 로그 파일명 등 인스턴스 구분자 (compose 에서 backend 로 주입)
-  # expose-error-details: false
+  instance-id: ${INSTANCE_ID:app}  # 로그 파일명 등 인스턴스 구분자 (compose에서 backend로 주입)
   performance:
-    slow-ms: 1000
-    very-slow-ms: 5000
+    slow-ms: 1000  # 이 시간 초과 시 WARN 로그
+    very-slow-ms: 5000  # 이 시간 초과 시 ERROR 로그
 
-  # ==========================================
-  # 1. 보안 & 인증 영역 (Security / Auth)
-  # ==========================================
+  # --- Security / Auth ---
   security:
     public-urls:
-      # 인증 없이 접근 가능한 경로 (게스트 로그인/토큰 갱신/OAuth 시작·콜백/헬스체크)
+      # 모든 HTTP 메서드에서 인증 없이 접근 가능한 경로
       - /api/*/auth/guest
       - /api/*/auth/refresh
       - /api/*/auth/login/google/merge
       - /api/*/auth/oauth/start
       - /api/*/auth/token
       - /api/*/auth/config/google
-      # - /api/*/example/**
-      # - /swagger-ui/**
-      # - /v3/api-docs/**
-      # - /*.html
-      # - /*.js
       - /actuator/**
     public-get-urls:
-      # GET 한정 인증 없이 허용 (조회성 공개 API)
+      # GET 요청 한정 인증 없이 허용 (조회성 공개 API)
       - "/api/*/course/sections"
       - "/api/*/course/department"
       - "/api/*/exchange/intents/recent"
@@ -107,17 +101,17 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://xn--hq1b21kh2g.com}
 
   auth:
-    token-mode: cookie  # JWT 를 헤더가 아닌 HttpOnly 쿠키로 전달 (XSS 방어)
-    cookie-secure: true  # HTTPS 에서만 쿠키 전송
+    token-mode: cookie  # JWT를 HttpOnly 쿠키로 전달 (XSS 방어, dev는 header+cookie)
+    cookie-secure: true  # HTTPS에서만 쿠키 전송
     cookie-max-age:
       access: 1h
       refresh: 7d
 
   jwt:
-    secret: ${JWT_SECRET}  # .env 에서 주입 (256bit 이상 필수)
-    access-token-expiry-ms: 3600000        # 1시간
-    refresh-token-expiry-ms: 604800000     # 7일
-    merge-ticket-expiry-ms: 300000         # 계정 병합 티켓 유효기간 5분
+    secret: ${JWT_SECRET}  # .env에서 주입 (HS256 기준 256bit 이상 필수)
+    access-token-expiry-ms: 3600000  # 1시간
+    refresh-token-expiry-ms: 604800000  # 7일
+    merge-ticket-expiry-ms: 300000  # 5분 (계정 병합 티켓)
 
   oauth2:
     google:
@@ -126,51 +120,49 @@ app:
       redirect-uri: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_REDIRECT_URI:https://xn--hq1b21kh2g.com/login}
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
-    state-ttl: 300s
+    state-ttl: 300s  # OAuth state 파라미터 유효기간 (CSRF 방어)
 
-  # ==========================================
-  # 2. 글로벌 코어 인프라 (Scheduling / Cache)
-  # ==========================================
+  # --- Scheduling / Cache ---
   scheduling:
     task:
-      pool-size: 2
+      pool-size: 1  # 일반 스케줄러 스레드 풀 크기
       thread-name-prefix: "global-scheduler-"
     pgmq:
-      pool-size: 2  # PGMQ 폴링 워커 스레드 수
+      pool-size: 2  # PGMQ 폴링 워커 스레드 수 (큐별 1개)
       thread-name-prefix: "pgmq-worker-"
     multigame:
-      pool-size: 1
+      pool-size: 1  # 멀티게임 라운드 관리 전용 스레드
       thread-name-prefix: "multigame-scheduler-"
 
   cache:
-    double-evict-delay: 2s  # (교환 로직) 이중 캐시 무효화 간격
+    double-evict-delay: 2s  # 이중 캐시 무효화 간격 (1차 즉시, 2차 지연)
     default-ttl: 24h
     ttls:
+      # evict 대상: 데이터 변경 시 즉시 무효화, 24h는 최대 수명
       system-config: 24h
       exchange-feed: 24h
       exchange-main: 24h
       exchange-user-intents: 24h
       exchange-room-meta: 24h
+      # 랭킹/통계: 10분마다 갱신되므로 짧은 TTL
       singlegame-rank: 5m
       singlegame-stats: 5m
       multigame-rank: 5m
 
-  # ==========================================
-  # 3. 비동기 메시징 & 외부 서비스 (PGMQ / Firebase)
-  # ==========================================
+  # --- PGMQ / Firebase ---
   pgmq:
-    archive-cleanup-cron: "0 30 3 * * *"  # 매일 03:30 처리 완료 메시지 아카이브 정리
+    archive-cleanup-cron: "0 30 3 * * *"  # 매일 03:30 처리 완료 메시지 정리
     notification:
       queue-name: "notification_queue"
-      poll-interval: 1s
-      visibility-timeout: 30   # 소비 후 재시도 대기 시간(초)
-      batch-size: 400
-      max-retry-count: 5
+      poll-interval: 1s  # 큐 폴링 주기
+      visibility-timeout: 30  # 소비 후 재시도 대기 시간(초)
+      batch-size: 400  # 한 번에 가져올 메시지 수
+      max-retry-count: 5  # 최대 재시도 횟수
     cycle-detection:
       queue-name: "exchange_cycle_detection"
       poll-interval: 1s
       visibility-timeout: 30
-      batch-size: 1  # 교환 사이클 감지는 순차 처리
+      batch-size: 1  # 사이클 감지는 순차 처리 (순서 보장)
       max-retry-count: 5
 
   firebase:
@@ -182,10 +174,9 @@ app:
       private-key-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY_ID:}
       client-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_ID:}
 
-  # ==========================================
-  # 4. 비즈니스 도메인 설정 (Singlegame / Multigame)
-  # ==========================================
+  # --- Singlegame / Multigame ---
   singlegame:
+    # 타이밍 시뮬레이션 범위 (ms) — 실제 사용자 행동 패턴 모델링
     timing:
       t-enter-main:
         min-ms: 1
@@ -201,12 +192,12 @@ app:
         max-ms: 60000
 
   multigame:
-    start-close: "02:00:00+09:00"
-    end-close: "05:00:00+09:00"
+    start-close: "02:00:00+09:00"  # 라운드 접수 마감 시간
+    end-close: "05:00:00+09:00"  # 라운드 종료 시간
     schedule:
-      game-ready-cron: "55 9/10 * * * *"
-      game-start-cron: "0 0/10 * * * *"
-      game-finish-cron: "30 0/10 * * * *"
+      game-ready-cron: "55 9/10 * * * *"  # 라운드 준비 (시작 5초 전)
+      game-start-cron: "0 0/10 * * * *"  # 라운드 시작 (10분 주기)
+      game-finish-cron: "30 0/10 * * * *"  # 라운드 종료 (시작 후 30초)
     supply:
-      total-ramp-up-duration: 30s
-      step-sleep-interval: 1s
+      total-ramp-up-duration: 30s  # 봇 공급 점진적 증가 시간
+      step-sleep-interval: 1s  # 단계별 대기 시간

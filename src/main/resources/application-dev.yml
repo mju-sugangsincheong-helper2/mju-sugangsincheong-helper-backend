@@ -3,7 +3,6 @@ spring:
     name: mjusugangsincheonghelper
 
   datasource:
-    # 로컬 docker compose (docker-compose.yml) 의 dev DB 에 직접 연결
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb_dev
     username: mjusugangsincheonghelperuser
@@ -12,31 +11,31 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:schema-view.sql  # DB 뷰만 생성 (테이블은 ddl-auto: update 가 관리)
+      schema-locations: classpath:schema-view.sql  # 뷰만 생성, 테이블은 ddl-auto가 관리
 
   jpa:
-    defer-datasource-initialization: true
+    defer-datasource-initialization: true  # SQL 초기화 스크립트 실행을 JPA 초기화 이후로 지연
     hibernate:
-      ddl-auto: update  # dev 전용: 엔티티 변경을 스키마에 자동 반영 (prod 는 validate)
+      ddl-auto: update  # 엔티티 변경을 스키마에 자동 반영 (prod는 validate)
     properties:
       hibernate:
-        generate_statistics: true  # Hibernate 통계 출력 (성능 확인용)
-        log_slow_query: 1000
-    open-in-view: false
+        generate_statistics: true  # 세션/쿼리 통계 로깅 (성능 튜닝용)
+        log_slow_query: 1000  # 1초 이상 쿼리 로그
+    open-in-view: false  # OSIV 비활성화: 뷰 렌더링까지 커넥션 유지 안 함
 
   data:
     redis:
       host: localhost
       port: 6379
       repositories:
-        enabled: false
+        enabled: false  # Spring Data 리포지토리 미사용, RedisTemplate 직접 사용
 
 logging:
   level:
     root: INFO
     com.mjusugangsincheonghelper: DEBUG
     org.hibernate.SQL: INFO
-    org.springdoc: WARN  # springdoc 초기화 로그 억제
+    org.springdoc: WARN
   file:
     name: logs/${app.instance-id}-application.log
 
@@ -44,14 +43,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"  # dev 에서는 전체 actuator 엔드포인트 노출 (prod 는 명시 목록만)
+        include: "*"  # dev는 전체 엔드포인트 노출 (prod는 명시 목록만)
   endpoint:
     health:
       show-details: always
     logfile:
       external-file: logs/${app.instance-id}-application.log
     env:
-      show-values: always  # dev 에서는 env 값을 노출해 설정 확인 (prod 는 기본값)
+      show-values: always  # dev는 환경변수 값 노출 (prod는 마스킹)
   info:
     env:
       enabled: true
@@ -60,14 +59,13 @@ management:
 app:
   instance-id: ${INSTANCE_ID:app}
   performance:
-    slow-ms: 1000
-    very-slow-ms: 5000
+    slow-ms: 1000  # 이 시간 초과 시 WARN 로그
+    very-slow-ms: 5000  # 이 시간 초과 시 ERROR 로그
 
-  # ==========================================
-  # 1. 보안 & 인증 영역 (Security / Auth)
-  # ==========================================
+  # --- Security / Auth ---
   security:
     public-urls:
+      # 모든 HTTP 메서드에서 인증 없이 접근 가능한 경로
       - /api/*/auth/guest
       - /api/*/auth/refresh
       - /api/*/auth/login/google/merge
@@ -82,6 +80,7 @@ app:
       - /*.js
       - /actuator/**
     public-get-urls:
+      # GET 요청 한정 인증 없이 허용 (조회성 공개 API)
       - "/api/*/course/sections"
       - "/api/*/course/department"
       - "/api/*/exchange/intents/recent"
@@ -95,14 +94,14 @@ app:
     allowed-origins: "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000"
 
   auth:
-    token-mode: header, cookie  # dev: 헤더/쿠키 모두 허용 + 응답 본문에 토큰 포함 (프론트 디버깅 편의)
-    cookie-secure: false  # 로컬 HTTP 에서도 쿠키 동작
-    token-in-response: true
+    token-mode: header, cookie  # dev는 둘 다 허용 + 응답 본문에 토큰 포함 (디버깅 편의)
+    cookie-secure: false  # 로컬 HTTP에서도 쿠키 동작
+    token-in-response: true  # 로그인 응답 body에 토큰 포함
     cookie-max-age:
       access: 1h
       refresh: 7d
     test-accounts:
-      # 인증 없이 특정 사용자로 로그인해볼 수 있는 테스트 계정 (dev 전용)
+      # 인증 없이 특정 역할로 로그인 (name 형식: TEST_이름/직책/부서)
       - name: "TEST_ADMIN/TEST_POSITION/TEST_DEPARTMENT"
         role: ADMIN
       - name: "TEST_MEMBER/TEST_POSITION/TEST_DEPARTMENT"
@@ -111,10 +110,10 @@ app:
         role: GUEST
 
   jwt:
-    secret: dev-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-prod  # dev 고정 키 (prod 는 .env 주입)
+    secret: dev-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-prod
     access-token-expiry-ms: 3600000       # 1시간
     refresh-token-expiry-ms: 604800000    # 7일
-    merge-ticket-expiry-ms: 300000        # 5분
+    merge-ticket-expiry-ms: 300000        # 5분 (계정 병합 티켓)
 
   oauth2:
     google:
@@ -123,51 +122,49 @@ app:
       redirect-uri: http://localhost:5173/login
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
-    state-ttl: 300s
+    state-ttl: 300s  # OAuth state 파라미터 유효기간 (CSRF 방어)
 
-  # ==========================================
-  # 2. 글로벌 코어 인프라 (Scheduling / Cache)
-  # ==========================================
+  # --- Scheduling / Cache ---
   scheduling:
     task:
-      pool-size: 2
+      pool-size: 1  # 일반 스케줄러 스레드 풀 크기
       thread-name-prefix: "global-scheduler-"
     pgmq:
-      pool-size: 2
+      pool-size: 2  # PGMQ 폴링 워커 스레드 수 (큐별 1개)
       thread-name-prefix: "pgmq-worker-"
     multigame:
-      pool-size: 1
+      pool-size: 1  # 멀티게임 라운드 관리 전용 스레드
       thread-name-prefix: "multigame-scheduler-"
 
   cache:
-    double-evict-delay: 2s
+    double-evict-delay: 2s  # 이중 캐시 무효화 간격 (1차 즉시, 2차 지연)
     default-ttl: 24h
     ttls:
+      # evict 대상: 데이터 변경 시 즉시 무효화, 24h는 최대 수명
       system-config: 24h
       exchange-feed: 24h
       exchange-main: 24h
       exchange-user-intents: 24h
       exchange-room-meta: 24h
+      # 랭킹/통계: 10분마다 갱신되므로 짧은 TTL
       singlegame-rank: 5m
       singlegame-stats: 5m
       multigame-rank: 5m
 
-  # ==========================================
-  # 3. 비동기 메시징 & 외부 서비스 (PGMQ / Firebase)
-  # ==========================================
+  # --- PGMQ / Firebase ---
   pgmq:
-    archive-cleanup-cron: "0 30 3 * * *"
+    archive-cleanup-cron: "0 30 3 * * *"  # 매일 03:30 처리 완료 메시지 정리
     notification:
       queue-name: "notification_queue"
-      poll-interval: 1s
-      visibility-timeout: 30
-      batch-size: 400
-      max-retry-count: 5
+      poll-interval: 1s  # 큐 폴링 주기
+      visibility-timeout: 30  # 소비 후 재시도 대기 시간(초)
+      batch-size: 400  # 한 번에 가져올 메시지 수
+      max-retry-count: 5  # 최대 재시도 횟수
     cycle-detection:
       queue-name: "exchange_cycle_detection"
       poll-interval: 1s
       visibility-timeout: 30
-      batch-size: 1
+      batch-size: 1  # 사이클 감지는 순차 처리 (순서 보장)
       max-retry-count: 5
 
   firebase:
@@ -179,10 +176,9 @@ app:
       private-key-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_PRIVATE_KEY_ID:}
       client-id: ${MJU_SUGANGSINCHEONG_HELPER_FIREBASE_ADMIN_CLIENT_ID:}
 
-  # ==========================================
-  # 4. 비즈니스 도메인 설정 (Singlegame / Multigame)
-  # ==========================================
+  # --- Singlegame / Multigame ---
   singlegame:
+    # 타이밍 시뮬레이션 범위 (ms) — 실제 사용자 행동 패턴 모델링
     timing:
       t-enter-main:
         min-ms: 1
@@ -198,12 +194,12 @@ app:
         max-ms: 60000
 
   multigame:
-    start-close: "02:00:00+09:00"
-    end-close: "05:00:00+09:00"
+    start-close: "02:00:00+09:00"  # 라운드 접수 마감 시간
+    end-close: "05:00:00+09:00"  # 라운드 종료 시간
     schedule:
-      game-ready-cron: "55 9/10 * * * *"
-      game-start-cron: "0 0/10 * * * *"
-      game-finish-cron: "30 0/10 * * * *"
+      game-ready-cron: "55 9/10 * * * *"  # 라운드 준비 (시작 5초 전)
+      game-start-cron: "0 0/10 * * * *"  # 라운드 시작 (10분 주기)
+      game-finish-cron: "30 0/10 * * * *"  # 라운드 종료 (시작 후 30초)
     supply:
-      total-ramp-up-duration: 30s
-      step-sleep-interval: 1s
+      total-ramp-up-duration: 30s  # 봇 공급 점진적 증가 시간
+      step-sleep-interval: 1s  # 단계별 대기 시간

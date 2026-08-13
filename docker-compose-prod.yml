@@ -1,16 +1,19 @@
-# 운영 환경 docker compose (docker-compose.yml 과 동일 구조)
-# - dev 도구 중 pgadmin → pgweb 대체 (내부망용), redis-commander 유지
-# - 앱 서비스(backend) 포함. 앞단 프록시가 /api 만 backend 로 전달한다
-# - 포트: backend 10020, db 10021, redis 10022, pgweb 10023, redis-commander 10024
-# - 기밀은 같은 디렉터리 .env(gitignore)에서 읽는다: DB_URL, DB_USERNAME, DB_PASSWORD,
-#   POSTGRES_PASSWORD, REDIS_HOST, JWT_SECRET (+ 선택: CORS/Google/Firebase)
-# - 기동 순서: db(healthy) → db-setup(완료) → backend, redis(healthy) → backend
+# 운영 환경 docker compose
+# 포트: backend 10020, db 10021, redis 10022, pgweb 10023, redis-commander 10024
+# 기밀: 같은 디렉터리 .env(gitignore) — DB_URL, DB_USERNAME, DB_PASSWORD, POSTGRES_PASSWORD, REDIS_HOST, JWT_SECRET 등
+# 기동 순서: db(healthy) → db-setup(completed) → backend ← redis(healthy)
+# 볼륨: ./data/postgres, ./data/redis, ./logs — 서버 로컬 디렉터리에 영속화
 
 x-variables:
+  # ── DB 식별자 ──
   postgres_db_name: &POSTGRES_DB_NAME "postgres"
   postgres_user: &POSTGRES_USER "postgres"
   prod_db_name: &PROD_DB_NAME "mjusugangsincheonghelperdb_prod"
+
+  # pgweb 접속 URL — .env의 DB 자격증명을 조합하여 prod DB로 직접 연결
   pgweb_database_url: &PGWEB_DATABASE_URL "postgres://${DB_USERNAME:?DB_USERNAME required in .env}:${DB_PASSWORD:?DB_PASSWORD required in .env}@db:5432/mjusugangsincheonghelperdb_prod?sslmode=disable"
+
+  # ── 컨테이너 이름 (모든 서비스에서 참조) ──
   backend_container: &BACKEND_CONTAINER "mju-sugangsincheong-helper-backend"
   db_container: &DB_CONTAINER "mju-sugangsincheong-helper-db"
   db_setup_container: &DB_SETUP_CONTAINER "mju-sugangsincheong-helper-db-setup"
@@ -18,7 +21,9 @@ x-variables:
   redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
   pgweb_container: &PGWEB_CONTAINER "mju-sugangsincheong-helper-pgweb"
 
-  # postgres:17 + pgmq 빌드
+  # ── 인라인 Dockerfile: postgres:17 + pgmq 확장 ──
+  # 앱이 메시지 큐로 pgmq를 사용하므로 확장 포함 이미지가 필수.
+  # 빌드 도구(make, gcc)는 설치 후 제거하여 최종 이미지 최소화.
   postgres_with_pgmq_inline_dockerfile: &POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE |
     FROM postgres:17
     USER root
@@ -32,7 +37,12 @@ x-variables:
         && rm -rf /var/lib/apt/lists/*
     USER postgres
 
-  # [수정] x-variables 안으로 들여쓰기 맞춤 + IBM Semeru에 curl 설치
+  # ── 인라인 Dockerfile: Spring Boot 멀티스테이지 빌드 ──
+  # Stage 1 (build): Temurin JDK 21로 bootJar 빌드. Gradle 캐시 마운트로 재빌드 가속.
+  # Stage 2 (runtime): IBM Semeru JRE 21 (OpenJ9 기반, 컨테이너 환경에 최적화된 JVM).
+  #   -Xtune:virtualized — 컨테이너/가상머신 환경 최적화
+  #   -XX:MaxRAMPercentage=75.0 — 컨테이너 메모리 제한의 75%까지 힙으로 사용
+  # curl 포함 — healthcheck에서 actuator 엔드포인트 확인용
   backend_inline_dockerfile: &BACKEND_INLINE_DOCKERFILE |
     FROM eclipse-temurin:21-jdk AS build
     WORKDIR /app
@@ -50,6 +60,7 @@ x-variables:
     ENTRYPOINT ["java", "-Xtune:virtualized", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 
 services:
+  # ── PostgreSQL 17 + pgmq ──
   db:
     build:
       context: .
@@ -71,6 +82,12 @@ services:
       retries: 5
     restart: always
 
+  # ── DB 초기화 (1회성) ──
+  # db가 healthy 상태가 된 후 실행되어 아래 작업을 순서대로 수행:
+  #   1. 앱 전용 Role 생성 (없으면)
+  #   2. prod DB 생성 (없으면) + pgmq 확장 활성화
+  #   3. schema-prod.sql 적용 (DO $$ 블록 포함 — Spring 파서가 처리 불가하므로 psql 직접 실행)
+  # 완료 후 자동 종료 (restart: "no"), 재실행해도 멱등하게 안전.
   db-setup:
     image: postgres:17
     container_name: *DB_SETUP_CONTAINER
@@ -113,6 +130,10 @@ services:
       "
     restart: "no"
 
+  # ── Spring Boot 백엔드 ──
+  # db-setup 완료 + redis healthy 이후 기동.
+  # 모든 기밀(.env)은 환경변수로 주입, 기본값이 있는 선택 항목은 ${VAR:-default} 형식.
+  # start_period 30s — JVM 워밍업 시간 고려하여 healthcheck 유예.
   backend:
     build:
       context: .
@@ -122,11 +143,13 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       INSTANCE_ID: backend
       TZ: Asia/Seoul
+      # 필수 (미설정 시 컨테이너 기동 실패)
       DB_URL: ${DB_URL:?DB_URL required in .env}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME required in .env}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD required in .env}
       REDIS_HOST: ${REDIS_HOST:?REDIS_HOST required in .env}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET required in .env (256bit 이상)}
+      # 선택 (기본값 있음)
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://xn--hq1b21kh2g.com}
       MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID:-}
       MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET:-}
@@ -147,7 +170,6 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      # [수정] curl 기반 포트/응답 확인으로 변경
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 10s
       timeout: 5s
@@ -155,6 +177,9 @@ services:
       start_period: 30s
     restart: always
 
+  # ── Redis 7 ──
+  # 캐시, 세션, PGMQ 보조. 인증 없이 바인딩하지만 외부 노출 포트(10022)는
+  # 방화벽으로 내부망만 접근 가능하도록 제한.
   redis:
     image: redis:7-alpine
     container_name: *REDIS_CONTAINER
@@ -170,6 +195,7 @@ services:
       start_period: 5s
     restart: always
 
+  # ── Redis 관리 UI — http://localhost:10024 ──
   redis-commander:
     image: ghcr.io/joeferner/redis-commander:latest
     container_name: *REDIS_COMMANDER_CONTAINER
@@ -181,6 +207,8 @@ services:
       - redis
     restart: always
 
+  # ── pgweb (PostgreSQL 웹 UI) — http://localhost:10023 ──
+  # prod 전용 (dev은 pgadmin 사용). .env 자격증명으로 prod DB에 직접 연결.
   pgweb:
     image: sosedoff/pgweb:latest
     container_name: *PGWEB_CONTAINER
@@ -193,33 +221,12 @@ services:
         condition: service_healthy
     restart: always
 
-# ==============================================================================
-# [인프라 지표 수집 스택] VictoriaMetrics (Spring Boot Actuator Prometheus 메트릭 수집)
 # ------------------------------------------------------------------------------
-# [상태] 현재 비활성화 (나중에 활성화 시 주석 해제하여 사용)
-# 
-# [사전 준비사항]
-# 1. Spring Boot 백엔드 build.gradle 에 Prometheus 의존성 추가 필요:
-#    implementation 'io.micrometer:micrometer-registry-prometheus'
-# 2. application-prod.yml 메트릭 엔드포인트 노출 확인:
-#    management.endpoints.web.exposure.include: "health,info,prometheus"
-# 3. 서버 로컬 디렉터리 생성 및 설정 파일 준비:
-#    mkdir -p ./docker/victoriametrics
-#    cat << 'EOF' > ./docker/victoriametrics/prometheus.yml
-# global:
-#   scrape_interval: 15s
-# scrape_configs:
-#   - job_name: 'spring-backend'
-#     metrics_path: '/actuator/prometheus'
-#     static_configs:
-#       - targets: ['backend:8080']
-# EOF
-#
-# [주요 특징 및 접근]
-# - 메모리 사용량 제한: -memory.allowedPercent=20 (RAM 소비 극소화)
-# - 데이터 보관 기간: 30일 (-retentionPeriod=30d)
-# - vmui (내부 모니터링 UI): http://localhost:8428/vmui
-# ==============================================================================
+# VictoriaMetrics (Prometheus 메트릭 수집) — 현재 비활성화
+# 활성화 시: build.gradle에 micrometer-registry-prometheus 추가,
+#           docker/victoriametrics/prometheus.yml 준비 후 아래 주석 해제
+# vmui: http://localhost:8428/vmui
+# ------------------------------------------------------------------------------
 
 # victoria-metrics:
 #   image: victoriametrics/victoria-metrics:latest
