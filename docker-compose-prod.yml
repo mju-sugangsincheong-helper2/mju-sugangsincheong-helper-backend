@@ -41,13 +41,13 @@ backend_inline_dockerfile: &BACKEND_INLINE_DOCKERFILE |
     COPY gradle ./gradle
     COPY src ./src
     RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar --no-daemon
-
+    
     # 1. 실행 베이스 이미지를 OpenJ9 기반 IBM Semeru로 변경
     FROM ibm-semeru-runtimes:open-21-jre-jammy
     WORKDIR /app
     COPY --from=build /app/build/libs/*.jar app.jar
     EXPOSE 8080
-
+    
     # 2. OpenJ9 전용 가상화 최적화 옵션(-Xtune:virtualized) 및 스택 최적화(-Xss512k) 적용
     ENTRYPOINT ["java", "-Xtune:virtualized", "-Xss512k", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
 
