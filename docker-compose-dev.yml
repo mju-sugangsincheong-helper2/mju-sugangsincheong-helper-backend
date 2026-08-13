@@ -24,12 +24,14 @@ x-variables:
   redis_container: &REDIS_CONTAINER "mju-sugangsincheong-helper-redis"
   redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
 
-  # ── 인라인 Dockerfile: postgres:17 + pgmq 확장 ──
-  # 앱이 메시지 큐로 pgmq를 사용하므로 확장 포함 이미지가 필수 (prod와 동일)
+  # ── 인라인 Dockerfile: postgres:17 + pgmq + pg_cron 확장 ──
+  # 앱이 메시지 큐로 pgmq를 사용하고, pg_cron으로 스케줄링을 수행하므로
+  # 두 확장 모두 포함된 이미지가 필수 (prod와 동일)
   postgres_with_pgmq_inline_dockerfile: &POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE |
     FROM postgres:17
     USER root
     RUN apt-get update && apt-get install -y --no-install-recommends \
+          postgresql-17-cron \
           postgresql-server-dev-17 make gcc git ca-certificates \
         && rm -rf /var/lib/apt/lists/* \
         && git clone https://github.com/pgmq/pgmq.git /tmp/pgmq \
@@ -40,7 +42,7 @@ x-variables:
     USER postgres
 
 services:
-  # ── PostgreSQL 17 + pgmq ──
+  # ── PostgreSQL 17 + pgmq + pg_cron ──
   db:
     build:
       context: .
@@ -55,6 +57,8 @@ services:
       - "5432:5432"  # IDE/로컬 psql 직접 접속용
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # pg_cron을 shared_preload_libraries에 추가하고 사용할 데이터베이스 지정
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements,pg_cron", "-c", "cron.database_name=postgres"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s

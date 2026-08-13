@@ -30,11 +30,14 @@ public class MemberDevice {
 	@Column(nullable = false)
 	private Long memberId;
 
+	@Column(name = "firebase_installation_id", length = 255)
+	private String firebaseInstallationId;
+
 	@Column(name = "refresh_token_hash", nullable = false, unique = true, length = 64)
 	private String refreshTokenHash;
 
-	@Column(name = "fcm_token", length = 512)
-	private String fcmToken;
+	@Column(name = "firebase_cloud_messaging_registration_token", length = 512)
+	private String firebaseCloudMessagingRegistrationToken;
 
 	@Column(name = "platformjs_name", length = 100)
 	private String platformJsName;
@@ -78,13 +81,14 @@ public class MemberDevice {
 	private Instant updatedAt;
 
 	@Builder
-	public MemberDevice(Long memberId, String refreshTokenHash,
+	public MemberDevice(Long memberId, String firebaseInstallationId, String refreshTokenHash,
 			String platformJsName, String platformJsVersion,
 			String platformJsLayout, String platformJsPrerelease,
 			String platformJsOs, String platformJsManufacturer,
 			String platformJsProduct, String platformJsDescription,
 			String platformJsUa, Instant expiresAt) {
 		this.memberId = memberId;
+		this.firebaseInstallationId = firebaseInstallationId;
 		this.refreshTokenHash = refreshTokenHash;
 		this.platformJsName = platformJsName;
 		this.platformJsVersion = platformJsVersion;
@@ -136,13 +140,13 @@ public class MemberDevice {
 		this.memberId = newMemberId;
 	}
 
-	public void updateFcmToken(String fcmToken) {
-		this.fcmToken = fcmToken;
+	public void updateFirebaseCloudMessagingRegistrationToken(String firebaseCloudMessagingRegistrationToken) {
+		this.firebaseCloudMessagingRegistrationToken = firebaseCloudMessagingRegistrationToken;
 		this.lastAccessedAt = Instant.now();
 	}
 
-	public void clearFcmToken() {
-		this.fcmToken = null;
+	public void clearFirebaseCloudMessagingRegistrationToken() {
+		this.firebaseCloudMessagingRegistrationToken = null;
 		this.lastAccessedAt = Instant.now();
 	}
 }

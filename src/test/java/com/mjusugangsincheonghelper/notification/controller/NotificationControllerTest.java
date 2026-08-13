@@ -76,7 +76,7 @@ class NotificationControllerTest {
 	@DisplayName("FCM 토큰 등록 API가 성공적으로 200 OK를 반환한다")
 	void shouldRegisterFcmToken() throws Exception {
 		NotificationTokenRegisterRequest request = NotificationTokenRegisterRequest.builder()
-				.fcmToken("sample-fcm-token")
+				.firebaseCloudMessagingRegistrationToken("sample-fcm-token")
 				.build();
 
 		given(notificationService.registerToken(eq(1L), any(), any()))
@@ -87,14 +87,14 @@ class NotificationControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(request)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.fcmToken").value("sample-fcm-token"));
+				.andExpect(jsonPath("$.data.firebaseCloudMessagingRegistrationToken").value("sample-fcm-token"));
 	}
 
 	@Test
 	@DisplayName("FCM 토큰 삭제 API가 성공적으로 200 OK를 반환한다")
 	void shouldDeleteFcmToken() throws Exception {
 		NotificationTokenDeleteRequest request = NotificationTokenDeleteRequest.builder()
-				.fcmToken("sample-fcm-token")
+				.firebaseCloudMessagingRegistrationToken("sample-fcm-token")
 				.build();
 
 		doNothing().when(notificationService).deleteToken(eq(1L), any(), any());

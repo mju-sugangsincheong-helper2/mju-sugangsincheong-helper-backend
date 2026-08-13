@@ -16,6 +16,6 @@ public class TestLoginResponse {
 	private String name;
 	private String position;
 	private String department;
-	private String accessToken;
-	private String refreshToken;
+	private String sessionAccessToken;
+	private String sessionRefreshToken;
 }

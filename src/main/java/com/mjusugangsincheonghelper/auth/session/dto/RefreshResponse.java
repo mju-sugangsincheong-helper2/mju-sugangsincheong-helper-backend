@@ -14,8 +14,8 @@ public class RefreshResponse {
 	private final String role;
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final String accessToken;
+	private final String sessionAccessToken;
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final String refreshToken;
+	private final String sessionRefreshToken;
 }

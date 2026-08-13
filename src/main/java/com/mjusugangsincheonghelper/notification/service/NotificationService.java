@@ -31,7 +31,7 @@ public class NotificationService {
 	@Transactional
 	public NotificationTokenResponse registerToken(Long memberId, Long deviceId,
 			NotificationTokenRegisterRequest request) {
-		String newFcmToken = request.getFcmToken();
+		String newFcmToken = request.getFirebaseCloudMessagingRegistrationToken();
 
 		MemberDevice device = memberDeviceRepository.findById(deviceId)
 				.orElseThrow(() -> new BaseException(ErrorCode.NOTIFICATION_TOKEN_NOT_FOUND));
@@ -40,14 +40,14 @@ public class NotificationService {
 			throw new BaseException(ErrorCode.GLOBAL_SECURITY_FORBIDDEN);
 		}
 
-		for (MemberDevice existingDevice : memberDeviceRepository.findAllByFcmToken(newFcmToken)) {
+		for (MemberDevice existingDevice : memberDeviceRepository.findAllByFirebaseCloudMessagingRegistrationToken(newFcmToken)) {
 			if (!existingDevice.getMemberId().equals(memberId)) {
-				existingDevice.clearFcmToken();
+				existingDevice.clearFirebaseCloudMessagingRegistrationToken();
 			}
 		}
 
-		device.updateFcmToken(newFcmToken);
-		log.debug("Registered FCM token. memberId={}, deviceId={}", memberId, deviceId);
+		device.updateFirebaseCloudMessagingRegistrationToken(newFcmToken);
+		log.debug("Registered Firebase Cloud Messaging token. memberId={}, deviceId={}", memberId, deviceId);
 		return NotificationTokenResponse.from(device);
 	}
 
@@ -60,8 +60,8 @@ public class NotificationService {
 			throw new BaseException(ErrorCode.GLOBAL_SECURITY_FORBIDDEN);
 		}
 
-		device.clearFcmToken();
-		log.debug("Deleted FCM token. memberId={}, deviceId={}", memberId, deviceId);
+		device.clearFirebaseCloudMessagingRegistrationToken();
+		log.debug("Deleted Firebase Cloud Messaging token. memberId={}, deviceId={}", memberId, deviceId);
 	}
 
 	@Transactional
@@ -81,13 +81,13 @@ public class NotificationService {
 		// 테스트 알림은 실제 알림과 동일하게 PGMQ 큐를 통해 발송되며,
 		// 현재 기기가 아닌 유저의 모든 기기로 전송된다.
 		for (MemberDevice device : devices) {
-			String fcmToken = device.getFcmToken();
-			if (fcmToken == null || fcmToken.isBlank()) {
+			String firebaseCloudMessagingRegistrationToken = device.getFirebaseCloudMessagingRegistrationToken();
+			if (firebaseCloudMessagingRegistrationToken == null || firebaseCloudMessagingRegistrationToken.isBlank()) {
 				continue;
 			}
 
 			NotificationEventMessage event = NotificationEventMessage.builder()
-					.token(fcmToken)
+					.token(firebaseCloudMessagingRegistrationToken)
 					.notification(NotificationEventMessage.NotificationPayload.builder()
 							.title(request.getTitle())
 							.body("이것은 테스트 알림입니다.")

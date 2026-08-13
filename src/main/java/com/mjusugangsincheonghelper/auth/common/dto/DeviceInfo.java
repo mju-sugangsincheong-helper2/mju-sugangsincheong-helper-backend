@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class DeviceInfo {
 
+	private String firebaseInstallationId;
+	private String firebaseCloudMessagingRegistrationToken;
 	private String name;
 	private String version;
 	private String layout;
@@ -20,5 +22,4 @@ public class DeviceInfo {
 	private String product;
 	private String description;
 	private String ua;
-	private String fcmToken;
 }

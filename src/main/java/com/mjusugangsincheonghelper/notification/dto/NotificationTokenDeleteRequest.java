@@ -12,6 +12,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class NotificationTokenDeleteRequest {
 
-	@NotBlank(message = "fcmToken은 필수입니다.")
-	private String fcmToken;
+	@NotBlank(message = "firebaseCloudMessagingRegistrationToken은 필수입니다.")
+	private String firebaseCloudMessagingRegistrationToken;
 }

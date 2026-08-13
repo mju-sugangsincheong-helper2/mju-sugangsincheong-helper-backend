@@ -84,8 +84,8 @@ public class SessionController {
 				.status("success")
 				.role(session.getRole());
 		if (tokenInResponse) {
-			builder.accessToken(session.getAccessToken())
-					.refreshToken(session.getRefreshToken());
+			builder.sessionAccessToken(session.getSessionAccessToken())
+					.sessionRefreshToken(session.getSessionRefreshToken());
 		}
 		return builder.build();
 	}
@@ -93,7 +93,7 @@ public class SessionController {
 	private String extractRefreshToken(HttpServletRequest request) {
 		if (request.getCookies() != null) {
 			for (Cookie cookie : request.getCookies()) {
-				if ("refresh_token".equals(cookie.getName())) {
+				if ("session_refresh_token".equals(cookie.getName())) {
 					return cookie.getValue();
 				}
 			}

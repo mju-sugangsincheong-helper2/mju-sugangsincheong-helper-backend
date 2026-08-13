@@ -46,7 +46,7 @@ class NotificationPublisherTest {
 		MemberDevice device = MemberDevice.builder()
 				.memberId(1L)
 				.build();
-		device.updateFcmToken(token);
+		device.updateFirebaseCloudMessagingRegistrationToken(token);
 		ReflectionTestUtils.setField(device, "id", id);
 		return device;
 	}
@@ -94,7 +94,7 @@ class NotificationPublisherTest {
 	@Test
 	@DisplayName("publishToAll은 등록된 모든 토큰에 브로드캐스트한다")
 	void publishToAllSendsToEveryToken() {
-		given(memberDeviceRepository.findAllFcmTokens())
+		given(memberDeviceRepository.findAllFirebaseCloudMessagingRegistrationTokens())
 				.willReturn(List.of("token-1", "token-2", "token-3"));
 
 		publisher.publishToAll("SYSTEM_NOTICE", "/", "공지 알림", "공지 제목");
@@ -105,7 +105,7 @@ class NotificationPublisherTest {
 	@Test
 	@DisplayName("publishToAll은 토큰이 없으면 아무것도 발행하지 않는다")
 	void publishToAllSkipsWhenNoTokens() {
-		given(memberDeviceRepository.findAllFcmTokens()).willReturn(List.of());
+		given(memberDeviceRepository.findAllFirebaseCloudMessagingRegistrationTokens()).willReturn(List.of());
 
 		publisher.publishToAll("SYSTEM_NOTICE", "/", "공지 알림", "공지 제목");
 
@@ -115,7 +115,7 @@ class NotificationPublisherTest {
 	@Test
 	@DisplayName("publishToAll은 발행 실패가 호출부로 전파되지 않는다")
 	void publishToAllSwallowsFailure() {
-		given(memberDeviceRepository.findAllFcmTokens())
+		given(memberDeviceRepository.findAllFirebaseCloudMessagingRegistrationTokens())
 				.willThrow(new RuntimeException("pgmq down"));
 
 		assertThatCode(() -> publisher.publishToAll("SYSTEM_NOTICE", "/", "공지 알림", "공지 제목"))

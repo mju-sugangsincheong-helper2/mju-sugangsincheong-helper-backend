@@ -16,8 +16,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class HttpTokenDelivery implements TokenDeliveryStrategy {
 
-	private static final String ACCESS_TOKEN_COOKIE = "access_token";
-	private static final String REFRESH_TOKEN_COOKIE = "refresh_token";
+	private static final String ACCESS_TOKEN_COOKIE = "session_access_token";
+	private static final String REFRESH_TOKEN_COOKIE = "session_refresh_token";
 
 	private final TokenTransportMode mode;
 	private final boolean secureCookie;

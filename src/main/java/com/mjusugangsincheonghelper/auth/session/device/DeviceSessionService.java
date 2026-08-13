@@ -41,8 +41,8 @@ public class DeviceSessionService {
 							info.getDescription(),
 							info.getUa()
 					);
-					if (info.getFcmToken() != null) {
-						device.updateFcmToken(info.getFcmToken());
+					if (info.getFirebaseCloudMessagingRegistrationToken() != null) {
+						device.updateFirebaseCloudMessagingRegistrationToken(info.getFirebaseCloudMessagingRegistrationToken());
 					}
 					// 동일 기기 재로그인: 만료 시각도 함께 연장하지 않으면
 					// 최초 생성 시점+7일 이후로 디바이스가 영구 만료 상태가 된다.
@@ -52,6 +52,7 @@ public class DeviceSessionService {
 				.orElseGet(() -> {
 					MemberDevice device = MemberDevice.builder()
 							.memberId(memberId)
+							.firebaseInstallationId(info.getFirebaseInstallationId())
 							.refreshTokenHash(refreshTokenHash)
 							.platformJsName(info.getName())
 							.platformJsVersion(info.getVersion())
@@ -64,22 +65,19 @@ public class DeviceSessionService {
 							.platformJsUa(info.getUa())
 							.expiresAt(Instant.now().plusMillis(expiryMs))
 							.build();
-					if (info.getFcmToken() != null) {
-						device.updateFcmToken(info.getFcmToken());
+					if (info.getFirebaseCloudMessagingRegistrationToken() != null) {
+						device.updateFirebaseCloudMessagingRegistrationToken(info.getFirebaseCloudMessagingRegistrationToken());
 					}
 					return memberDeviceRepository.save(device);
 				});
 	}
 
 	private Optional<MemberDevice> findExistingDevice(Long memberId, DeviceInfo deviceInfo) {
-		if (deviceInfo.getFcmToken() != null) {
-			return memberDeviceRepository.findTopByMemberIdAndPlatformJsUaAndFcmTokenOrderByLastAccessedAtDesc(
-					memberId, deviceInfo.getUa(), deviceInfo.getFcmToken());
+		if (deviceInfo.getFirebaseInstallationId() != null && !deviceInfo.getFirebaseInstallationId().isBlank()) {
+			return memberDeviceRepository.findByMemberIdAndFirebaseInstallationId(
+					memberId, deviceInfo.getFirebaseInstallationId());
 		}
-		if (deviceInfo.getUa() == null || deviceInfo.getUa().isBlank()) {
-			return Optional.empty();
-		}
-		return memberDeviceRepository.findTopByMemberIdAndPlatformJsUaOrderByLastAccessedAtDesc(memberId, deviceInfo.getUa());
+		return Optional.empty();
 	}
 
 	@Transactional
@@ -102,7 +100,7 @@ public class DeviceSessionService {
 		for (MemberDevice guestDevice : guestDevices) {
 			boolean duplicateExists = targetDevices.stream().anyMatch(td ->
 					(td.getPlatformJsUa() != null && td.getPlatformJsUa().equals(guestDevice.getPlatformJsUa()))
-							|| (td.getFcmToken() != null && td.getFcmToken().equals(guestDevice.getFcmToken()))
+							|| (td.getFirebaseCloudMessagingRegistrationToken() != null && td.getFirebaseCloudMessagingRegistrationToken().equals(guestDevice.getFirebaseCloudMessagingRegistrationToken()))
 			);
 			if (duplicateExists) {
 				memberDeviceRepository.delete(guestDevice);
@@ -113,7 +111,7 @@ public class DeviceSessionService {
 	}
 
 	/**
-	 * 만료된 기기 세션(세션 만료 시각이 지난 기기, FCM 토큰 포함)을 일괄 삭제한다.
+	 * 만료된 기기 세션(세션 만료 시각이 지난 기기, Firebase Cloud Messaging 토큰 포함)을 일괄 삭제한다.
 	 * 관리자 정리 버튼용: 삭제된 개수를 반환한다.
 	 */
 	@Transactional

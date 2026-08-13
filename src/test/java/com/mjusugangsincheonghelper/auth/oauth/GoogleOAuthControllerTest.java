@@ -80,8 +80,8 @@ class GoogleOAuthControllerTest {
 							.name("홍길동")
 							.position("pos")
 							.department("dept")
-							.accessToken("at")
-							.refreshToken("rt")
+							.sessionAccessToken("at")
+							.sessionRefreshToken("rt")
 							.build());
 
 			mockMvc.perform(post("/api/v1/auth/token")

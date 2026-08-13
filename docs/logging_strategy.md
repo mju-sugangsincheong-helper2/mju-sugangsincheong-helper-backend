@@ -186,7 +186,7 @@ spring:
 | Exchange | Intent 등록/철회, **매칭 성사(Room 생성)** | 캐시 evict, 사이클 중복 스킵, Room 상태 전이, 메시지 전송/조회 |
 | Multigame | 라운드 ready/start/정산 완료 | 라운드 취소(인원 부족/not ready), Supply 루프 중간 상태 |
 | Notice/Course | 공지 생성/수정/삭제, 강좌 import/삭제 (admin 조작) | — |
-| Notification | 브로드캐스트 적재, FCM 배치 발송 | 개별 기기 단위 푸시 적재, FCM 토큰 등록/삭제 |
+| Notification | 브로드캐스트 적재, FCM 배치 발송 | 개별 기기 단위 푸시 적재, Firebase Cloud Messaging 토큰 등록/삭제 |
 | SingleGame | — | 게임 기록 저장 |
 | System | 시작 시 초기화, **시스템 설정 변경** | — |
 

@@ -60,7 +60,7 @@ class MergeControllerTest {
 	class Describe_merge {
 
 		@Test
-		@DisplayName("클라이언트가 보낸 device(fcmToken 포함)를 그대로 세션 생성에 전달한다")
+		@DisplayName("클라이언트가 보낸 device(firebaseCloudMessagingRegistrationToken 포함)를 그대로 세션 생성에 전달한다")
 		void it_passes_client_device_with_fcm_token_to_session_creation() throws Exception {
 			AuthenticatedIdentity identity = AuthenticatedIdentity.builder().memberId(2L).build();
 			given(mergeService.merge("ticket-123")).willReturn(identity);
@@ -71,8 +71,8 @@ class MergeControllerTest {
 							.name("홍길동")
 							.position("pos")
 							.department("dept")
-							.accessToken("at")
-							.refreshToken("rt")
+							.sessionAccessToken("at")
+							.sessionRefreshToken("rt")
 							.build());
 
 			mockMvc.perform(post("/api/v1/auth/login/google/merge")
@@ -84,7 +84,7 @@ class MergeControllerTest {
 									    "name": "Chrome",
 									    "os": "Android 14",
 									    "product": "Pixel 8",
-									    "fcmToken": "fcm-xyz",
+									    "firebaseCloudMessagingRegistrationToken": "fcm-xyz",
 									    "ua": "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120.0.0.0 Mobile Safari/537.36"
 									  }
 									}
@@ -98,7 +98,7 @@ class MergeControllerTest {
 			assertThat(saved.getName()).isEqualTo("Chrome");
 			assertThat(saved.getOs()).isEqualTo("Android 14");
 			assertThat(saved.getProduct()).isEqualTo("Pixel 8");
-			assertThat(saved.getFcmToken()).isEqualTo("fcm-xyz");
+			assertThat(saved.getFirebaseCloudMessagingRegistrationToken()).isEqualTo("fcm-xyz");
 		}
 	}
 }

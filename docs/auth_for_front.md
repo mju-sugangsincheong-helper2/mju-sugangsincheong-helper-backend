@@ -209,7 +209,7 @@
              │               └──────────────────┘
              │
              │  Google OAuth (기존 계정, Guest 상태)
-             │  POST /auth/token {code, state, accessToken}
+             │  POST /auth/token {code, state, sessionAccessToken}
              │
              ▼
     ┌──────────────────┐
@@ -278,7 +278,7 @@ POST /api/v1/auth/guest
 ```json
 // Request Body (optional)
 {
-  "fcmToken": "string (optional)",
+  "firebaseCloudMessagingRegistrationToken": "string (optional)",
   "device": {
     "name": "string (optional)",
     "version": "string (optional)",
@@ -300,12 +300,12 @@ POST /api/v1/auth/guest
     "memberId": 12,
     "role": "GUEST",
     "name": "게스트_a1b2",
-    "accessToken": null,
-    "refreshToken": null
+    "sessionAccessToken": null,
+    "sessionRefreshToken": null
   }
 }
 ```
-> `accessToken`, `refreshToken`은 dev 환경에서만 포함
+> `sessionAccessToken`, `sessionRefreshToken`은 dev 환경에서만 포함
 
 **시퀀스**
 ```
@@ -313,7 +313,7 @@ POST /api/v1/auth/guest
 │Client│                    │  Server  │                    │  DB   │
 └──┬───┘                    └────┬─────┘                    └───┬───┘
    │  POST /auth/guest           │                              │
-   │  {fcmToken, device}         │                              │
+   │  {firebaseCloudMessagingRegistrationToken, device}         │                              │
    │────────────────────────────▶│                              │
    │                             │  Member(GUEST) 생성          │
    │                             │─────────────────────────────▶│
@@ -322,8 +322,8 @@ POST /api/v1/auth/guest
    │                             │  DeviceSession upsert        │
    │                             │─────────────────────────────▶│
    │                             │  ATK/RTK 생성                │
-   │                             │  Set-Cookie: access_token    │
-   │  201 Created                │  Set-Cookie: refresh_token   │
+   │                             │  Set-Cookie: session_access_token    │
+   │  201 Created                │  Set-Cookie: session_refresh_token   │
    │◀────────────────────────────│                              │
    │  {memberId, role, name}     │                              │
    │                             │                              │
@@ -384,7 +384,7 @@ POST /api/v1/auth/token
 {
   "code": "string (Google authorization code)",
   "state": "string (oauth/start에서 받은 state)",
-  "accessToken": "string (optional, 게스트 상태에서 병합 시 현재 ATK)"
+  "sessionAccessToken": "string (optional, 게스트 상태에서 병합 시 현재 ATK)"
 }
 ```
 
@@ -399,8 +399,8 @@ POST /api/v1/auth/token
     "name": "홍길동",
     "position": "학생",
     "department": "컴퓨터공학과",
-    "accessToken": null,
-    "refreshToken": null
+    "sessionAccessToken": null,
+    "sessionRefreshToken": null
   }
 }
 ```
@@ -416,8 +416,8 @@ POST /api/v1/auth/token
     "name": "홍길동",
     "position": "학생",
     "department": "컴퓨터공학과",
-    "accessToken": null,
-    "refreshToken": null
+    "sessionAccessToken": null,
+    "sessionRefreshToken": null
   }
 }
 ```
@@ -547,8 +547,8 @@ POST /api/v1/auth/refresh
   "data": {
     "status": "success",
     "role": "MEMBER",
-    "accessToken": null,
-    "refreshToken": null
+    "sessionAccessToken": null,
+    "sessionRefreshToken": null
   }
 }
 ```
@@ -597,7 +597,7 @@ POST /api/v1/auth/login/google/merge
 ```json
 {
   "mergeTicket": "string (JWT, 5분 유효)",
-  "fcmToken": "string (optional)",
+  "firebaseCloudMessagingRegistrationToken": "string (optional)",
   "device": { ... }
 }
 ```
@@ -611,8 +611,8 @@ POST /api/v1/auth/login/google/merge
     "name": "홍길동",
     "position": "학생",
     "department": "컴퓨터공학과",
-    "accessToken": null,
-    "refreshToken": null
+    "sessionAccessToken": null,
+    "sessionRefreshToken": null
   }
 }
 ```
@@ -626,9 +626,9 @@ POST /api/v1/auth/login/google/merge
    │  [게스트 상태에서 Google 로그인 시도]                       │
    │                             │                              │
    │  POST /auth/token           │                              │
-   │  {code, state, accessToken} │                              │
+   │  {code, state, sessionAccessToken} │                              │
    │────────────────────────────▶│                              │
-   │                             │  accessToken 파싱            │
+   │                             │  sessionAccessToken 파싱            │
    │                             │  → GUEST role 확인           │
    │                             │                              │
    │                             │  Google 인증 성공            │
@@ -643,7 +643,7 @@ POST /api/v1/auth/login/google/merge
    │◀────────────────────────────│                              │
    │                             │                              │
    │  POST /auth/login/google/merge                            │
-   │  {mergeTicket, device, fcmToken}                          │
+   │  {mergeTicket, device, firebaseCloudMessagingRegistrationToken}                          │
    │────────────────────────────▶│                              │
    │                             │  MergeTicket 검증            │
    │                             │  SingleGame 기록 이전        │
@@ -663,14 +663,14 @@ POST /api/v1/auth/login/google/merge
 ```
 
 **프론트 처리**
-1. 게스트 상태에서 Google 로그인 시 `POST /auth/token`에 `accessToken` 포함
+1. 게스트 상태에서 Google 로그인 시 `POST /auth/token`에 `sessionAccessToken` 포함
 2. 서버가 기존 Google 계정 발견 → `409` 응답 + `mergeTicket` 반환
 3. 사용자에게 병합 여부 확인 UI 표시
-4. 병합 선택 → `POST /auth/login/google/merge`에 `{mergeTicket, device, fcmToken}` 전송
+4. 병합 선택 → `POST /auth/login/google/merge`에 `{mergeTicket, device, firebaseCloudMessagingRegistrationToken}` 전송
 5. 성공 시: 게스트 데이터(싱글게임 기록, 디바이스 세션)가 Google 계정으로 병합됨
 6. 병합 후 `newUser`가 `true`이면 개인정보 동의 페이지로 이동
 
-> **중요**: `accessToken`을 보내야 서버가 현재 Guest임을 인식하고 Merge 플로우를 시작합니다.
+> **중요**: `sessionAccessToken`을 보내야 서버가 현재 Guest임을 인식하고 Merge 플로우를 시작합니다.
 
 ---
 
@@ -684,7 +684,7 @@ POST /api/v1/auth/logout
 **요청**
 ```json
 {
-  "fcmToken": "string (optional)"
+  "firebaseCloudMessagingRegistrationToken": "string (optional)"
 }
 ```
 
@@ -701,14 +701,14 @@ POST /api/v1/auth/logout
 │Client│                    │  Server  │                    │  DB   │
 └──┬───┘                    └────┬─────┘                    └───┬───┘
    │  POST /auth/logout          │                              │
-   │  {fcmToken}                 │                              │
+   │  {firebaseCloudMessagingRegistrationToken}                 │                              │
    │────────────────────────────▶│                              │
    │                             │  DeviceSession 삭제          │
-   │                             │  (fcmToken 기준)             │
+   │                             │  (firebaseCloudMessagingRegistrationToken 기준)             │
    │                             │─────────────────────────────▶│
    │  200 OK                     │                              │
-   │  Set-Cookie: access_token=maxAge=0                         │
-   │  Set-Cookie: refresh_token=maxAge=0                        │
+   │  Set-Cookie: session_access_token=maxAge=0                         │
+   │  Set-Cookie: session_refresh_token=maxAge=0                        │
    │◀────────────────────────────│                              │
    │                             │                              │
 ```
@@ -753,8 +753,8 @@ DELETE /api/v1/accounts/me
    │                             │  Member 삭제                 │
    │                             │─────────────────────────────▶│
    │  200 OK                     │                              │
-   │  Set-Cookie: access_token=maxAge=0                         │
-   │  Set-Cookie: refresh_token=maxAge=0                        │
+   │  Set-Cookie: session_access_token=maxAge=0                         │
+   │  Set-Cookie: session_refresh_token=maxAge=0                        │
    │◀────────────────────────────│                              │
    │                             │                              │
 ```
@@ -904,7 +904,7 @@ POST /api/v1/auth/test-accounts  {role: "MEMBER"}
 │     ├── GET /auth/config/google → clientId, redirectUri            │
 │     ├── POST /auth/oauth/start → googleAuthUrl                     │
 │     ├── Google 리다이렉트 → code 획득                              │
-│     ├── POST /auth/token → {code, state, accessToken(Guest이면)}   │
+│     ├── POST /auth/token → {code, state, sessionAccessToken(Guest이면)}   │
 │     │   ├── 200 + newUser=true → 개인정보 동의 페이지              │
 │     │   ├── 200 + newUser=false → 메인 화면                        │
 │     │   └── 409 + mergeTicket → Merge 플로우                       │

@@ -97,10 +97,10 @@ public enum ErrorCode {
 	MULTIGAME_LUA_SCRIPT_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "MULTIGAME_005", "Failed to execute game logic."),
 
 	// ========================== 알림 (NOTIFICATION) ==========================
-	/** FCM 알림 전송 실패 (500) */
-	NOTIFICATION_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "NOTIFICATION_001", "Failed to send notification via FCM."),
-	/** FCM 토큰을 찾을 수 없음 (404) */
-	NOTIFICATION_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION_002", "FCM token not found."),
+	/** Firebase Cloud Messaging 알림 전송 실패 (500) */
+	NOTIFICATION_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "NOTIFICATION_001", "Failed to send notification via Firebase Cloud Messaging."),
+	/** Firebase Cloud Messaging 토큰을 찾을 수 없음 (404) */
+	NOTIFICATION_TOKEN_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTIFICATION_002", "Firebase Cloud Messaging token not found."),
 
 	// ========================== 공지 (NOTICE) ==========================
 	/** 공지사항을 찾을 수 없음 (404) */

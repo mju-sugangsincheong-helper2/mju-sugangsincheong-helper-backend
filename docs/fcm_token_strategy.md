@@ -26,7 +26,7 @@ fcm 토큰 라이프 사이클
 [ 2. 로그아웃 (토큰 정리) ]
    │
    ├── 2-1. 백엔드 요청: DELETE xxx
-         └── 현재 기기의 FCM 토큰을 백엔드로 전달하여 DB에서 삭제
+         └── 현재 기기의 Firebase Cloud Messaging 토큰을 백엔드로 전달하여 DB에서 삭제
 
 ```
 
@@ -71,10 +71,10 @@ Consumer 패키지는 `com.mjusugangsincheonghelper.notification.consumer` 하�
 - **`NotificationConsumerService`**:
   - `processNotificationEvents(List<NotificationEventMessage> events)`
   - 수신된 이벤트 메시지 리스트를 최대 **400개 단위(Batch Size)**로 파티셔닝(SubList)하여 FCM으로 배치 전송을 수행합니다.
-  - `FirebaseMessaging.getInstance().sendEach(messages)`를 호출하여 구글 FCM 서버로 멀티캐스트/배치 전송합니다.
+  - `FirebaseMessaging.getInstance().sendEach(messages)`를 호출하여 구글 Firebase Cloud Messaging 서버로 멀티캐스트/배치 전송합니다.
 
 - **`NotificationEventMessage`**:
-  - `token`: String (수신 대상 FCM 토큰)
+  - `token`: String (수신 대상 Firebase Cloud Messaging 토큰)
   - `notification`: `title`, `body`
   - `data`: `Map<String, String>` (`type`, `urgency`, `timestamp` 등)
   - *원칙*: **Notification Consumer는 `data` 내부 값을 검증하거나 관여하지 않으며(Decoupled), 이벤트를 발행하는 각 도메인(Producer)에서 아래 규약에 맞춰 큐에 전달해야 합니다.**
@@ -117,7 +117,7 @@ SELECT pgmq.send(
 
 #### 2) 웹 푸시 실제 수신 테스트 페이지
 - **테스트 URL**: `http://localhost:8080/fcm-test.html`
-- 접속 후 **[알림 권한 허용 및 FCM 토큰 발급]** 클릭 시 브라우저용 실시간 FCM 토큰 발급.
+- 접속 후 **[알림 권한 허용 및 Firebase Cloud Messaging 토큰 발급]** 클릭 시 브라우저용 실시간 Firebase Cloud Messaging 토큰 발급.
 - 발급받은 토큰으로 쿼리 실행 후 브라우저 탭을 비활성화(다른 탭 이동)하면 PC 화면 우측 하단에 실제 푸시 알림 팝업이 노출됩니다.
 
 

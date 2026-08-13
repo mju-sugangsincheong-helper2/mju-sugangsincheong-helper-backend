@@ -26,8 +26,8 @@ public class SystemMaintenanceController {
 
 	@PostMapping(path = "/devices/cleanup", version = "1+")
 	@Operation(
-			summary = "Clean expired device sessions / FCM tokens",
-			description = "만료된 기기 세션(접속 세션 만료 시각이 지난 기기, 바인딩된 FCM 토큰 포함)을 일괄 삭제하고 삭제 개수를 반환한다.",
+			summary = "Clean expired device sessions / Firebase Cloud Messaging tokens",
+			description = "만료된 기기 세션(접속 세션 만료 시각이 지난 기기, 바인딩된 Firebase Cloud Messaging 토큰 포함)을 일괄 삭제하고 삭제 개수를 반환한다.",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "정리 완료")
 			}

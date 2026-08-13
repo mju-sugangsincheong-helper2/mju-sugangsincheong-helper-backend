@@ -70,9 +70,9 @@
 
 | 기존 이름 | 새 이름 | 비고 |
 |-----------|---------|------|
-| `accessToken` | `sessionAccessToken` | Google과 구분 |
-| `refreshToken` | `sessionRefreshToken` | 세션 갱신용 명시 |
-| `fcmToken` | `firebaseCloudMessagingRegistrationToken` | 공식 명칭 사용 |
+| `sessionAccessToken` | `sessionAccessToken` | Google과 구분 |
+| `sessionRefreshToken` | `sessionRefreshToken` | 세션 갱신용 명시 |
+| `firebaseCloudMessagingRegistrationToken` | `firebaseCloudMessagingRegistrationToken` | 공식 명칭 사용 |
 | `fid` | `firebaseInstallationId` | 풀네임 사용 |
 | `state` (OAuth) | `googleState` | Google OAuth 전용 명시 |
 | `mergeTicket` | `mergeTicket` | 유지 (이미 명확) |
@@ -81,19 +81,19 @@
 
 ```
 DB 컬럼:
-  member_device.fcm_token        → member_device.firebase_cloud_messaging_registration_token
+  member_device.firebase_cloud_messaging_registration_token        → member_device.firebase_cloud_messaging_registration_token
   member_device.fid              → member_device.firebase_installation_id
 
 Java 필드:
-  DeviceInfo.fcmToken            → DeviceInfo.firebaseCloudMessagingRegistrationToken
+  DeviceInfo.firebaseCloudMessagingRegistrationToken            → DeviceInfo.firebaseCloudMessagingRegistrationToken
   DeviceInfo.fid                 → DeviceInfo.firebaseInstallationId
-  MemberDevice.fcmToken          → MemberDevice.firebaseCloudMessagingRegistrationToken
-  SessionResult.accessToken      → SessionResult.sessionAccessToken
-  SessionResult.refreshToken     → SessionResult.sessionRefreshToken
+  MemberDevice.firebaseCloudMessagingRegistrationToken          → MemberDevice.firebaseCloudMessagingRegistrationToken
+  SessionResult.sessionAccessToken      → SessionResult.sessionAccessToken
+  SessionResult.sessionRefreshToken     → SessionResult.sessionRefreshToken
 
 쿠키 이름:
-  access_token                   → session_access_token
-  refresh_token                  → session_refresh_token
+  session_access_token                   → session_access_token
+  session_refresh_token                  → session_refresh_token
 
 Redis 키:
   oauth:state:{uuid}:session     → google:state:{uuid}
@@ -496,7 +496,7 @@ Browser                    Google                     Backend
 | 필드 | v2 (기존) | v3 (변경) |
 |------|-----------|-----------|
 | `firebase_installation_id` | ❌ 없음 | ✅ `VARCHAR(255) UNIQUE` - **기기 식별의 유일한 기준** |
-| `firebase_cloud_messaging_registration_token` | `fcm_token` | ✅ 이름 변경 - 푸시 발송용으로만 사용 |
+| `firebase_cloud_messaging_registration_token` | `firebase_cloud_messaging_registration_token` | ✅ 이름 변경 - 푸시 발송용으로만 사용 |
 | `platformjs_ua` | ✅ 기기 매칭에 사용 | ⚠️ 정보 표시용으로만 사용 (매칭에 사용하지 않음) |
 
 ### 6.3 인덱스
@@ -526,7 +526,7 @@ CREATE UNIQUE INDEX idx_member_device_rtk ON member_device(refresh_token_hash);
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  findExistingDevice(memberId, deviceInfo):                                  │
-│    1. fcmToken 있으면 → (memberId + UA + fcmToken) 매칭                    │
+│    1. firebaseCloudMessagingRegistrationToken 있으면 → (memberId + UA + firebaseCloudMessagingRegistrationToken) 매칭                    │
 │    2. 없으면 → (memberId + UA) 매칭                                         │
 │                                                                             │
 │  문제점:                                                                    │
@@ -560,7 +560,7 @@ CREATE UNIQUE INDEX idx_member_device_rtk ON member_device(refresh_token_hash);
 @Transactional
 public MemberDevice upsert(Long memberId, String sessionRefreshToken, DeviceInfo deviceInfo, long expiryMs) {
     final String firebaseInstallationId = deviceInfo.getFirebaseInstallationId();
-    final String refreshTokenHash = RefreshTokenHasher.hash(sessionRefreshToken);
+    final String sessionRefreshTokenHash = RefreshTokenHasher.hash(sessionRefreshToken);
 
     // firebaseInstallationId 기반 기기 조회 (유일한 식별 기준)
     Optional<MemberDevice> existing = (firebaseInstallationId != null && !firebaseInstallationId.isBlank())
@@ -570,7 +570,7 @@ public MemberDevice upsert(Long memberId, String sessionRefreshToken, DeviceInfo
     return existing
         .map(device -> {
             // 기존 기기 업데이트
-            device.updateAccessInfo(refreshTokenHash, deviceInfo);
+            device.updateAccessInfo(sessionRefreshTokenHash, deviceInfo);
             device.extendExpiry(Instant.now().plusMillis(expiryMs));
             if (deviceInfo.getFirebaseCloudMessagingRegistrationToken() != null) {
                 device.updateFirebaseCloudMessagingRegistrationToken(
@@ -583,7 +583,7 @@ public MemberDevice upsert(Long memberId, String sessionRefreshToken, DeviceInfo
             MemberDevice device = MemberDevice.builder()
                 .memberId(memberId)
                 .firebaseInstallationId(firebaseInstallationId)  // ★ FID 저장
-                .refreshTokenHash(refreshTokenHash)
+                .sessionRefreshTokenHash(sessionRefreshTokenHash)
                 // platformjs_* 필드들 (정보 표시용)
                 .platformJsName(deviceInfo.getName())
                 .platformJsVersion(deviceInfo.getVersion())
@@ -837,8 +837,8 @@ docker exec -it mju-sugangsincheong-helper-db psql -U mjusugangsincheonghelperus
 -- Step 1: firebase_installation_id 컬럼 추가 (NULL 허용, 기존 데이터 영향 없음)
 ALTER TABLE member_device ADD COLUMN IF NOT EXISTS firebase_installation_id VARCHAR(255);
 
--- Step 2: fcm_token 컬럼 이름 변경
-ALTER TABLE member_device RENAME COLUMN fcm_token TO firebase_cloud_messaging_registration_token;
+-- Step 2: firebase_cloud_messaging_registration_token 컬럼 이름 변경
+ALTER TABLE member_device RENAME COLUMN firebase_cloud_messaging_registration_token TO firebase_cloud_messaging_registration_token;
 
 -- Step 3: firebase_installation_id 부분 인덱스 (NULL이 아닌 값만 UNIQUE)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_member_device_firebase_installation_id 
@@ -885,7 +885,7 @@ WHERE firebase_installation_id IS NOT NULL;
 ```
 [마이그레이션 전]
 ┌────┬───────────┬──────────────────┬─────────────────────┬───────────┐
-│ id │ member_id │ refresh_token_hash│ platformjs_ua       │ fcm_token │
+│ id │ member_id │ refresh_token_hash│ platformjs_ua       │ firebase_cloud_messaging_registration_token │
 ├────┼───────────┼──────────────────┼─────────────────────┼───────────┤
 │ 1  │ 100       │ abc123...        │ Chrome/150.0.0.0    │ fcm_xxx   │
 │ 2  │ 100       │ def456...        │ Chrome/151.0.0.0    │ NULL      │  ← 브라우저 업데이트로 생긴 중복
@@ -992,7 +992,6 @@ export async function getFirebaseInstallationId(): Promise<string | null> {
 // shared/utils/deviceInfo.ts - 필드 이름 변경
 export interface DeviceInfoPayload {
   firebaseInstallationId?: string;                    // ★ 변경
-  firebaseCloudMessagingRegistrationToken?: string;   // ★ 변경
   name?: string
   version?: string
   // ... 기존 필드들
@@ -1009,7 +1008,6 @@ export async function getDeviceInfo(): Promise<DeviceInfoPayload> {
   
   return {
     firebaseInstallationId: fid || undefined,         // ★ 변경
-    firebaseCloudMessagingRegistrationToken: getCachedFcmTokenFromLocalStorage() || undefined,
     name: parsed.name || undefined,
     version: parsed.version || undefined,
     // ... 기존 필드들
@@ -1017,6 +1015,10 @@ export async function getDeviceInfo(): Promise<DeviceInfoPayload> {
   }
 }
 ```
+
+**참고:** `firebaseCloudMessagingRegistrationToken`은 `getDeviceInfo()`에 포함하지 않습니다.
+- `firebaseInstallationId`: 알림 권한 불필요, 항상 발급 가능 → `getDeviceInfo()`에 포함
+- `firebaseCloudMessagingRegistrationToken`: 알림 권한 필요 → 별도 API(`/notification/token`)로 등록
 
 ### 9.6 Phase 4: 기존 데이터 정리 (선택적)
 
@@ -1083,7 +1085,244 @@ ORDER BY last_accessed_at DESC;
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 9.8 주의사항
+### 9.8 기존 사용자 영향 분석
+
+#### 9.8.1 쿠키 영향 (즉시 발생)
+
+**변경 전 (기존 사용자 브라우저):**
+```
+Cookie: access_token=eyJhbGc...; refresh_token=abc123...
+```
+
+**변경 후 (새 백엔드가 찾는 것):**
+```
+Cookie: session_access_token=...; session_refresh_token=...
+```
+
+**결과:**
+- ❌ 기존 쿠키는 인식되지 않음
+- ❌ 모든 API 요청에서 401 Unauthorized 발생
+- ❌ 사용자는 자동으로 로그아웃 상태가 됨
+
+#### 9.8.2 기기 식별 영향
+
+**변경 전 (기존 DB 데이터):**
+```
+member_device 테이블:
+┌────┬───────────┬──────────────────┬─────────────────────┐
+│ id │ member_id │ platformjs_ua    │ firebase_installation_id │
+├────┼───────────┼──────────────────┼─────────────────────┤
+│ 1  │ 100       │ Chrome/150.0.0.0 │ NULL                │  ← 기존 데이터
+│ 2  │ 100       │ Chrome/151.0.0.0 │ NULL                │  ← 기존 데이터
+└────┴───────────┴──────────────────┴─────────────────────┘
+```
+
+**변경 후 (재로그인 시):**
+```
+새로운 요청 → FID 발급 → 기기 조회 (findByMemberIdAndFirebaseInstallationId)
+→ 매칭되는 기기 없음 (기존 기기는 FID가 NULL)
+→ 새로운 member_device 레코드 생성
+
+┌────┬───────────┬──────────────────┬─────────────────────┐
+│ id │ member_id │ platformjs_ua    │ firebase_installation_id │
+├────┼───────────┼──────────────────┼─────────────────────┤
+│ 1  │ 100       │ Chrome/150.0.0.0 │ NULL                │  ← 만료 예정
+│ 2  │ 100       │ Chrome/151.0.0.0 │ NULL                │  ← 만료 예정
+│ 3  │ 100       │ Chrome/151.0.0.0 │ fGk8Xm2pQr5...      │  ← 새 기기 (FID 기반)
+└────┴───────────┴──────────────────┴─────────────────────┘
+```
+
+#### 9.8.3 기존 게스트 사용자 재접속 시나리오
+
+```
+[배포 전]
+사용자: 앱 실행 → 정상 작동 (쿠키: access_token)
+        게스트 계정 (member_id: 100, GUEST 역할)
+
+[배포 직후 - 앱 재접속]
+사용자: 앱 실행
+        ↓
+        App.vue: onMounted() → fetchMe() 호출
+        ↓
+        GET /accounts/me 요청 (쿠키: access_token=...)
+        ↓
+        [백엔드]
+        HttpTokenExtractor가 session_access_token 쿠키를 찾음
+        쿠키가 없음 → 401 Unauthorized 반환
+        ↓
+        [프론트엔드]
+        apiFetch: 401 감지 → refreshAuthenticationToken() 시도
+        POST /auth/refresh 요청 (쿠키: refresh_token=...)
+        ↓
+        [백엔드]
+        HttpTokenExtractor가 session_refresh_token 쿠키를 찾음
+        쿠키가 없음 → 401 Unauthorized 반환
+        ↓
+        [프론트엔드]
+        refresh 실패 → user.value = null 설정
+        isAuthenticated = false
+        ↓
+        [라우터 가드]
+        requiredAuth가 'public'이 아닌 페이지 접근 시
+        → 로그인 페이지로 리다이렉트
+        ↓
+        [사용자 경험]
+        "세션이 만료되었습니다. 다시 로그인해주세요." 메시지 표시
+        (또는 자동으로 로그인 페이지로 이동)
+
+[재로그인 - 게스트로 다시 시작]
+사용자: "게스트로 시작하기" 버튼 클릭
+        ↓
+        Firebase 초기화 → FID 발급 (fGk8Xm2pQr5...)
+        ↓
+        POST /auth/guest 요청
+        { device: { firebaseInstallationId: "fGk8Xm2pQr5...", ... } }
+        ↓
+        [백엔드]
+        1. GuestService.authenticate() → 새로운 Member 생성 (member_id: 101)
+        2. SessionService.createSession() 호출
+        3. DeviceSessionService.upsert() 호출
+           - findByMemberIdAndFirebaseInstallationId(101, "fGk8Xm2pQr5...")
+           - 매칭 실패 (기존 member_id=100인 기기만 있음)
+           - 새로운 member_device 생성 (member_id: 101, FID: "fGk8Xm2pQr5...")
+        4. sessionAccessToken, sessionRefreshToken 발급
+        ↓
+        [프론트엔드]
+        Set-Cookie: session_access_token=...; session_refresh_token=...
+        user.value = { memberId: 101, role: "GUEST", ... }
+        isAuthenticated = true
+        ↓
+        [결과]
+        ✅ 새로운 게스트 계정으로 로그인됨
+        ❌ 기존 게스트 계정(member_id: 100)의 데이터는 유지되지만 접근 불가
+        ⚠️ 기존 member_device(member_id: 100)는 7일 후 자동 만료
+```
+
+#### 9.8.4 기존 Google 로그인 사용자 재접속 시나리오
+
+```
+[배포 전]
+사용자: 앱 실행 → 정상 작동 (쿠키: access_token)
+        Google 로그인 계정 (member_id: 200, MEMBER 역할)
+
+[배포 직후 - 앱 재접속]
+사용자: 앱 실행
+        ↓
+        App.vue: onMounted() → fetchMe() 호출
+        ↓
+        GET /accounts/me 요청 (쿠키: access_token=...)
+        ↓
+        [백엔드]
+        HttpTokenExtractor가 session_access_token 쿠키를 찾음
+        쿠키가 없음 → 401 Unauthorized 반환
+        ↓
+        [프론트엔드]
+        apiFetch: 401 감지 → refreshAuthenticationToken() 시도
+        POST /auth/refresh 요청 (쿠키: refresh_token=...)
+        ↓
+        [백엔드]
+        HttpTokenExtractor가 session_refresh_token 쿠키를 찾음
+        쿠키가 없음 → 401 Unauthorized 반환
+        ↓
+        [프론트엔드]
+        refresh 실패 → user.value = null 설정
+        isAuthenticated = false
+        ↓
+        [라우터 가드]
+        requiredAuth가 'public'이 아닌 페이지 접근 시
+        → 로그인 페이지로 리다이렉트
+
+[재로그인 - Google OAuth]
+사용자: "Google로 로그인" 버튼 클릭
+        ↓
+        Firebase 초기화 → FID 발급 (fGk8Xm2pQr5...)
+        ↓
+        Google OAuth 인증 → googleAuthCode 획득
+        ↓
+        POST /auth/token 요청
+        { code: "...", state: "...", device: { firebaseInstallationId: "fGk8Xm2pQr5...", ... } }
+        ↓
+        [백엔드]
+        1. GoogleOAuthService: googleAuthCode → googleIdToken 교환
+        2. googleIdToken 검증 → sub 추출 (google_id: "123456789")
+        3. MemberAuth 조회 → 기존 회원 발견 (member_id: 200)
+        4. SessionService.createSession() 호출
+        5. DeviceSessionService.upsert() 호출
+           - findByMemberIdAndFirebaseInstallationId(200, "fGk8Xm2pQr5...")
+           - 매칭 실패 (기존 member_id=200인 기기는 FID가 NULL)
+           - 새로운 member_device 생성 (member_id: 200, FID: "fGk8Xm2pQr5...")
+        6. sessionAccessToken, sessionRefreshToken 발급
+        ↓
+        [프론트엔드]
+        Set-Cookie: session_access_token=...; session_refresh_token=...
+        user.value = { memberId: 200, role: "MEMBER", ... }
+        isAuthenticated = true
+        ↓
+        [결과]
+        ✅ 기존 Google 계정으로 로그인됨 (member_id: 200)
+        ✅ 기존 회원 데이터 유지 (이름, 이메일, 개인정보 동의 상태 등)
+        ✅ 기존 member_device(member_id: 200, FID=NULL)는 7일 후 자동 만료
+        ✅ 새로운 member_device(member_id: 200, FID="fGk8Xm2pQr5...") 생성됨
+```
+
+#### 9.8.5 영향 요약
+
+| 항목 | 기존 게스트 사용자 | 기존 Google 로그인 사용자 |
+|------|-------------------|-------------------------|
+| **쿠키** | ❌ 즉시 무효화 | ❌ 즉시 무효화 |
+| **세션** | ❌ 즉시 무효화 | ❌ 즉시 무효화 |
+| **기기 식별** | ❌ 기존 기기 매칭 실패 | ❌ 기존 기기 매칭 실패 |
+| **FCM 토큰** | ⚠️ 기존 토큰은 유지되지만 새 기기와 매칭 안 됨 | ⚠️ 기존 토큰은 유지되지만 새 기기와 매칭 안 됨 |
+| **계정 데이터** | ❌ 유지되지만 접근 불가 (새 게스트 계정 생성) | ✅ 유지됨 (기존 계정 재사용) |
+| **재로그인 필요** | ✅ 필요 | ✅ 필요 |
+| **데이터 손실** | ⚠️ 게스트 데이터 손실 (새 계정 생성) | ✅ 데이터 유지 |
+
+#### 9.8.6 사용자 경험 흐름
+
+```
+[배포 전]
+사용자: 앱 실행 → 정상 작동 (쿠키: access_token)
+
+[배포 직후]
+사용자: 앱 실행 → API 요청 → 401 에러
+        ↓
+        refresh 시도 → 401 에러
+        ↓
+        user.value = null
+        ↓
+        로그인 페이지로 리다이렉트
+        ↓
+        "세션이 만료되었습니다. 다시 로그인해주세요." 메시지
+
+[재로그인]
+사용자: Google 로그인 또는 게스트 로그인
+        ↓
+        FID 발급 → 새 기기 등록 → 새 쿠키 발급
+        ↓
+        정상 작동 (쿠키: session_access_token)
+
+[7일 후]
+기존 member_device (FID=NULL) 자동 만료 → DB에서 삭제
+```
+
+#### 9.8.7 권장 대응 방안
+
+**옵션 A: 즉시 강제 재로그인 (현재 방식)**
+- **장점**: 간단한 마이그레이션
+- **단점**: 모든 사용자가 즉시 재로그인 필요
+- **권장**: ✅ 현재 방식이 가장 단순하고 명확함
+
+**옵션 B: 점진적 마이그레이션 (복잡)**
+- 기존 쿠키도 일정 기간 수용
+- 새로운 쿠키도 동시에 지원
+- **단점**: 코드가 복잡해지고, UA 기반 폴백 로직 유지 필요
+- **권장**: ❌ 복잡성만 증가, 이미 FID 기반으로 설계됨
+
+**옵션 C: 사전 공지**
+- 배포 전 사용자에게 "재로그인이 필요합니다" 공지
+- **권장**: ✅ 사용자 경험 개선
+
+### 9.9 주의사항
 
 | 항목 | 내용 |
 |------|------|
@@ -1103,7 +1342,7 @@ ORDER BY last_accessed_at DESC;
 │  Phase 1: DB 준비                                                           │
 │  ──────────────                                                             │
 │  □ [PROD] pgweb/psql로 firebase_installation_id 컬럼 추가                  │
-│  □ [PROD] fcm_token → firebase_cloud_messaging_registration_token 이름 변경│
+│  □ [PROD] firebase_cloud_messaging_registration_token → firebase_cloud_messaging_registration_token 이름 변경│
 │  □ [PROD] UNIQUE 부분 인덱스 생성 (WHERE firebase_installation_id IS NOT NULL)│
 │  □ [DEV]  로컬 DB 확인 (ddl-auto: update로 자동 반영)                      │
 │                                                                             │

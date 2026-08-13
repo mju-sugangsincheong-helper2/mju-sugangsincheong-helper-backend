@@ -48,16 +48,16 @@ class NotificationServiceTest {
 				.build();
 
 		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
-		given(memberDeviceRepository.findAllByFcmToken(token)).willReturn(List.of());
+		given(memberDeviceRepository.findAllByFirebaseCloudMessagingRegistrationToken(token)).willReturn(List.of());
 
 		NotificationTokenRegisterRequest request = NotificationTokenRegisterRequest.builder()
-				.fcmToken(token)
+				.firebaseCloudMessagingRegistrationToken(token)
 				.build();
 
 		NotificationTokenResponse response = notificationService.registerToken(memberId, deviceId, request);
 
-		assertThat(response.getFcmToken()).isEqualTo(token);
-		assertThat(device.getFcmToken()).isEqualTo(token);
+		assertThat(response.getFirebaseCloudMessagingRegistrationToken()).isEqualTo(token);
+		assertThat(device.getFirebaseCloudMessagingRegistrationToken()).isEqualTo(token);
 	}
 
 	@Test
@@ -75,7 +75,7 @@ class NotificationServiceTest {
 		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
 
 		NotificationTokenRegisterRequest request = NotificationTokenRegisterRequest.builder()
-				.fcmToken(token)
+				.firebaseCloudMessagingRegistrationToken(token)
 				.build();
 
 		assertThatThrownBy(() -> notificationService.registerToken(currentMemberId, deviceId, request))
@@ -93,17 +93,17 @@ class NotificationServiceTest {
 				.memberId(memberId)
 				.refreshTokenHash("ref-token-1")
 				.build();
-		device.updateFcmToken(token);
+		device.updateFirebaseCloudMessagingRegistrationToken(token);
 
 		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
 
 		NotificationTokenDeleteRequest request = NotificationTokenDeleteRequest.builder()
-				.fcmToken(token)
+				.firebaseCloudMessagingRegistrationToken(token)
 				.build();
 
 		notificationService.deleteToken(memberId, deviceId, request);
 
-		assertThat(device.getFcmToken()).isNull();
+		assertThat(device.getFirebaseCloudMessagingRegistrationToken()).isNull();
 	}
 
 	@Test
@@ -117,12 +117,12 @@ class NotificationServiceTest {
 				.memberId(otherMemberId)
 				.refreshTokenHash("ref-token-1")
 				.build();
-		device.updateFcmToken(token);
+		device.updateFirebaseCloudMessagingRegistrationToken(token);
 
 		given(memberDeviceRepository.findById(deviceId)).willReturn(Optional.of(device));
 
 		NotificationTokenDeleteRequest request = NotificationTokenDeleteRequest.builder()
-				.fcmToken(token)
+				.firebaseCloudMessagingRegistrationToken(token)
 				.build();
 
 		assertThatThrownBy(() -> notificationService.deleteToken(currentMemberId, deviceId, request))

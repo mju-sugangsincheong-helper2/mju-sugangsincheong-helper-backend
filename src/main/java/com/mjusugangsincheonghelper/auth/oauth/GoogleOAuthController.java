@@ -192,8 +192,8 @@ public class GoogleOAuthController {
 				.department(session.getDepartment());
 
 		if (tokenInResponse) {
-			builder.accessToken(session.getAccessToken())
-					.refreshToken(session.getRefreshToken());
+			builder.sessionAccessToken(session.getSessionAccessToken())
+					.sessionRefreshToken(session.getSessionRefreshToken());
 		}
 
 		return builder.build();

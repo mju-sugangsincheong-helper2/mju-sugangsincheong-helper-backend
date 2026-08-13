@@ -15,18 +15,18 @@ public class GuestResponse {
 	private final String name;
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final String accessToken;
+	private final String sessionAccessToken;
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final String refreshToken;
+	private final String sessionRefreshToken;
 
-	public static GuestResponse of(Long memberId, String role, String name, String accessToken, String refreshToken) {
+	public static GuestResponse of(Long memberId, String role, String name, String sessionAccessToken, String sessionRefreshToken) {
 		return GuestResponse.builder()
 				.memberId(memberId)
 				.role(role)
 				.name(name)
-				.accessToken(accessToken)
-				.refreshToken(refreshToken)
+				.sessionAccessToken(sessionAccessToken)
+				.sessionRefreshToken(sessionRefreshToken)
 				.build();
 	}
 }

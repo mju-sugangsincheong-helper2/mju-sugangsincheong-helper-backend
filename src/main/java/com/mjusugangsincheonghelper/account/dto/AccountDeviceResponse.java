@@ -22,7 +22,7 @@ public class AccountDeviceResponse {
 	private Instant createdAt;
 
 	public static AccountDeviceResponse from(MemberDevice device, String currentRefreshToken) {
-		boolean pushEnabled = device.getFcmToken() != null && !device.getFcmToken().isBlank();
+		boolean pushEnabled = device.getFirebaseCloudMessagingRegistrationToken() != null && !device.getFirebaseCloudMessagingRegistrationToken().isBlank();
 		boolean current = currentRefreshToken != null
 				&& device.getRefreshTokenHash().equals(RefreshTokenHasher.hash(currentRefreshToken));
 

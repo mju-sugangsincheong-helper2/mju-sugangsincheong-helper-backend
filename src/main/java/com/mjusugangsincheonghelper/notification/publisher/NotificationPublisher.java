@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 /**
  * 푸시 알림 이벤트를 PGMQ 큐에 발행하는 유일한 출구.
  *
- * <p>"FCM 토큰 조회 → 이벤트 생성 → 큐 적재" 패턴을 여기로 응집하고,
+ * <p>"Firebase Cloud Messaging 토큰 조회 → 이벤트 생성 → 큐 적재" 패턴을 여기로 응집하고,
  * 호출부(비즈니스)는 대상과 내용만 결정한다. 발송 실패는 로그로 흡수하며
  * 절대 호출부(비즈니스 트랜잭션)로 전파하지 않는다.
  */
@@ -32,15 +32,15 @@ public class NotificationPublisher {
 		try {
 			List<MemberDevice> devices = memberDeviceRepository.findByMemberId(memberId);
 			for (MemberDevice device : devices) {
-				String token = device.getFcmToken();
+				String token = device.getFirebaseCloudMessagingRegistrationToken();
 				if (token == null || token.isBlank()) {
 					continue;
 				}
 				enqueue(token, type, path, title, body);
-				log.debug("Queued FCM notification. type={}, memberId={}, deviceId={}", type, memberId, device.getId());
+				log.debug("Queued Firebase Cloud Messaging notification. type={}, memberId={}, deviceId={}", type, memberId, device.getId());
 			}
 		} catch (Exception e) {
-			log.warn("Failed to publish FCM notification. type={}, memberId={}", type, memberId, e);
+			log.warn("Failed to publish Firebase Cloud Messaging notification. type={}, memberId={}", type, memberId, e);
 		}
 	}
 
@@ -51,12 +51,12 @@ public class NotificationPublisher {
 		}
 	}
 
-	/** 등록된 모든 FCM 토큰에 브로드캐스트한다. */
+	/** 등록된 모든 Firebase Cloud Messaging 토큰에 브로드캐스트한다. */
 	public void publishToAll(String type, String path, String title, String body) {
 		try {
-			List<String> tokens = memberDeviceRepository.findAllFcmTokens();
+			List<String> tokens = memberDeviceRepository.findAllFirebaseCloudMessagingRegistrationTokens();
 			if (tokens.isEmpty()) {
-				log.debug("No FCM tokens found. Skipping broadcast. type={}", type);
+				log.debug("No Firebase Cloud Messaging tokens found. Skipping broadcast. type={}", type);
 				return;
 			}
 			for (String token : tokens) {
@@ -64,7 +64,7 @@ public class NotificationPublisher {
 			}
 			log.info("Queued broadcast: type={}, tokenCount={}", type, tokens.size());
 		} catch (Exception e) {
-			log.warn("Failed to publish FCM broadcast. type={}", type, e);
+			log.warn("Failed to publish Firebase Cloud Messaging broadcast. type={}", type, e);
 		}
 	}
 

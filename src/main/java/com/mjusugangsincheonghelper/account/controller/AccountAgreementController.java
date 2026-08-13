@@ -70,7 +70,7 @@ public class AccountAgreementController {
 	private String extractRefreshToken(HttpServletRequest request) {
 		if (request.getCookies() != null) {
 			for (Cookie cookie : request.getCookies()) {
-				if ("refresh_token".equals(cookie.getName())) {
+				if ("session_refresh_token".equals(cookie.getName())) {
 					return cookie.getValue();
 				}
 			}

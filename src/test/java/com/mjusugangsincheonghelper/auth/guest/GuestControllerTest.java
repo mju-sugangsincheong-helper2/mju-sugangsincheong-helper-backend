@@ -65,8 +65,8 @@ class GuestControllerTest {
 							.memberId(1L)
 							.role("GUEST")
 							.name("게스트_abcd")
-							.accessToken("at")
-							.refreshToken("rt")
+							.sessionAccessToken("at")
+							.sessionRefreshToken("rt")
 							.build());
 
 			mockMvc.perform(post("/api/v1/auth/guest")

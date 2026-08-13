@@ -117,8 +117,8 @@ app:
 // TokenProvider.java
 public TokenProvider(
     @Value("${app.jwt.secret}") String secret,
-    @Value("${app.jwt.access-token-expiry-ms:3600000}") long accessTokenExpiryMs,
-    @Value("${app.jwt.refresh-token-expiry-ms:604800000}") long refreshTokenExpiryMs,
+    @Value("${app.jwt.access-token-expiry-ms:3600000}") long sessionAccessTokenExpiryMs,
+    @Value("${app.jwt.refresh-token-expiry-ms:604800000}") long sessionRefreshTokenExpiryMs,
     @Value("${app.jwt.merge-ticket-expiry-ms:300000}") long mergeTicketExpiryMs) {
     // ...
 }

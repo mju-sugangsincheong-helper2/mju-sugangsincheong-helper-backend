@@ -95,8 +95,8 @@ class SessionServiceTest {
 
 			assertThat(result.getMemberId()).isEqualTo(1L);
 			assertThat(result.getRole()).isEqualTo("GUEST");
-			assertThat(result.getAccessToken()).isEqualTo("access-token");
-			assertThat(result.getRefreshToken()).isEqualTo("refresh-token");
+			assertThat(result.getSessionAccessToken()).isEqualTo("access-token");
+			assertThat(result.getSessionRefreshToken()).isEqualTo("refresh-token");
 
 			verify(tokenDeliveryStrategy).deliver("access-token", "refresh-token", response);
 		}
@@ -134,8 +134,8 @@ class SessionServiceTest {
 			SessionResult result = sessionService.refreshSession(refreshToken, response);
 
 			assertThat(result.getRole()).isEqualTo("MEMBER");
-			assertThat(result.getAccessToken()).isEqualTo("new-access-token");
-			assertThat(result.getRefreshToken()).isEqualTo("new-refresh-token");
+			assertThat(result.getSessionAccessToken()).isEqualTo("new-access-token");
+			assertThat(result.getSessionRefreshToken()).isEqualTo("new-refresh-token");
 		}
 
 		@Test

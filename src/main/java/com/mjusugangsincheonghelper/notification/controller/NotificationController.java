@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Notification", description = "알림 및 FCM 토큰 관리 API")
+@Tag(name = "Notification", description = "알림 및 Firebase Cloud Messaging 토큰 관리 API")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/{version}/notification")
@@ -35,12 +35,12 @@ public class NotificationController {
 	@PreAuthorize("hasRole('GUEST')")
 	@PostMapping(value = "/token", version = "1+")
 	@Operation(
-			summary = "Register or Update FCM Token",
-			description = "현재 사용자의 FCM 토큰을 등록하거나 갱신합니다.",
+			summary = "Register or Update Firebase Cloud Messaging Token",
+			description = "현재 사용자의 Firebase Cloud Messaging 토큰을 등록하거나 갱신합니다.",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "FCM 토큰 등록/갱신 성공"
+							description = "Firebase Cloud Messaging 토큰 등록/갱신 성공"
 					)
 			}
 	)
@@ -62,12 +62,12 @@ public class NotificationController {
 	@PreAuthorize("hasRole('GUEST')")
 	@DeleteMapping(value = "/token", version = "1+")
 	@Operation(
-			summary = "Delete FCM Token",
-			description = "현재 사용자의 기기에 등록된 FCM 토큰을 삭제/제거합니다.",
+			summary = "Delete Firebase Cloud Messaging Token",
+			description = "현재 사용자의 기기에 등록된 Firebase Cloud Messaging 토큰을 삭제/제거합니다.",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
-							description = "FCM 토큰 삭제 성공"
+							description = "Firebase Cloud Messaging 토큰 삭제 성공"
 					)
 			}
 	)

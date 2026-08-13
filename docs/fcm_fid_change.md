@@ -1,6 +1,6 @@
 # FCM Registration Token -> Firebase Installation ID (FID) 마이그레이션 기술 명세서
 
-본 문서는 Google Firebase의 FCM 메시징 식별자 마이그레이션 방침에 따라 기존 **FCM 토큰(Registration Token)** 방식에서 **Firebase Installation ID (FID)** 방식으로 전환함에 있어 배경, 개발자 고민점, 백엔드 및 클라이언트 변경점을 정리한 기술 가이드입니다.
+본 문서는 Google Firebase의 FCM 메시징 식별자 마이그레이션 방침에 따라 기존 **Firebase Cloud Messaging 토큰(Registration Token)** 방식에서 **Firebase Installation ID (FID)** 방식으로 전환함에 있어 배경, 개발자 고민점, 백엔드 및 클라이언트 변경점을 정리한 기술 가이드입니다.
 
 ---
 
@@ -28,14 +28,14 @@ Google Firebase 팀은 최신 Firebase Admin SDK(v9.10.0 이상) 및 FCM v1 API 
 ## 3. 개발자 입장에서의 고민점 (Developer Considerations)
 
 ### 3.1. 토큰 갱신(로테이션)으로 인한 탈착 문제 해소
-- **기존 FCM 토큰의 한계:** 네트워크 환경 변화, 앱 업데이트, 주기적 보안 로테이션(약 270일) 등으로 예고 없이 토큰이 바뀌어 백엔드 DB와의 동기화가 깨지고 알림이 유실되는 문제가 빈번했습니다.
+- **기존 Firebase Cloud Messaging 토큰의 한계:** 네트워크 환경 변화, 앱 업데이트, 주기적 보안 로테이션(약 270일) 등으로 예고 없이 토큰이 바뀌어 백엔드 DB와의 동기화가 깨지고 알림이 유실되는 문제가 빈번했습니다.
 - **FID의 장점:** 앱을 삭제하거나 브라우저 스토리지를 완전 초기화하지 않는 한 **FID는 영구히 고정**되므로, 기기 식별 및 동기화 무결성이 획기적으로 향상됩니다.
 
 ### 3.2. 유저 - 기기 1:N 바인딩 추적의 용이성
 - 한 사용자가 여러 기기(스마트폰, 태블릿, PC 브라우저)를 보유하거나 한 기기에서 계정이 전환(Login/Logout)되는 상황에서, 변하지 않는 FID를 DB Key로 관리함으로써 안정적인 알림 타겟팅이 가능합니다.
 
 ### 3.3. 하위 호환성 및 마이그레이션 리스크
-- 기존 FCM 토큰을 저장하고 있던 레거시 클라이언트 사용자를 위해 백엔드 DB 컬럼 구조를 명확히 정립하고, 전환 기간 동안 유연하게 수용할 수 있는 API 설계가 필요합니다.
+- 기존 Firebase Cloud Messaging 토큰을 저장하고 있던 레거시 클라이언트 사용자를 위해 백엔드 DB 컬럼 구조를 명확히 정립하고, 전환 기간 동안 유연하게 수용할 수 있는 API 설계가 필요합니다.
 
 ---
 
@@ -45,7 +45,7 @@ Google Firebase 팀은 최신 Firebase Admin SDK(v9.10.0 이상) 및 FCM v1 API 
 - `member_device` 테이블의 컬럼 명칭을 `firebase_installation_id`로 명시적 변경했습니다.
 
 ```sql
-ALTER TABLE member_device RENAME COLUMN fcm_token TO firebase_installation_id;
+ALTER TABLE member_device RENAME COLUMN firebase_cloud_messaging_registration_token TO firebase_installation_id;
 ```
 
 - JPA Entity ([`MemberDevice.java`](file:///Users/shinnk/source/project/mju-sugangsincheong-heler/mju-sugangsincheong-helper-backend/src/main/java/com/mjusugangsincheonghelper/database/entity/MemberDevice.java)):
@@ -69,7 +69,7 @@ Message message = Message.builder()
 ```
 
 ### 4.3. API DTO 및 컨트롤러 규격 ([`NotificationController.java`](file:///Users/shinnk/source/project/mju-sugangsincheong-heler/mju-sugangsincheong-helper-backend/src/main/java/com/mjusugangsincheonghelper/notification/controller/NotificationController.java))
-- DTO 필드명을 `fcmToken`에서 **`fid`**로 변경하였습니다.
+- DTO 필드명을 `firebaseCloudMessagingRegistrationToken`에서 **`fid`**로 변경하였습니다.
 - `POST /api/v1/notification/token` (FID 등록/갱신)
 - `DELETE /api/v1/notification/token` (FID 삭제)
 
@@ -84,7 +84,7 @@ Message message = Message.builder()
 
 ## 5. 클라이언트(Client - Web / Mobile) 변경점
 
-클라이언트 애플리케이션은 Firebase SDK 초기화 후 FCM 토큰 대신 **FID (Firebase Installation ID)**를 발급받아 백엔드 API로 전달해야 합니다.
+클라이언트 애플리케이션은 Firebase SDK 초기화 후 Firebase Cloud Messaging 토큰 대신 **FID (Firebase Installation ID)**를 발급받아 백엔드 API로 전달해야 합니다.
 
 ### 5.1. Web 브라우저 (JS / React / Next.js)
 

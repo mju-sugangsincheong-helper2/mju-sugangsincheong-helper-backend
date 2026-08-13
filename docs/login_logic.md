@@ -19,8 +19,8 @@
 토큰은 기본적으로 **HttpOnly Cookie**를 기반으로 전송됩니다. 
 개발 및 테스트 편의성을 위해 **dev**와 **test** 환경(`app.auth.token-in-response: true`)에서는 응답 바디(JSON)에도 토큰이 포함되어 전송되지만, 운영(**prod**) 환경(`app.auth.token-in-response: false`)에서는 응답 바디에 토큰이 포함되지 않으며 **오직 HttpOnly Cookie로만 전송**됩니다.
 
-*   **Access Token (ATK)**: API 인증용 임시 토큰 (만료 1시간, HttpOnly Cookie `access_token`)
-*   **Refresh Token (RTK)**: 세션 연장용 토큰 (만료 7일, HttpOnly Cookie `refresh_token` + DB 매칭)
+*   **Access Token (ATK)**: API 인증용 임시 토큰 (만료 1시간, HttpOnly Cookie `session_access_token`)
+*   **Refresh Token (RTK)**: 세션 연장용 토큰 (만료 7일, HttpOnly Cookie `session_refresh_token` + DB 매칭)
 *   **쿠키 속성**: `HttpOnly = true`, `Secure = true`, `SameSite = Lax`, `Path = /`
 
 ---
@@ -90,8 +90,8 @@ sequenceDiagram
     *   Payload: `{ "code": "구글인증코드", "state": "인증시작시받았던State" }`
 *   **응답 값**:
     *   **Set-Cookie**:
-        *   `access_token=JWT_ACCESS_TOKEN; HttpOnly; Secure; SameSite=Lax; Path=/`
-        *   `refresh_token=JWT_REFRESH_TOKEN; HttpOnly; Secure; SameSite=Lax; Path=/`
+        *   `session_access_token=JWT_ACCESS_TOKEN; HttpOnly; Secure; SameSite=Lax; Path=/`
+        *   `session_refresh_token=JWT_REFRESH_TOKEN; HttpOnly; Secure; SameSite=Lax; Path=/`
     *   **Payload (`OAuthTokenResponse`)**:
         *   `data.status`: `"SUCCESS"`
         *   `data.newUser`: 신규 회원 여부 (`true` / `false`)
@@ -115,7 +115,7 @@ sequenceDiagram
     actor Client as Client (Frontend)
     participant Server as Backend Server
 
-    Client->>Server: POST /api/v1/auth/guest (device, fcmToken)
+    Client->>Server: POST /api/v1/auth/guest (device, firebaseCloudMessagingRegistrationToken)
     Server->>Server: 임시 게스트 회원 DB 등록 (role=GUEST, name=게스트_xxxx)
     Server->>Server: 게스트 세션용 JWT (ATK, RTK) 생성
     Server-->>Client: 201 Created (GuestResponse 반환 및 Cookie 설정)
@@ -127,9 +127,9 @@ sequenceDiagram
 *   **보내는 측**: Client $\rightarrow$ Backend Server
 *   **목적**: 로그인하지 않은 유저가 임시로 API를 호출하고 고유 식별자를 발급받아 동의 내역 등을 기록하기 위함.
 *   **요청 값**:
-    *   Payload (선택): `{ "fcmToken": "FCM토큰값", "device": { "osType": "ANDROID", "deviceModel": "..." } }`
+    *   Payload (선택): `{ "firebaseCloudMessagingRegistrationToken": "FCM토큰값", "device": { "osType": "ANDROID", "deviceModel": "..." } }`
 *   **응답 값**:
-    *   **Set-Cookie**: `access_token` 및 `refresh_token` 쿠키
+    *   **Set-Cookie**: `session_access_token` 및 `session_refresh_token` 쿠키
     *   **Payload (`GuestResponse`)**:
         *   `data.memberId`: 생성된 게스트 임시 ID
         *   `data.role`: `"GUEST"`
@@ -149,7 +149,7 @@ sequenceDiagram
     actor Client as Client (Frontend)
     participant Server as Backend Server
 
-    Client->>Server: POST /api/v1/auth/login/google/merge (mergeTicket, device, fcmToken)
+    Client->>Server: POST /api/v1/auth/login/google/merge (mergeTicket, device, firebaseCloudMessagingRegistrationToken)
     Server->>Server: mergeTicket 검증 및 게스트 데이터를 정식 회원 계정으로 이전
     Server->>Server: 임시 게스트 DB 레코드 삭제
     Server->>Server: 새 정식 회원 JWT (ATK, RTK) 생성
@@ -162,9 +162,9 @@ sequenceDiagram
 *   **보내는 측**: Client $\rightarrow$ Backend Server
 *   **목적**: 게스트 계정에서 저장되었던 디바이스 정보, 약관 동의 내역 등의 데이터를 신규 연동된 정식 회원 데이터로 통합하기 위함.
 *   **요청 값**:
-    *   Payload: `{ "mergeTicket": "티켓토큰값", "fcmToken": "FCM토큰값", "device": { ... } }`
+    *   Payload: `{ "mergeTicket": "티켓토큰값", "firebaseCloudMessagingRegistrationToken": "FCM토큰값", "device": { ... } }`
 *   **응답 값**:
-    *   **Set-Cookie**: 갱신된 정식 회원용 `access_token` 및 `refresh_token` 쿠키
+    *   **Set-Cookie**: 갱신된 정식 회원용 `session_access_token` 및 `session_refresh_token` 쿠키
     *   **Payload (`MergeResponse`)**:
         *   `data.memberId`: 병합이 완료된 정식 회원 ID
         *   `data.role`: `"MEMBER"`
@@ -200,8 +200,8 @@ sequenceDiagram
 *   **보내는 측**: Client $\rightarrow$ Backend (JwtAuthenticationFilter)
 *   **목적**: 매 요청마다 사용자가 적절한 자격을 가지고 있는지 신속하게 검증하고 권한을 체크하기 위함.
 *   **요청 값**:
-    *   운영 환경 (prod): `Cookie` 내의 `access_token`
-    *   개발 환경 (dev): `Authorization: Bearer <token>` 헤더 혹은 `Cookie` 내의 `access_token`
+    *   운영 환경 (prod): `Cookie` 내의 `session_access_token`
+    *   개발 환경 (dev): `Authorization: Bearer <token>` 헤더 혹은 `Cookie` 내의 `session_access_token`
 *   **응답 값**:
     *   정상: 본래 요청한 API의 결과 데이터 반환
     *   만료/유효하지 않음: `401 Unauthorized` 예외 응답 (`GLOBAL_SECURITY_001`)
@@ -232,11 +232,11 @@ sequenceDiagram
 *   **보내는 측**: Client $\rightarrow$ Backend Server
 *   **목적**: Access Token 만료 시, 로그인 세션을 끊지 않고 안전하게 연장(재발급)하기 위함.
 *   **요청 값**:
-    *   **Cookie**: `refresh_token=기존RTK값`
+    *   **Cookie**: `session_refresh_token=기존RTK값`
 *   **응답 값**:
     *   **Set-Cookie**:
-        *   `access_token=새로운ATK; HttpOnly; ...`
-        *   `refresh_token=새로운RTK; HttpOnly; ...`
+        *   `session_access_token=새로운ATK; HttpOnly; ...`
+        *   `session_refresh_token=새로운RTK; HttpOnly; ...`
     *   **Payload (`RefreshResponse`)**:
         *   `data.status`: `"success"`
         *   `data.role`: 회원 권한
@@ -261,8 +261,8 @@ sequenceDiagram
 *   **보내는 측**: Client $\rightarrow$ Backend Server
 *   **목적**: 사용자의 활성 세션을 즉시 종료하고 기기에 발행된 보안 토큰 정보를 지우기 위함.
 *   **요청 값**:
-    *   **Cookie**: `refresh_token` 및 `access_token`
-    *   Payload (선택): `{ "fcmToken": "FCM토큰값" }` (로그아웃 시 모바일 푸시 발송을 차단하기 위함)
+    *   **Cookie**: `session_refresh_token` 및 `session_access_token`
+    *   Payload (선택): `{ "firebaseCloudMessagingRegistrationToken": "FCM토큰값" }` (로그아웃 시 모바일 푸시 발송을 차단하기 위함)
 *   **응답 값**:
-    *   **Set-Cookie**: `access_token=; Max-Age=0`, `refresh_token=; Max-Age=0` (쿠키 즉시 만료)
+    *   **Set-Cookie**: `session_access_token=; Max-Age=0`, `session_refresh_token=; Max-Age=0` (쿠키 즉시 만료)
     *   **Payload**: 빈 성공 응답 (`SingleSuccessResponseEnvelope.empty()`)

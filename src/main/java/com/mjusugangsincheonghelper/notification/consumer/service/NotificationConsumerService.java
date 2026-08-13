@@ -29,21 +29,21 @@ public class NotificationConsumerService {
 
 		for (int i = 0; i < events.size(); i += MAX_BATCH_SIZE) {
 			List<NotificationEventMessage> batch = events.subList(i, Math.min(i + MAX_BATCH_SIZE, events.size()));
-			sendFcmBatch(batch);
+			sendFirebaseCloudMessagingBatch(batch);
 		}
 	}
 
 	@SuppressWarnings("deprecation")
-	private void sendFcmBatch(List<NotificationEventMessage> batch) {
+	private void sendFirebaseCloudMessagingBatch(List<NotificationEventMessage> batch) {
 		if (FirebaseApp.getApps().isEmpty()) {
-			log.warn("FirebaseApp is not initialized. Skipping FCM send. batchSize={}", batch.size());
+			log.warn("FirebaseApp is not initialized. Skipping Firebase Cloud Messaging send. batchSize={}", batch.size());
 			return;
 		}
 
-		List<Message> fcmMessages = new ArrayList<>();
+		List<Message> firebaseCloudMessagingMessages = new ArrayList<>();
 		for (NotificationEventMessage event : batch) {
 			if (event.getToken() == null || event.getToken().isBlank()) {
-				log.debug("FCM token is empty in notification event message. Skipping FCM send.");
+				log.debug("Firebase Cloud Messaging token is empty in notification event message. Skipping Firebase Cloud Messaging send.");
 				continue;
 			}
 
@@ -67,18 +67,18 @@ public class NotificationConsumerService {
 				builder.putAllData(event.getData());
 			}
 
-			fcmMessages.add(builder.build());
+			firebaseCloudMessagingMessages.add(builder.build());
 		}
 
-		if (fcmMessages.isEmpty()) {
+		if (firebaseCloudMessagingMessages.isEmpty()) {
 			return;
 		}
 
 		try {
-			log.info("Sending FCM batch messages. count={}", fcmMessages.size());
-			FirebaseMessaging.getInstance().sendEach(fcmMessages);
+			log.info("Sending Firebase Cloud Messaging batch messages. count={}", firebaseCloudMessagingMessages.size());
+			FirebaseMessaging.getInstance().sendEach(firebaseCloudMessagingMessages);
 		} catch (Exception e) {
-			log.error("Failed to send FCM batch. count={}", fcmMessages.size(), e);
+			log.error("Failed to send Firebase Cloud Messaging batch. count={}", firebaseCloudMessagingMessages.size(), e);
 			throw new BaseException(ErrorCode.NOTIFICATION_SEND_FAILED, e);
 		}
 	}

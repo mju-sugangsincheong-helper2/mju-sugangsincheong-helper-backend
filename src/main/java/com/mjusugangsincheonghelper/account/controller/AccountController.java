@@ -121,7 +121,7 @@ public class AccountController {
 		}
 		if (request.getCookies() != null) {
 			for (Cookie cookie : request.getCookies()) {
-				if ("refresh_token".equals(cookie.getName())) {
+				if ("session_refresh_token".equals(cookie.getName())) {
 					return cookie.getValue();
 				}
 			}

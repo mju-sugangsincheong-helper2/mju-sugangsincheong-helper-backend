@@ -9,8 +9,8 @@ import lombok.Getter;
 @AllArgsConstructor
 public class SessionResult {
 
-	private final String accessToken;
-	private final String refreshToken;
+	private final String sessionAccessToken;
+	private final String sessionRefreshToken;
 	private final Long memberId;
 	private final String role;
 	private final String name;

@@ -6,7 +6,7 @@ import java.util.List;
  * 교환 쓰기 경로의 도메인 이벤트.
  *
  * <p>트랜잭션 안에서 발행되고, 커밋 후 {@link ExchangeEventListener}가
- * 캐시 evict·큐 적재·FCM 발행 등 부작용을 수행한다. 롤백된 데이터에 대해
+ * 캐시 evict·큐 적재·Firebase Cloud Messaging 발행 등 부작용을 수행한다. 롤백된 데이터에 대해
  * 부작용이 일어나지 않도록 Spring의 {@code @TransactionalEventListener} 기본
  * 위임(AFTER_COMMIT) 메커니즘을 그대로 사용한다.
  */

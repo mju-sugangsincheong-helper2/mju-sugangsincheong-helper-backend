@@ -18,12 +18,12 @@ public class MergeResponse {
 	private final Boolean newUser;
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final String accessToken;
+	private final String sessionAccessToken;
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private final String refreshToken;
+	private final String sessionRefreshToken;
 
-	public static MergeResponse of(Long memberId, String role, String name, String position, String department, Boolean newUser, String accessToken, String refreshToken) {
+	public static MergeResponse of(Long memberId, String role, String name, String position, String department, Boolean newUser, String sessionAccessToken, String sessionRefreshToken) {
 		return MergeResponse.builder()
 				.memberId(memberId)
 				.role(role)
@@ -31,8 +31,8 @@ public class MergeResponse {
 				.position(position)
 				.department(department)
 				.newUser(newUser)
-				.accessToken(accessToken)
-				.refreshToken(refreshToken)
+				.sessionAccessToken(sessionAccessToken)
+				.sessionRefreshToken(sessionRefreshToken)
 				.build();
 	}
 }

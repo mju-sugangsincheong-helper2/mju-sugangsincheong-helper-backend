@@ -16,7 +16,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * 교환 쓰기 부작용의 유일한 응집점.
  *
  * <p>{@link ExchangeEvents}를 커밋 후(AFTER_COMMIT)에 처리한다. 캐시 evict,
- * 사이클 탐지 큐 적재, FCM 발행은 전부 트랜잭션이 성공적으로 커밋된 뒤에야
+ * 사이클 탐지 큐 적재, Firebase Cloud Messaging 발행은 전부 트랜잭션이 성공적으로 커밋된 뒤에야
  * 일어나므로 롤백된 데이터에 대한 부작용이 없다.
  *
  * <p>참고: 트랜잭션 밖에서 발행된 이벤트는 전달되지 않는다. 교환 쓰기 경로는
@@ -87,7 +87,7 @@ public class ExchangeEventListener {
 				.distinct()
 				.toList();
 		if (targetMemberIds.isEmpty()) {
-			log.debug("No active target members to receive FCM notification. roomId={}", event.roomId());
+			log.debug("No active target members to receive Firebase Cloud Messaging notification. roomId={}", event.roomId());
 			return;
 		}
 		notificationPublisher.publishToMembers(targetMemberIds, "EXCHANGE_MESSAGE",

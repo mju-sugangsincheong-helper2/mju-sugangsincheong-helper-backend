@@ -88,11 +88,11 @@ CREATE TABLE IF NOT EXISTS notice (
 | `PUT` | `/api/1/notices/{id}` | ADMIN | 수정 |
 | `DELETE` | `/api/1/notices/{id}` | ADMIN | 삭제 |
 
-**등록 시 푸시 규약** (기존 `fcm_token_strategy.md` 의 producer 규약 그대로):
+**등록 시 푸시 규약** (기존 `firebase_cloud_messaging_registration_token_strategy.md` 의 producer 규약 그대로):
 
 ```json
 {
-  "token": "<fcm_token>",
+  "token": "<firebase_cloud_messaging_registration_token>",
   "notification": {
     "title": "공지 알림",
     "body": "<공지 제목>"
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS notice (
 }
 ```
 
-- 전체 FCM 토큰 조회 → `pgmqService.send("notification_queue", event)` 로 토큰별 이벤트 발행
+- 전체 Firebase Cloud Messaging 토큰 조회 → `pgmqService.send("notification_queue", event)` 로 토큰별 이벤트 발행
 - 공지 저장 + 큐 발행이 같은 트랜잭션 (PGMQ는 PostgreSQL 기반 → 원자적)
 - 알림 발행 실패는 흡수하여 공지 저장은 성공 유지
 - 알림 발행은 `NotificationConsumerWorker` 가 400개 단위로 drain (기존 파이프라인 그대로)
@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS notice (
 |----|------------|------|
 | **공지 관리** | `/api/1/notices` (커스텀) | 목록/등록/수정/삭제. 등록 시 `broadcast` 옵션으로 **푸시 발송 동반 여부 선택** (FCM 발송+등록 vs 등록만), 수정은 푸시 없이 저장만 |
 | **시스템 설정** | `/api/1/system/configs`, `/api/1/course/sections` | `current_term` 편집 (형식 검증) + **모든 설정 변수 조회 테이블** (system_config 전체 목록) + **강좌 JSON 붙여넣기 등록** (서버 응답/오류 표시) |
-| **모니터링** | `/api/1/system/stats` (커스텀 도메인 지표) | 도메인 지표 시각화 (아래 참고) + **운영 작업**(만료 FCM 토큰 정리 버튼) + **푸시 백로그**(PGMQ 대기 건수). 인프라 지표는 **UI에서 제거**하고 VictoriaMetrics(vmui)로 조회 |
+| **모니터링** | `/api/1/system/stats` (커스텀 도메인 지표) | 도메인 지표 시각화 (아래 참고) + **운영 작업**(만료 Firebase Cloud Messaging 토큰 정리 버튼) + **푸시 백로그**(PGMQ 대기 건수). 인프라 지표는 **UI에서 제거**하고 VictoriaMetrics(vmui)로 조회 |
 
 > **로그 탭은 프론트 관리자에서 제거.** → 내부망 전용 standalone 페이지 `internal_system/index.html`이 Actuator(health/metrics/prometheus/loggers/logfile/threaddump/env/mappings/beans/conditions/caches/httpexchanges)를 전부 대시보드로 제공한다. 라이브러리는 전부 CDN(Tailwind, Chart.js).
 
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS notice (
 | `games` | 싱글게임 완주(`singleGameCompleted`) / 참여 멀티게임 라운드(`multigameRounds`) |
 | `notificationQueueLength` | PGMQ `notification_queue` 대기(푸시 백로그) 건수 |
 
-> **운영 작업 엔드포인트**: `POST /api/{version}/system/devices/cleanup` (ADMIN) → 만료된 기기 세션(`expiresAt < now`, 바인딩 FCM 토큰 포함) 일괄 삭제 후 `{cleared: n}` 반환. `system/controller/SystemMaintenanceController`.
+> **운영 작업 엔드포인트**: `POST /api/{version}/system/devices/cleanup` (ADMIN) → 만료된 기기 세션(`expiresAt < now`, 바인딩 Firebase Cloud Messaging 토큰 포함) 일괄 삭제 후 `{cleared: n}` 반환. `system/controller/SystemMaintenanceController`.
 
 **신규 파일**: `system/controller/SystemStatsController` + `system/service/SystemStatsService` + `system/dto/SystemStatsResponse` + `system/controller/SystemMaintenanceController`
 

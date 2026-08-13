@@ -11,17 +11,15 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 
 	Optional<MemberDevice> findByRefreshTokenHash(String refreshTokenHash);
 
-	Optional<MemberDevice> findTopByMemberIdAndPlatformJsUaAndFcmTokenOrderByLastAccessedAtDesc(Long memberId, String platformJsUa, String fcmToken);
-
-	Optional<MemberDevice> findTopByMemberIdAndPlatformJsUaOrderByLastAccessedAtDesc(Long memberId, String platformJsUa);
+	Optional<MemberDevice> findByMemberIdAndFirebaseInstallationId(Long memberId, String firebaseInstallationId);
 
 	List<MemberDevice> findByMemberId(Long memberId);
 
-	List<MemberDevice> findAllByFcmToken(String fcmToken);
+	List<MemberDevice> findAllByFirebaseCloudMessagingRegistrationToken(String firebaseCloudMessagingRegistrationToken);
 
-	/** 전체 사용자의 등록된 FCM 토큰 목록 (broadcast 알림용) */
-	@Query("select d.fcmToken from MemberDevice d where d.fcmToken is not null and d.fcmToken <> ''")
-	List<String> findAllFcmTokens();
+	/** 전체 사용자의 등록된 Firebase Cloud Messaging Registration Token 목록 (broadcast 알림용) */
+	@Query("select d.firebaseCloudMessagingRegistrationToken from MemberDevice d where d.firebaseCloudMessagingRegistrationToken is not null and d.firebaseCloudMessagingRegistrationToken <> ''")
+	List<String> findAllFirebaseCloudMessagingRegistrationTokens();
 
 	void deleteByRefreshTokenHash(String refreshTokenHash);
 
@@ -36,7 +34,7 @@ public interface MemberDeviceRepository extends JpaRepository<MemberDevice, Long
 	@Query("select d.platformJsName, count(d) from MemberDevice d where d.platformJsName is not null and d.platformJsName <> '' group by d.platformJsName order by count(d) desc")
 	List<Object[]> countByPlatformJsName();
 
-	/** 만료된 기기 세션 일괄 삭제 (만료 FCM 토큰 정리). 삭제된 개수를 반환한다. */
+	/** 만료된 기기 세션 일괄 삭제 (만료 Firebase Cloud Messaging 토큰 정리). 삭제된 개수를 반환한다. */
 	@Modifying
 	@Query("delete from MemberDevice d where d.expiresAt is not null and d.expiresAt < :now")
 	int deleteExpired(java.time.Instant now);

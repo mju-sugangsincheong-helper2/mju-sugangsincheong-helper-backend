@@ -53,8 +53,8 @@ public class SessionService {
 		log.info("Created session. memberId={}, role={}, deviceId={}", member.getId(), member.getRole(), savedDevice.getId());
 
 		return SessionResult.builder()
-				.accessToken(accessToken)
-				.refreshToken(refreshToken)
+				.sessionAccessToken(accessToken)
+				.sessionRefreshToken(refreshToken)
 				.memberId(member.getId())
 				.role(member.getRole().name())
 				.name(member.getName())
@@ -93,8 +93,8 @@ public class SessionService {
 		log.debug("Refreshed session. memberId={}, deviceId={}", member.getId(), device.getId());
 
 		return SessionResult.builder()
-				.accessToken(newAccessToken)
-				.refreshToken(newRefreshToken)
+				.sessionAccessToken(newAccessToken)
+				.sessionRefreshToken(newRefreshToken)
 				.memberId(member.getId())
 				.role(member.getRole().name())
 				.name(member.getName())

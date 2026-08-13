@@ -64,8 +64,8 @@ public class MergeController {
 	}
 
 	private MergeResponse buildMergeResponse(SessionResult session) {
-		String accessToken = tokenInResponse ? session.getAccessToken() : null;
-		String refreshToken = tokenInResponse ? session.getRefreshToken() : null;
+		String accessToken = tokenInResponse ? session.getSessionAccessToken() : null;
+		String refreshToken = tokenInResponse ? session.getSessionRefreshToken() : null;
 		Boolean newUser = !accountAgreementService.isAgreed(session.getMemberId());
 		return MergeResponse.of(session.getMemberId(), session.getRole(), session.getName(), session.getPosition(), session.getDepartment(), newUser, accessToken, refreshToken);
 	}

@@ -119,8 +119,8 @@ public class TestAuthController {
 				.name(session.getName())
 				.position(session.getPosition())
 				.department(session.getDepartment())
-				.accessToken(session.getAccessToken())
-				.refreshToken(session.getRefreshToken())
+				.sessionAccessToken(session.getSessionAccessToken())
+				.sessionRefreshToken(session.getSessionRefreshToken())
 				.build();
 
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(testLoginResponse));
@@ -179,8 +179,8 @@ public class TestAuthController {
 				.name(session.getName())
 				.position(session.getPosition())
 				.department(session.getDepartment())
-				.accessToken(session.getAccessToken())
-				.refreshToken(session.getRefreshToken())
+				.sessionAccessToken(session.getSessionAccessToken())
+				.sessionRefreshToken(session.getSessionRefreshToken())
 				.build();
 
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(testLoginResponse));

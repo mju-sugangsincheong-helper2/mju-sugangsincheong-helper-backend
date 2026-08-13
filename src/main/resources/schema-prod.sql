@@ -39,24 +39,30 @@ CREATE TABLE IF NOT EXISTS member_auth (
 -- 3. member_device (refresh token은 SHA-256 해시만 저장)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS member_device (
-    id                      BIGSERIAL    PRIMARY KEY,
-    member_id               BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
-    refresh_token_hash      VARCHAR(64)  NOT NULL UNIQUE,
-    fcm_token               VARCHAR(512),
-    platformjs_name         VARCHAR(100),
-    platformjs_version      VARCHAR(50),
-    platformjs_layout       VARCHAR(50),
-    platformjs_prerelease   VARCHAR(50),
-    platformjs_os           VARCHAR(100),
-    platformjs_manufacturer VARCHAR(100),
-    platformjs_product      VARCHAR(100),
-    platformjs_description  TEXT,
-    platformjs_ua           TEXT,
-    last_accessed_at        TIMESTAMP,
-    expires_at              TIMESTAMP,
-    created_at              TIMESTAMP    NOT NULL DEFAULT now(),
-    updated_at              TIMESTAMP    NOT NULL DEFAULT now()
+    id                                              BIGSERIAL    PRIMARY KEY,
+    member_id                                       BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    firebase_installation_id                        VARCHAR(255),
+    refresh_token_hash                              VARCHAR(64)  NOT NULL UNIQUE,
+    firebase_cloud_messaging_registration_token     VARCHAR(512),
+    platformjs_name                                 VARCHAR(100),
+    platformjs_version                              VARCHAR(50),
+    platformjs_layout                               VARCHAR(50),
+    platformjs_prerelease                           VARCHAR(50),
+    platformjs_os                                   VARCHAR(100),
+    platformjs_manufacturer                         VARCHAR(100),
+    platformjs_product                              VARCHAR(100),
+    platformjs_description                          TEXT,
+    platformjs_ua                                   TEXT,
+    last_accessed_at                                TIMESTAMP,
+    expires_at                                      TIMESTAMP,
+    created_at                                      TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_at                                      TIMESTAMP    NOT NULL DEFAULT now()
 );
+
+-- firebaseInstallationId 기반 기기 조회 (NULL이 아닌 값만 UNIQUE)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_member_device_firebase_installation_id 
+ON member_device(firebase_installation_id) 
+WHERE firebase_installation_id IS NOT NULL;
 
 -- ============================================================
 -- 4. member_agreements

@@ -462,8 +462,8 @@ public RoleHierarchy roleHierarchy() {
 
 ```
 TokenExtractor (interface)
-├── BearerTokenExtractor  (@Profile({"dev", "test"}))  → Authorization: Bearer 헤더 + access_token 쿠키
-└── CookieTokenExtractor   (@Profile("prod"))            → access_token 쿠키만
+├── BearerTokenExtractor  (@Profile({"dev", "test"}))  → Authorization: Bearer 헤더 + session_access_token 쿠키
+└── CookieTokenExtractor   (@Profile("prod"))            → session_access_token 쿠키만
 
 JwtAuthenticationFilter (OncePerRequestFilter)
     → shouldNotFilter: /api/** 외에는 skip
@@ -491,8 +491,8 @@ JwtAuthenticationFilter (OncePerRequestFilter)
 | `exp` | Date | 만료 시간 |
 
 **TokenExtractor 전략**:
-- **dev/test**: `BearerTokenExtractor` — `Authorization: Bearer {token}` 헤더 우선, 없으면 `access_token` 쿠키 확인
-- **prod**: `CookieTokenExtractor` — `access_token` 쿠키만 확인 (보안 강화)
+- **dev/test**: `BearerTokenExtractor` — `Authorization: Bearer {token}` 헤더 우선, 없으면 `session_access_token` 쿠키 확인
+- **prod**: `CookieTokenExtractor` — `session_access_token` 쿠키만 확인 (보안 강화)
 
 ### ConsentCheckFilter
 
@@ -590,7 +590,7 @@ public OpenAPI prodOpenAPI() {
                     .addSecuritySchemes("cookieAuth", new SecurityScheme()
                             .type(SecurityScheme.Type.APIKEY)
                             .in(SecurityScheme.In.COOKIE)
-                            .name("access_token")))
+                            .name("session_access_token")))
             .addSecurityItem(new SecurityRequirement().addList("cookieAuth"))
             // ...
 }
@@ -617,7 +617,7 @@ public OpenAPI devOpenAPI() {
   - 세 클래스 모두 등록해야 Swagger UI에서 unresolved reference 오류가 발생하지 않음
 
 **Profile별 Swagger 인증 방식**:
-- `prod`: Cookie 기반 (`access_token` 쿠키)
+- `prod`: Cookie 기반 (`session_access_token` 쿠키)
 - `dev`: Bearer JWT 기반 (Swagger UI에서 토큰 직접 입력)
 
 ### RedisConfig
