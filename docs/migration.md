@@ -20,12 +20,12 @@ FID(Firebase Installation ID) 기반의 v3 인증 아키텍처로 마이그레�
 | `sessionRefreshToken` | `sessionRefreshToken` | 세션 리프레시 토큰 |
 | `fid` | `firebaseInstallationId` | Firebase Installation ID |
 
-### 쿠키 이름 변경
+### 쿠키 이름
 
-| 기존 이름 | 새로운 이름 |
-|-----------|-------------|
-| `session_access_token` | `session_session_access_token` |
-| `session_refresh_token` | `session_session_refresh_token` |
+| 쿠키 이름 | 비고 |
+|-----------|------|
+| `access_token` | 유지 (기존과 동일) |
+| `refresh_token` | 유지 (기존과 동일) |
 
 ### 로컬 스토리지 키 변경
 
@@ -60,8 +60,8 @@ docker exec -it mju-sugangsincheong-helper-db psql -U mjusugangsincheonghelperus
 -- Step 1: firebase_installation_id 컬럼 추가 (NULL 허용)
 ALTER TABLE member_device ADD COLUMN IF NOT EXISTS firebase_installation_id VARCHAR(255);
 
--- Step 2: firebase_cloud_messaging_registration_token 컬럼 이름 변경
-ALTER TABLE member_device RENAME COLUMN firebase_cloud_messaging_registration_token TO firebase_cloud_messaging_registration_token;
+-- Step 2: fcm_token 컬럼 이름 변경
+ALTER TABLE member_device RENAME COLUMN fcm_token TO firebase_cloud_messaging_registration_token;
 
 -- Step 3: UNIQUE 부분 인덱스 추가 (NULL이 아닌 값만 UNIQUE)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_member_device_firebase_installation_id 
@@ -189,7 +189,7 @@ ORDER BY last_accessed_at DESC;
 ```
 [마이그레이션 전]
 ┌────┬───────────┬──────────────────┬─────────────────────┬───────────┐
-│ id │ member_id │ session_refresh_token_hash│ platformjs_ua       │ firebase_cloud_messaging_registration_token │
+│ id │ member_id │ refresh_token_hash│ platformjs_ua       │ firebase_cloud_messaging_registration_token │
 ├────┼───────────┼──────────────────┼─────────────────────┼───────────┤
 │ 1  │ 100       │ abc123...        │ Chrome/150.0.0.0    │ fcm_xxx   │
 │ 2  │ 100       │ def456...        │ Chrome/151.0.0.0    │ NULL      │  ← 브라우저 업데이트로 생긴 중복
@@ -197,7 +197,7 @@ ORDER BY last_accessed_at DESC;
 
 [Phase 1 배포 직후 - 컬럼 추가/이름 변경]
 ┌────┬───────────┬──────────────────┬─────────────────────┬─────────────────────────────────────┬──────────────────────┐
-│ id │ member_id │ session_refresh_token_hash│ platformjs_ua       │ firebase_cloud_messaging_           │ firebase_installation│
+│ id │ member_id │ refresh_token_hash│ platformjs_ua       │ firebase_cloud_messaging_           │ firebase_installation│
 │    │           │                  │                     │ registration_token                  │ _id                  │
 ├────┼───────────┼──────────────────┼─────────────────────┼─────────────────────────────────────┼──────────────────────┤
 │ 1  │ 100       │ abc123...        │ Chrome/150.0.0.0    │ fcm_xxx                             │ NULL                 │
@@ -206,7 +206,7 @@ ORDER BY last_accessed_at DESC;
 
 [Phase 2+3 배포 후 - 사용자 재로그인 시 FID 발급]
 ┌────┬───────────┬──────────────────┬─────────────────────┬─────────────────────────────────────┬──────────────────────┐
-│ id │ member_id │ session_refresh_token_hash│ platformjs_ua       │ firebase_cloud_messaging_           │ firebase_installation│
+│ id │ member_id │ refresh_token_hash│ platformjs_ua       │ firebase_cloud_messaging_           │ firebase_installation│
 │    │           │                  │                     │ registration_token                  │ _id                  │
 ├────┼───────────┼──────────────────┼─────────────────────┼─────────────────────────────────────┼──────────────────────┤
 │ 1  │ 100       │ abc123...        │ Chrome/150.0.0.0    │ fcm_xxx                             │ NULL                 │  ← 만료 예정
@@ -237,7 +237,7 @@ ORDER BY last_accessed_at DESC;
 DROP INDEX IF EXISTS idx_member_device_firebase_installation_id;
 
 -- Step 2: 컬럼 이름 되돌리기
-ALTER TABLE member_device RENAME COLUMN firebase_cloud_messaging_registration_token TO firebase_cloud_messaging_registration_token;
+ALTER TABLE member_device RENAME COLUMN firebase_cloud_messaging_registration_token TO fcm_token;
 
 -- Step 3: firebase_installation_id 컬럼 삭제
 ALTER TABLE member_device DROP COLUMN IF EXISTS firebase_installation_id;

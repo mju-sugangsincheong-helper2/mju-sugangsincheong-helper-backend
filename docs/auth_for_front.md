@@ -322,8 +322,8 @@ POST /api/v1/auth/guest
    │                             │  DeviceSession upsert        │
    │                             │─────────────────────────────▶│
    │                             │  ATK/RTK 생성                │
-   │                             │  Set-Cookie: session_access_token    │
-   │  201 Created                │  Set-Cookie: session_refresh_token   │
+   │                             │  Set-Cookie: access_token    │
+   │  201 Created                │  Set-Cookie: refresh_token   │
    │◀────────────────────────────│                              │
    │  {memberId, role, name}     │                              │
    │                             │                              │
@@ -707,8 +707,8 @@ POST /api/v1/auth/logout
    │                             │  (firebaseCloudMessagingRegistrationToken 기준)             │
    │                             │─────────────────────────────▶│
    │  200 OK                     │                              │
-   │  Set-Cookie: session_access_token=maxAge=0                         │
-   │  Set-Cookie: session_refresh_token=maxAge=0                        │
+   │  Set-Cookie: access_token=maxAge=0                         │
+   │  Set-Cookie: refresh_token=maxAge=0                        │
    │◀────────────────────────────│                              │
    │                             │                              │
 ```
@@ -753,8 +753,8 @@ DELETE /api/v1/accounts/me
    │                             │  Member 삭제                 │
    │                             │─────────────────────────────▶│
    │  200 OK                     │                              │
-   │  Set-Cookie: session_access_token=maxAge=0                         │
-   │  Set-Cookie: session_refresh_token=maxAge=0                        │
+   │  Set-Cookie: access_token=maxAge=0                         │
+   │  Set-Cookie: refresh_token=maxAge=0                        │
    │◀────────────────────────────│                              │
    │                             │                              │
 ```

@@ -317,7 +317,7 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 
 ### 7.2 Refresh Token (RTK)
 - **용도**: Access Token 만료 시 재발급을 요청하기 위한 만료 7일짜리 난수 UUID. 만료 시간은 `application.yml`의 `app.jwt.refresh-token-expiry-ms`(기본 7일).
-- **특징**: 데이터가 없는 무작위 문자열이며 DB `member_device` 테이블의 `session_refresh_token` 컬럼과 매핑하여 유효성을 검증합니다.
+- **특징**: 데이터가 없는 무작위 문자열이며 DB `member_device` 테이블의 `refresh_token` 컬럼과 매핑하여 유효성을 검증합니다.
 
 ### 7.3 Merge Ticket
 - **용도**: 게스트 상태에서 소셜 로그인 계정으로 데이터를 병합하기 위해 발급하는 일회성 서명 토큰. 만료 시간은 `application.yml`의 `app.jwt.merge-ticket-expiry-ms`(기본 5분).
@@ -355,7 +355,7 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 ├──────────────────────────┤
 │ id (PK)                  │
 │ member_id (FK)           │
-│ session_refresh_token (UQ)       │
+│ refresh_token (UQ)       │
 │ firebase_cloud_messaging_registration_token                │
 │ platformjs_name          │
 │ platformjs_version       │
@@ -375,7 +375,7 @@ ROLE_ADMIN > ROLE_MEMBER > ROLE_GUEST
 - `member_auth.auth_type`: `GUEST_KEY`, `GOOGLE`, `TEST` 중 하나.
 - `member_auth.member_id`와 `member_auth.auth_key`는 unique 제약.
 - `member_agreements.agreed_at`은 epoch millis 기반 `Long`.
-- `member_device.session_refresh_token`은 unique, `firebase_cloud_messaging_registration_token`은 nullable.
+- `member_device.refresh_token`은 unique, `firebase_cloud_messaging_registration_token`은 nullable.
 - 각 외래키 필드(`member_id`)는 JPA 엔티티상에서 관계 객체 대신 기본 `Long` 타입 필드로 소유하여 패키지/도메인 간의 물리적 테이블 참조 결합도를 완화합니다.
 
 ---
@@ -505,9 +505,9 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, firebaseCloudMessaging
       |                                                         |
       |  ========== [4] Cookie 상태 ==========                    |
       |                                                         |
-      |  Set-Cookie: session_access_token=<JWT>                          |
+      |  Set-Cookie: access_token=<JWT>                          |
       |    HttpOnly; SameSite=Lax; Path=/; Max-Age=3600          |
-      |  Set-Cookie: session_refresh_token=<UUID>                        |
+      |  Set-Cookie: refresh_token=<UUID>                        |
       |    HttpOnly; SameSite=Lax; Path=/; Max-Age=604800        |
       |                                                         |
       |  (dev/test 환경 추가 헤더)                                |
@@ -518,8 +518,8 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, firebaseCloudMessaging
       |  ========== [5] 이후 요청 (Cookie 자동 전송) ==========    |
       |                                                         |
       |-- POST /auth/privacy/agree --> JwtAuthFilter ---> Controller
-      |   Cookie: session_access_token=<JWT>   | sub: memberId          |
-      |   Cookie: session_refresh_token=<UUID> | role: MEMBER           |
+      |   Cookie: access_token=<JWT>   | sub: memberId          |
+      |   Cookie: refresh_token=<UUID> | role: MEMBER           |
       |                                | agreed: false          |
       |                                | deviceId: N            |
       |                                ↓                        |
@@ -538,13 +538,13 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, firebaseCloudMessaging
       |                                 |                         |
       |  ========== [0] 선행: 게스트 로그인 완료 ==========        |
       |                                                         |
-      |  Cookie: session_access_token=<GUEST_JWT>   (sub:12, role:GUEST) |
-      |  Cookie: session_refresh_token=<GUEST_RTK> (UUID)                |
+      |  Cookie: access_token=<GUEST_JWT>   (sub:12, role:GUEST) |
+      |  Cookie: refresh_token=<GUEST_RTK> (UUID)                |
       |                                                         |
       |  ========== [1] OAuth Start (게스트 쿠키 유지) ========== |
       |                                                         |
       |-- POST /auth/oauth/start ------>|                       |
-      |   Cookie: session_access_token=<GUEST_JWT>                       |
+      |   Cookie: access_token=<GUEST_JWT>                       |
       |<--- googleAuthUrl (w/ state) ---------------------|     |
       |                                                         |
       |  ========== [2] Google 로그인 ==========                  |
@@ -558,8 +558,8 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, firebaseCloudMessaging
       |-- POST /auth/token ------------->|                      |
       |   {code, state,                                         |
       |    sessionAccessToken: "<GUEST_JWT>"}  ← 클라이언트가 게스트   |
-      |   Cookie: session_access_token=<GUEST_JWT>  ATK를 body로 전송   |
-      |   Cookie: session_refresh_token=<GUEST_RTK}                     |
+      |   Cookie: access_token=<GUEST_JWT>  ATK를 body로 전송   |
+      |   Cookie: refresh_token=<GUEST_RTK}                     |
       |                                                         |
       |   1. consumeState(state)                                |
       |   2. extractGuestMemberId("<GUEST_JWT>")                |
@@ -581,8 +581,8 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, firebaseCloudMessaging
       |                targetMemberId=45, type=merge>"}          |
       |                                                         |
       |  *** Cookie 상태 변화 없음 (게스트 쿠키 그대로 유지) ***   |
-      |  Cookie: session_access_token=<GUEST_JWT>  (sub:12, role:GUEST)  |
-      |  Cookie: session_refresh_token=<GUEST_RTK>                       |
+      |  Cookie: access_token=<GUEST_JWT>  (sub:12, role:GUEST)  |
+      |  Cookie: refresh_token=<GUEST_RTK>                       |
       |                                                         |
       |  ========== [4] Merge 요청 (PUBLIC_URL, 인증 불필요) ===== |
       |                                                         |
@@ -632,11 +632,11 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, firebaseCloudMessaging
       |                                                         |
       |  ★ 게스트 쿠키가 새 MEMBER 쿠키로 **덮어쓰기**됨 ★       |
       |                                                         |
-      |  Set-Cookie: session_access_token=<NEW_MEMBER_JWT>               |
+      |  Set-Cookie: access_token=<NEW_MEMBER_JWT>               |
       |    {sub:45, role:MEMBER, agreed:..., deviceId:N}         |
       |    HttpOnly; SameSite=Lax; Path=/; Max-Age=3600          |
       |                                                         |
-      |  Set-Cookie: session_refresh_token=<NEW_UUID>                    |
+      |  Set-Cookie: refresh_token=<NEW_UUID>                    |
       |    HttpOnly; SameSite=Lax; Path=/; Max-Age=604800        |
       |                                                         |
       |  (dev/test: Authorization / X-Access-Token /             |
@@ -658,7 +658,7 @@ POST /api/{version}/auth/login/google/merge {mergeTicket, firebaseCloudMessaging
 POST /api/{version}/auth/refresh
  └→ SessionController.sessionRefreshToken()
      └→ SessionService.refreshSession(sessionRefreshToken, response)
-         ├→ MemberDevice 조회 (session_refresh_token 매핑)
+         ├→ MemberDevice 조회 (refresh_token 매핑)
          ├→ 만료된 디바이스면 삭제 후 AUTH_INVALID_REFRESH_TOKEN
          ├→ accountAgreementService.isAgreed(memberId)  (재발급 ATK에 반영)
          ├→ tokenProvider.createRefreshToken() (UUID 회전)
@@ -675,7 +675,7 @@ POST /api/{version}/auth/privacy/agree  (PreAuthorize: hasRole('MEMBER'))
  └→ AccountAgreementController.agreePrivacyPolicy()
      ├→ AccountAgreementService.agree(memberId)  (member_agreements 기록 생성/갱신)
      └→ SessionService.reissueToken(memberId, sessionRefreshToken, response)
-         ├→ MemberDevice 조회 (session_refresh_token 매핑)
+         ├→ MemberDevice 조회 (refresh_token 매핑)
          ├→ tokenProvider.createRefreshToken() (UUID 회전)
          ├→ device.updateRefreshToken(newRtk)
          ├→ tokenProvider.createAccessToken(memberId, role, true, device.getId())  (agreed=true, deviceId 포함)
@@ -729,8 +729,8 @@ POST /api/{version}/auth/test-accounts {role}
 토큰의 발급(전달)과 추출 방식은 `app.auth.token-mode` 한 곳에서 관리합니다. 쉼표 구분으로 복수 모드를 활성화할 수 있으며, 추출/전달 양쪽이 `TokenTransportMode`라는 단일 해석기를 공유합니다.
 
 - **Cookie 설정 공통 규칙**:
-  - `session_access_token`: `sessionAccessTokenExpiryMs` 만료 (기본 1시간), Path=/
-  - `session_refresh_token`: `sessionRefreshTokenExpiryMs` 만료 (기본 7일), Path=/
+  - `access_token`: `sessionAccessTokenExpiryMs` 만료 (기본 1시간), Path=/
+  - `refresh_token`: `sessionRefreshTokenExpiryMs` 만료 (기본 7일), Path=/
   - `HttpOnly`: 스크립트 접근 불허 (XSS 방지)
   - `SameSite`: Lax
   - `Secure`: `app.auth.cookie-secure`로 제어

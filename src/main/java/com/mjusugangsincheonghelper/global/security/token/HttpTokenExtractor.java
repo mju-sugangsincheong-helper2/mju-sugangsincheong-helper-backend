@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class HttpTokenExtractor implements TokenExtractor {
 
-	private static final String ACCESS_TOKEN_COOKIE_NAME = "session_access_token";
+	private static final String ACCESS_TOKEN_COOKIE_NAME = "access_token";
 	private static final String AUTHORIZATION_HEADER = "Authorization";
 	private static final String BEARER_PREFIX = "Bearer ";
 

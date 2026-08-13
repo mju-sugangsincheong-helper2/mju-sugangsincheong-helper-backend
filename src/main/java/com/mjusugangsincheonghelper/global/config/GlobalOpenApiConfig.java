@@ -53,7 +53,7 @@ public class GlobalOpenApiConfig {
 						.addSecuritySchemes("cookieAuth", new SecurityScheme()
 								.type(SecurityScheme.Type.APIKEY)
 								.in(SecurityScheme.In.COOKIE)
-								.name("session_access_token"))
+								.name("access_token"))
 				)
 				.addSecurityItem(new SecurityRequirement().addList("cookieAuth"))
 				.info(new io.swagger.v3.oas.models.info.Info()
