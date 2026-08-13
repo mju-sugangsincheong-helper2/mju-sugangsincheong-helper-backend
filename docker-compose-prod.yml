@@ -19,7 +19,6 @@ x-variables:
   redis_commander_container: &REDIS_COMMANDER_CONTAINER "mju-sugangsincheong-helper-redis-commander"
   pgweb_container: &PGWEB_CONTAINER "mju-sugangsincheong-helper-pgweb"
 
-  # postgres:17 + pgmq 빌드
   postgres_with_pgmq_inline_dockerfile: &POSTGRES_WITH_PGMQ_INLINE_DOCKERFILE |
     FROM postgres:17
     USER root
@@ -34,7 +33,7 @@ x-variables:
     USER postgres
 
   # 백엔드 이미지: gradle wrapper 로 소스를 컴파일해 실행 jar 를 만드는 빌드.
-backend_inline_dockerfile: &BACKEND_INLINE_DOCKERFILE |
+  backend_inline_dockerfile: &BACKEND_INLINE_DOCKERFILE |
     FROM eclipse-temurin:21-jdk AS build
     WORKDIR /app
     COPY gradlew settings.gradle build.gradle ./
