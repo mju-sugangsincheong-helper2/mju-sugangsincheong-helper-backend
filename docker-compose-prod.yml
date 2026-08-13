@@ -45,7 +45,6 @@ x-variables:
     WORKDIR /app
     USER root
     RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
-    USER 1001
     COPY --from=build /app/build/libs/*.jar app.jar
     EXPOSE 8080
     ENTRYPOINT ["java", "-Xtune:virtualized", "-Xss512k", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
