@@ -49,7 +49,8 @@ app:
       - "/api/*/course/department"
       - "/api/*/exchange/intents/recent"
       - "/api/*/notices"
-    public-post-urls: []
+    public-post-urls:
+      - "/api/*/latency"
     public-put-urls: []
     public-patch-urls: []
     public-delete-urls: []

@@ -100,9 +100,9 @@ for (let i = 0; i < 10; i++) {
 
 | 기능 | 최소 권한 | 설명 |
 |------|-----------|------|
-| 핑 측정 + 결과 제출 | **ROLE_GUEST** 이상 | 측정은 누구나 가능. 게스트도 자신의 데이터를 백엔드 서버에 저장할 수 있음 |
-| 내 히스토리 조회 | **ROLE_GUEST** 이상 | 자신의 기록은 게스트도 조회 가능 |
-| Median 분포 조회 | **ROLE_GUEST** 이상 | 평소 속도(Median)에 대한 전체 분포 히스토그램은 게스트도 조회 가능. 단, 자신의 위치(`myValue` 등)는 노출되지 않음 |
+| 핑 측정 + 결과 제출 | **PUBLIC** | 인증 없이 누구나 가능. 익명 제출도 DB에 저장됨 (member_id=NULL) |
+| 내 히스토리 조회 | **ROLE_MEMBER** 이상 | 자신의 기록은 정식 회원만 조회 가능 |
+| Median 분포 조회 | **PUBLIC** | 평소 속도(Median)에 대한 전체 분포 히스토그램은 누구나 조회 가능. 단, 자신의 위치(`myValue` 등)는 인증된 사용자만 노출 |
 | Worst, Jitter 분포 및 내 위치 조회 | **ROLE_MEMBER** 이상 | 상세 지연 분포 및 히스토그램 상의 자신의 위치(순위, 백분위 등)는 정식 회원만 조회 가능 |
 
 본 도메인은 GLOBAL 랭킹만 존재한다. 학과(department) 기반 랭킹은 제공하지 않는다.
@@ -117,7 +117,7 @@ for (let i = 0; i < 10; i++) {
 
 ```
 POST /api/{version}/latency
-인증: GUEST 이상
+인증: PUBLIC (인증 불필요)
 ```
 
 **요청 본문:**
@@ -132,7 +132,7 @@ POST /api/{version}/latency
 }
 ```
 
-**응답 구조 (MEMBER 기준):**
+**응답 구조 (인증된 MEMBER 기준):**
 ```json
 {
   "data": {
@@ -160,10 +160,12 @@ POST /api/{version}/latency
 }
 ```
 
+> **인증되지 않은 사용자의 경우:** `distribution.median`만 포함되며, `myValue`, `myRank`, `myPercentile`은 모두 `null`입니다. `worst`, `jitter`는 응답에서 제외됩니다.
+>
 > **GUEST 사용자의 경우:** `distribution.median`만 포함되며, `myValue`, `myRank`, `myPercentile`은 자신의 최신 측정값이 포함됩니다. `worst`, `jitter`는 응답에서 제외됩니다.
 
 **처리 절차:**
-1. 회원 존재 여부 확인
+1. 인증 확인 (인증된 경우 memberId 추출, 익명 경우 memberId=NULL)
 2. 요청 데이터 유효성 검증
 3. `latency` 테이블에 통계 및 원천 샘플(JSONB) 저장
 4. 저장된 결과를 포함한 전체 분포 조회 (캐시 + 실시간 myValue 계산)
@@ -197,7 +199,7 @@ POST /api/{version}/latency
 
 ```
 GET /api/{version}/latency/my?page={page}&size={size}
-인증: GUEST 이상
+인증: MEMBER 이상
 ```
 
 **응답 구조**
@@ -237,7 +239,7 @@ GET /api/{version}/latency/my?page={page}&size={size}
 ```sql
 CREATE TABLE IF NOT EXISTS latency (
     id            BIGSERIAL    PRIMARY KEY,
-    member_id     BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    member_id     BIGINT       REFERENCES member(id) ON DELETE CASCADE,  -- NULL 허용 (익명 제출)
     median_ms     DOUBLE PRECISION NOT NULL,  -- 평소 속도 (랭킹 기준)
     max_ms        DOUBLE PRECISION NOT NULL,  -- 최악의 지연
     min_ms        DOUBLE PRECISION NOT NULL,  -- 최고의 속도
@@ -402,7 +404,7 @@ UI에서만 "핑 테스트"라는 명칭을 사용하며, 프론트엔드의 나
 │  │   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  ▼ (21.4, 상위 96%)                       │ │
 │  │   0   5  10  15  20  25                                       │ │
 │  │                                                                │ │
-│  │  [GUEST] 로그인 시 전체 사용자와 비교 가능                      │ │
+│  │  [익명] 로그인 시 내 위치 표시 + Worst/Jitter 분포 확인 가능     │ │
 │  └──────────────────────────────────────────────────────────────┘ │
 │                                                                    │
 │  ┌─ 내 히스토리 ────────────────────────────────────────────────┐ │
@@ -418,7 +420,7 @@ UI에서만 "핑 테스트"라는 명칭을 사용하며, 프론트엔드의 나
    - 제출 완료 후 바로 분포 그래프 표시
 
 2. **권한별 렌더링 차이**
-   - **GUEST**: [Median 분포] 그래프만 렌더링됩니다. "로그인하면 Worst, Jitter 분포와 내 위치를 확인할 수 있어요" 안내 표시
+   - **비회원 (익명 + GUEST)**: [Median 분포] 그래프만 렌더링됩니다. "로그인하면 Worst, Jitter 분포와 내 위치를 확인할 수 있어요" 안내 표시
    - **MEMBER**: 3개의 그래프가 모두 렌더링되며, 각 그래프에 내 위치 마커 표시
 
 3. **그래프 시각화**

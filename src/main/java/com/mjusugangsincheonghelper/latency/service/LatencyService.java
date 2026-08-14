@@ -61,8 +61,8 @@ public class LatencyService {
 
 		LatencyEntity saved = latencyRepository.save(entity);
 
-		// 저장된 결과를 포함한 분포 조회
-		LatencyDistributionResponse distribution = getDistribution(memberId, isMember);
+		// 저장된 결과를 포함한 분포 조회 (방금 제출한 값으로 myValue 계산)
+		LatencyDistributionResponse distribution = getDistribution(memberId, isMember, saved);
 
 		return LatencySubmitResponse.builder()
 			.record(new LatencySubmitResponse.RecordInfo(saved.getId(), saved.getCreatedAt()))
@@ -114,11 +114,31 @@ public class LatencyService {
 	}
 
 	@Transactional(readOnly = true)
-	public LatencyDistributionResponse getDistribution(Long memberId, boolean isMember) {
+	public LatencyDistributionResponse getDistribution(Long memberId, boolean isMember, LatencyEntity justSubmitted) {
 		CachedDistributionData cached = getCachedDistribution();
 
-		// GUEST도 자신의 Median 위치를 볼 수 있음
-		Double myMedian = getMyMedianValue(memberId);
+		// 익명 사용자도 방금 제출한 값이 있으면 myValue로 사용
+		Double submittedMedian = justSubmitted != null ? justSubmitted.getMedianMs() : null;
+		Double submittedMax = justSubmitted != null ? justSubmitted.getMaxMs() : null;
+		Double submittedStdDev = justSubmitted != null ? justSubmitted.getStdDevMs() : null;
+
+		// memberId가 null (익명)인 경우, 방금 제출한 값으로 분포만 반환
+		if (memberId == null) {
+			DistributionData medianData = buildDistributionData(
+				cached.medianHistogram,
+				cached.medianSummary,
+				cached.totalParticipants,
+				submittedMedian,
+				submittedMedian != null ? latencyRepository.countBetterThanMedian(submittedMedian) : null
+			);
+
+			return LatencyDistributionResponse.builder()
+				.median(medianData)
+				.build();
+		}
+
+		// 인증된 사용자: DB에서 최신 값 조회 (justSubmitted가 있으면 그 값 우선)
+		Double myMedian = submittedMedian != null ? submittedMedian : getMyMedianValue(memberId);
 		DistributionData medianData = buildDistributionData(
 			cached.medianHistogram,
 			cached.medianSummary,
@@ -134,8 +154,8 @@ public class LatencyService {
 				.build();
 		}
 
-		Double myWorst = getMyMaxValue(memberId);
-		Double myJitter = getMyStdDevValue(memberId);
+		Double myWorst = submittedMax != null ? submittedMax : getMyMaxValue(memberId);
+		Double myJitter = submittedStdDev != null ? submittedStdDev : getMyStdDevValue(memberId);
 
 		DistributionData worstData = buildDistributionData(
 			cached.maxHistogram,

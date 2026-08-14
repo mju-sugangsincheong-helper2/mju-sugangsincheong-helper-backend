@@ -28,7 +28,7 @@ public class LatencyEntity {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Column(nullable = false)
+	@Column(name = "member_id")
 	private Long memberId;
 
 	@Column(name = "median_ms", nullable = false)

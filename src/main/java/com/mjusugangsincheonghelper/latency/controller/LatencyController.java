@@ -35,17 +35,16 @@ public class LatencyController {
 	private final LatencyService latencyService;
 
 	@PostMapping(version = "1+")
-	@PreAuthorize("hasRole('GUEST')")
+	@PreAuthorize("permitAll()")
 	@Operation(
 		summary = "Submit latency samples",
-		description = "클라이언트에서 측정한 HTTP RTT 샘플 통계를 제출합니다.",
+		description = "클라이언트에서 측정한 HTTP RTT 샘플 통계를 제출합니다. 인증 없이도 제출 가능합니다.",
 		responses = {
 			@ApiResponse(responseCode = "201", description = "저장 성공")
 		}
 	)
 	@OperationErrorCodes({
 		ErrorCode.GLOBAL_VALIDATION_ERROR,
-		ErrorCode.AUTH_MEMBER_NOT_FOUND,
 		ErrorCode.LATENCY_EMPTY_SAMPLES,
 		ErrorCode.LATENCY_INVALID_SAMPLE_VALUE,
 		ErrorCode.LATENCY_SAMPLE_COUNT_MISMATCH
@@ -54,26 +53,28 @@ public class LatencyController {
 		@Valid @RequestBody LatencySubmitRequest request,
 		Authentication authentication
 	) {
-		Long memberId = Long.parseLong(authentication.getName());
-		boolean isMember = authentication.getAuthorities().stream()
-			.anyMatch(a -> a.getAuthority().equals("ROLE_MEMBER") || a.getAuthority().equals("ROLE_ADMIN"));
+		Long memberId = null;
+		boolean isMember = false;
+		if (authentication != null && authentication.isAuthenticated()
+			&& !"anonymousUser".equals(authentication.getName())) {
+			memberId = Long.parseLong(authentication.getName());
+			isMember = authentication.getAuthorities().stream()
+				.anyMatch(a -> a.getAuthority().equals("ROLE_MEMBER") || a.getAuthority().equals("ROLE_ADMIN"));
+		}
 
 		LatencySubmitResponse response = latencyService.submit(memberId, request, isMember);
 		return ResponseEntity.status(201).body(SingleSuccessResponseEnvelope.of(response));
 	}
 
 	@GetMapping(value = "/my", version = "1+")
-	@PreAuthorize("hasRole('GUEST')")
+	@PreAuthorize("hasRole('MEMBER')")
 	@Operation(
 		summary = "Get my latency history",
-		description = "내가 제출한 핑 테스트 결과를 최신순으로 페이징 조회합니다.",
+		description = "내가 제출한 핑 테스트 결과를 최신순으로 페이징 조회합니다. MEMBER 이상만 가능합니다.",
 		responses = {
 			@ApiResponse(responseCode = "200", description = "조회 성공")
 		}
 	)
-	@OperationErrorCodes({
-		ErrorCode.AUTH_MEMBER_NOT_FOUND
-	})
 	public ResponseEntity<PagedSuccessResponseEnvelope<LatencyMyRecordResponse>> myHistory(
 		@PageableDefault(size = 20) Pageable pageable,
 		Authentication authentication
