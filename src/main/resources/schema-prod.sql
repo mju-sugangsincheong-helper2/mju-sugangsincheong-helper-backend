@@ -485,7 +485,7 @@ CREATE TABLE IF NOT EXISTS notice (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS latency (
     id            BIGSERIAL    PRIMARY KEY,
-    member_id     BIGINT       REFERENCES member(id) ON DELETE CASCADE,
+    member_id     BIGINT       REFERENCES member(id),
     median_ms     DOUBLE PRECISION NOT NULL,  -- 평소 속도 (중앙값)
     max_ms        DOUBLE PRECISION NOT NULL,  -- 최악의 지연 (최대값)
     min_ms        DOUBLE PRECISION NOT NULL,  -- 최고의 속도 (최소값)
