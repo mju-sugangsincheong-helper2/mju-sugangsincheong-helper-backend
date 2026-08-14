@@ -211,7 +211,9 @@ app:
     sample-min-ms: 1
     sample-max-ms: 30000
     distribution-cache-ttl: 5m
-    histogram-bucket-size-ms: 5
-    jitter-bucket-size-ms: 3
-    histogram-max-ms: 300
-    jitter-max-ms: 30
+    median-bucket-size-ms: 5      # 중앙값 버킷 간격
+    worst-bucket-size-ms: 10      # 최악 버킷 간격
+    jitter-bucket-size-ms: 5      # 지터 버킷 간격
+    median-max-ms: 200            # 중앙값 최대 범위
+    worst-max-ms: 500             # 최악 최대 범위
+    jitter-max-ms: 50             # 지터 최대 범위

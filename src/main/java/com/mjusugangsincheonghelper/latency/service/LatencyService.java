@@ -185,20 +185,22 @@ public class LatencyService {
 	public CachedDistributionData getCachedDistribution() {
 		log.debug("Cache miss for latency distribution, computing from DB");
 
-		int bucketSize = latencyProperties.getHistogramBucketSizeMs();
-		int maxMs = latencyProperties.getHistogramMaxMs();
+		int medianBucketSize = latencyProperties.getMedianBucketSizeMs();
+		int medianMaxMs = latencyProperties.getMedianMaxMs();
+		int worstBucketSize = latencyProperties.getWorstBucketSizeMs();
+		int worstMaxMs = latencyProperties.getWorstMaxMs();
 		int jitterBucketSize = latencyProperties.getJitterBucketSizeMs();
 		int jitterMaxMs = latencyProperties.getJitterMaxMs();
 
-		List<Object[]> medianRaw = latencyRepository.findMedianHistogram(bucketSize, maxMs);
-		List<Object[]> maxRaw = latencyRepository.findMaxHistogram(bucketSize, maxMs);
+		List<Object[]> medianRaw = latencyRepository.findMedianHistogram(medianBucketSize, medianMaxMs);
+		List<Object[]> maxRaw = latencyRepository.findMaxHistogram(worstBucketSize, worstMaxMs);
 		List<Object[]> stdDevRaw = latencyRepository.findStdDevHistogram(jitterBucketSize, jitterMaxMs);
 		List<Object[]> statsRaw = latencyRepository.findOverallStats();
 
 		long totalParticipants = latencyRepository.countAllRecords();
 
-		List<HistogramBucket> medianHistogram = buildHistogramBuckets(medianRaw, totalParticipants, bucketSize, maxMs);
-		List<HistogramBucket> maxHistogram = buildHistogramBuckets(maxRaw, totalParticipants, bucketSize, maxMs);
+		List<HistogramBucket> medianHistogram = buildHistogramBuckets(medianRaw, totalParticipants, medianBucketSize, medianMaxMs);
+		List<HistogramBucket> maxHistogram = buildHistogramBuckets(maxRaw, totalParticipants, worstBucketSize, worstMaxMs);
 		List<HistogramBucket> stdDevHistogram = buildHistogramBuckets(stdDevRaw, totalParticipants, jitterBucketSize, jitterMaxMs);
 
 		SummaryData medianSummary = extractSummary(statsRaw, "median");

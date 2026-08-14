@@ -24,15 +24,21 @@ public class LatencyProperties {
 	/** 히스토그램 캐시 TTL */
 	private Duration distributionCacheTtl = Duration.ofMinutes(5);
 
-	/** Median/Worst 히스토그램 버킷 간격 (ms) */
-	private int histogramBucketSizeMs = 2;
+	/** 중앙값(Median) 히스토그램 버킷 간격 (ms) */
+	private int medianBucketSizeMs = 5;
 
-	/** Jitter (StdDev) 히스토그램 버킷 간격 (ms) */
-	private int jitterBucketSizeMs = 1;
+	/** 최악(Worst/Max) 히스토그램 버킷 간격 (ms) */
+	private int worstBucketSizeMs = 10;
 
-	/** 히스토그램 최대 범위 (ms) */
-	private int histogramMaxMs = 500;
+	/** 지터(Jitter/StdDev) 히스토그램 버킷 간격 (ms) */
+	private int jitterBucketSizeMs = 5;
 
-	/** Jitter 히스토그램 최대 범위 (ms) */
-	private int jitterMaxMs = 100;
+	/** 중앙값(Median) 히스토그램 최대 범위 (ms) */
+	private int medianMaxMs = 200;
+
+	/** 최악(Worst/Max) 히스토그램 최대 범위 (ms) */
+	private int worstMaxMs = 500;
+
+	/** 지터(Jitter/StdDev) 히스토그램 최대 범위 (ms) */
+	private int jitterMaxMs = 50;
 }
