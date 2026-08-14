@@ -22,6 +22,7 @@ public class CacheProperties {
 	public static final String SINGLEGAME_RANK = "singlegame-rank";
 	public static final String SINGLEGAME_STATS = "singlegame-stats";
 	public static final String MULTIGAME_RANK = "multigame-rank";
+	public static final String LATENCY_DISTRIBUTION = "latency-distribution";
 
 	private Duration defaultTtl = Duration.ofHours(24);
 	private Map<String, Duration> ttls = new HashMap<>();

@@ -104,7 +104,15 @@ public enum ErrorCode {
 
 	// ========================== 공지 (NOTICE) ==========================
 	/** 공지사항을 찾을 수 없음 (404) */
-	NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTICE_001", "Notice not found.");
+	NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTICE_001", "Notice not found."),
+
+	// ========================== 레이턴시 (LATENCY) ==========================
+	/** samples 배열이 비어있음 (400) */
+	LATENCY_EMPTY_SAMPLES(HttpStatus.BAD_REQUEST, "LATENCY_001", "Samples array is empty."),
+	/** 샘플 값이 유효 범위를 벗어남 (400) */
+	LATENCY_INVALID_SAMPLE_VALUE(HttpStatus.BAD_REQUEST, "LATENCY_002", "Sample value is out of valid range."),
+	/** sampleCount와 samples 배열 길이 불일치 (400) */
+	LATENCY_SAMPLE_COUNT_MISMATCH(HttpStatus.BAD_REQUEST, "LATENCY_003", "Sample count does not match samples array length.");
 
 	private final HttpStatus status;
 	private final String code;

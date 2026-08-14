@@ -70,7 +70,7 @@ UI에서는 사용자에게 익숙한 **"핑 테스트"** 라는 명칭으로 �
 ### 3.2 클라이언트 측정 메커니즘 (브라우저 → 명지대 서버)
 
 ```javascript
-// 10회 반복 측정 로직
+// 10회 반복 측정 로직 (0.5초 간격)
 for (let i = 0; i < 10; i++) {
   t1 = performance.now();
   await fetch(`https://class.mju.ac.kr/robots.txt?_=${Date.now()}`, {
@@ -79,6 +79,9 @@ for (let i = 0; i < 10; i++) {
   });
   RTT = performance.now() - t1;
   samples.push(RTT);
+  
+  // 다음 측정 전 0.5초 대기 (서버 부담 감소 + UI 가시성 개선)
+  if (i < 9) await sleep(500);
 }
 ```
 
@@ -108,9 +111,9 @@ for (let i = 0; i < 10; i++) {
 
 ## 5. API 엔드포인트
 
-### 5.1 핑 결과 제출
+### 5.1 핑 결과 제출 + 분포 조회
 
-프론트엔드에서 10회 측정 후 통계를 계산하여 백엔드로 전송합니다. 백엔드는 랭킹이나 복잡한 응답을 주지 않고, 데이터를 잘 저장했는지 여부만 반환합니다.
+프론트엔드에서 10회 측정 후 통계를 계산하여 백엔드로 전송합니다. 백엔드는 결과를 저장하고, **해당 결과를 포함한 전체 분포**를 반환합니다.
 
 ```
 POST /api/{version}/latency
@@ -120,40 +123,77 @@ POST /api/{version}/latency
 **요청 본문:**
 ```json
 {
-  "medianMs": 49.5,
-  "maxMs": 120,
-  "minMs": 45,
-  "stdDevMs": 21.4,
+  "medianMs": 49.523,
+  "maxMs": 120.847,
+  "minMs": 45.123,
+  "stdDevMs": 21.456,
   "sampleCount": 10,
-  "samples": [45, 52, 48, 120, 47, 50, 49, 55, 46, 51]
+  "samples": [45.123, 52.456, 48.789, 120.847, 47.234, 50.567, 49.890, 55.123, 46.456, 51.789]
 }
 ```
 
-**유효성 검증 규칙**
-- `samples` 배열의 길이는 1 이상이어야 함
-- 각 샘플 값은 `latency-sample-min-ms`(기본 1) ~ `latency-sample-max-ms`(기본 30000) 범위 내여야 함
-- `medianMs`, `maxMs`, `minMs`는 음수 불가
-- `sampleCount`는 `samples` 배열 길이와 일치해야 
-
-**응답 구조 (단순 성공 응답)**
+**응답 구조 (MEMBER 기준):**
 ```json
 {
   "data": {
-    "id": 123,
-    "createdAt": "2025-08-14T10:30:00Z"
+    "record": {
+      "id": 123,
+      "createdAt": "2025-08-14T10:30:00Z"
+    },
+    "distribution": {
+      "median": {
+        "histogram": [
+          { "bucketStart": 0, "bucketEnd": 2, "count": 5, "percentage": 0.3 },
+          { "bucketStart": 2, "bucketEnd": 4, "count": 15, "percentage": 1.0 },
+          ...
+        ],
+        "summary": { "averageMs": 52.345, "p50Ms": 48.123, "p90Ms": 95.678 },
+        "myValue": 49.523,
+        "myRank": 180,
+        "totalParticipants": 1500,
+        "myPercentile": 12.0
+      },
+      "worst": { ... },
+      "jitter": { ... }
+    }
   }
 }
 ```
 
-**처리 절차**
+> **GUEST 사용자의 경우:** `distribution.median`만 포함되며, `myValue`, `myRank`, `myPercentile`은 자신의 최신 측정값이 포함됩니다. `worst`, `jitter`는 응답에서 제외됩니다.
+
+**처리 절차:**
 1. 회원 존재 여부 확인
 2. 요청 데이터 유효성 검증
 3. `latency` 테이블에 통계 및 원천 샘플(JSONB) 저장
-4. 성공 응답 반환
+4. 저장된 결과를 포함한 전체 분포 조회 (캐시 + 실시간 myValue 계산)
+5. 통합 응답 반환
+
+**분포 데이터 필드 설명:**
+
+| 필드 | 설명 |
+|------|------|
+| `*.histogram[]` | 해당 지표의 전체 레코드 분포 (모든 측정 기록 기준) |
+| `*.histogram[].percentage` | 해당 구간의 레코드 비율 (소수점 2자리) |
+| `*.summary.averageMs` | 전체 레코드의 평균 값 |
+| `*.summary.p50Ms` | 전체 레코드의 중앙값 (50백분위수) |
+| `*.summary.p90Ms` | 전체 레코드의 90백분위수 |
+| `*.myValue` | 내 최신 측정 결과의 해당 지표 값 |
+| `*.myRank` | 전체 레코드 중 내 순위 (1위가 가장 좋음) |
+| `*.myPercentile` | 상위 퍼센트 (낮을수록 좋음) |
+
+> **랭킹 기준 (오름차순 정렬):** Median, Worst, Jitter 모두 값이 낮을수록(빠르고 안정적) 좋은 것입니다.
+
+**분포 계산 방식 (백엔드):**
+1. 캐시에서 히스토그램 조회 (TTL 5분)
+2. 캐시 미스 시: `latency` 테이블 전체 레코드를 `width_bucket`으로 버킷 분할 및 집계
+3. 요청자의 최신 측정값으로 `myValue`, `myRank`, `myPercentile` 실시간 계산 후 병합
+
+> **참고:** 모든 순위와 비율은 **사용자별 최신 레코드**가 아닌 **전체 측정 레코드**를 기준으로 계산됩니다.
 
 ---
 
-### 5.2 내 히스토리 조회
+### 5.3 내 히스토리 조회
 
 ```
 GET /api/{version}/latency/my?page={page}&size={size}
@@ -166,12 +206,12 @@ GET /api/{version}/latency/my?page={page}&size={size}
   "data": [
     {
       "id": 123,
-      "medianMs": 49.5,
-      "maxMs": 120,
-      "minMs": 45,
-      "stdDevMs": 21.4,
+      "medianMs": 49.523,
+      "maxMs": 120.847,
+      "minMs": 45.123,
+      "stdDevMs": 21.456,
       "sampleCount": 10,
-      "samples": [45, 52, 48, 120, 47, 50, 49, 55, 46, 51],
+      "samples": [45.123, 52.456, 48.789, 120.847, 47.234, 50.567, 49.890, 55.123, 46.456, 51.789],
       "createdAt": "2025-08-14T10:30:00Z"
     }
   ],
@@ -188,91 +228,6 @@ GET /api/{version}/latency/my?page={page}&size={size}
 
 ---
 
-### 5.3 전체 분포 조회 (상세 히스토그램)
-
-**Median, Worst, Jitter 각각에 대한 독립적인 히스토그램**을 제공합니다.
-전체 사용자가 공유하는 히스토그램 데이터는 캐싱되며, 요청자의 위치(`myPosition`)는 캐싱되지 않고 매 요청마다 실시간으로 계산되어 병합됩니다.
-
-```
-GET /api/{version}/latency/distribution
-인증: GUEST 이상 (단, GUEST는 Median 분포만 조회 가능하며 myValue 등은 null 반환)
-```
-
-**파라미터:** 없음
-
-**응답 구조 (MEMBER 기준)**
-```json
-{
-  "data": {
-    "median": {
-      "histogram": [
-        { "bucketStart": 0,  "bucketEnd": 10, "count": 45,  "percentage": 3.0 },
-        { "bucketStart": 10, "bucketEnd": 20, "count": 100, "percentage": 6.7 },
-        { "bucketStart": 20, "bucketEnd": 30, "count": 250, "percentage": 16.7 },
-        { "bucketStart": 30, "bucketEnd": 40, "count": 380, "percentage": 25.3 },
-        { "bucketStart": 40, "bucketEnd": 50, "count": 320, "percentage": 21.3 },
-        { "bucketStart": 50, "bucketEnd": 60, "count": 200, "percentage": 13.3 },
-        { "bucketStart": 60, "bucketEnd": 70, "count": 105, "percentage": 7.0 },
-        { "bucketStart": 70, "bucketEnd": 80, "count": 60,  "percentage": 4.0 },
-        { "bucketStart": 80, "bucketEnd": 90, "count": 25,  "percentage": 1.7 },
-        { "bucketStart": 90, "bucketEnd": 100,"count": 15,  "percentage": 1.0 }
-      ],
-      "myValue": 49.5,
-      "myRank": 180,
-      "totalParticipants": 1500,
-      "myPercentile": 12.0
-    },
-    "worst": {
-      "histogram": [ ... ],
-      "myValue": 120,
-      "myRank": 950,
-      "totalParticipants": 1500,
-      "myPercentile": 63.3
-    },
-    "jitter": {
-      "histogram": [ ... ],
-      "myValue": 21.4,
-      "myRank": 1450,
-      "totalParticipants": 1500,
-      "myPercentile": 96.6
-    }
-  }
-}
-```
-
-> *(참고: GUEST 사용자가 호출할 경우, 응답의 `data`에는 `median` 객체만 존재하며, `myValue`, `myRank`, `myPercentile` 필드는 `null`로 내려갑니다. `worst`, `jitter` 객체는 아예 응답에서 제외됩니다.)*
-
-**필드 설명**
-
-| 필드 | 설명 | 프론트엔드 활용 |
-|------|------|----------------|
-| `*.histogram[]` | 해당 지표의 전체 사용자 분포 (전체 데이터 기준) | 막대 그래프(히스토그램) 시각화 |
-| `*.histogram[].percentage` | 해당 구간의 인원 비율 (소수점 1자리) | 막대 그래프의 높이를 `count` 대신 `percentage`로 매핑하여 정규화된 그래프 출력 |
-| `*.summary.averageMs` | 전체 사용자의 평균 값 | 그래프 위에 "전체 평균" 수직선 표시 |
-| `*.summary.p50Ms` | 전체 사용자의 중앙값 (50백분위수) | 그래프 위에 "전체 중앙값" 수직선 표시 |
-| `*.summary.p90Ms` | 전체 사용자의 90백분위수 (느린 그룹 기준선) | "상위 10%는 이 정도 느림" 등의 가이드라인 표시 |
-| `*.myValue` | 내 최신 측정 결과의 해당 지표 값 | 그래프 위에 수직선/점으로 표시 |
-| `*.myRank` | 해당 지표 기준 내 순위 (1위가 가장 좋음) | UI 텍스트 표시 |
-| `*.myPercentile` | 상위 퍼센트 (낮을수록 좋음) | UI 텍스트 표시 |
-
-> **랭킹 기준 (오름차순 정렬):** 
-> Median, Worst, Jitter 모두 값이 낮을수록(빠르고 안정적) 좋은 것이므로, 오름차순 정렬하여 순위를 매깁니다.
-
-**처리 절차 (백엔드)**
-1. 캐시에서 `median`, `worst`, `jitter` 3개의 히스토그램 및 `summary` 조회 (TTL 5분)
-2. 캐시 미스 시:
-   - `latency` 테이블에서 **전체 데이터**를 대상으로 PostgreSQL의 `width_bucket` 함수를 사용해 버킷 분할 및 카운트 집계 수행
-   - 전체 통계(average, p50, p90) 계산
-   - 캐시에 저장
-3. 요청자의 권한 확인:
-   - GUEST: `median` 데이터만 제공하며, `myValue` 등은 `null` 처리
-   - MEMBER: 3가지 데이터 모두 제공
-4. 요청자(Member)의 최신 `latency` 결과를 조회하여 `myValue` 계산
-5. `myValue`가 히스토그램 전체 데이터 중 어디 위치하는지 계산하여 `myRank`, `myPercentile` 산출
-6. 캐시된 히스토그램과 요청자 위치 정보를 병합하여 반환
-
----
-
 ## 6. 데이터 모델
 
 단일 테이블(`latency`)에 통계 요약과 원천 샘플 데이터를 함께 저장합니다.
@@ -284,11 +239,11 @@ CREATE TABLE IF NOT EXISTS latency (
     id            BIGSERIAL    PRIMARY KEY,
     member_id     BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
     median_ms     DOUBLE PRECISION NOT NULL,  -- 평소 속도 (랭킹 기준)
-    max_ms        INT          NOT NULL,      -- 최악의 지연
-    min_ms        INT          NOT NULL,      -- 최고의 속도
+    max_ms        DOUBLE PRECISION NOT NULL,  -- 최악의 지연
+    min_ms        DOUBLE PRECISION NOT NULL,  -- 최고의 속도
     std_dev_ms    DOUBLE PRECISION NOT NULL,  -- 들쑥날쑥 정도 (Jitter)
     sample_count  INT          NOT NULL,      -- 샘플 개수 (보통 10)
-    samples       JSONB        NOT NULL,      -- 원천 샘플 배열 [45, 52, 48, 120, ...]
+    samples       JSONB        NOT NULL,      -- 원천 샘플 배열 [45.123, 52.456, ...]
     created_at    TIMESTAMP    NOT NULL DEFAULT now()
 );
 
@@ -345,8 +300,8 @@ ORDER BY bucket_id;
 | `app.latency.sample-min-ms` | 1 | 최소 샘플 값 (ms) |
 | `app.latency.sample-max-ms` | 30000 | 최대 샘플 값 (ms) |
 | `app.latency.distribution-cache-ttl` | 5m | 3가지 히스토그램 캐시 TTL |
-| `app.latency.histogram-bucket-size-ms` | 10 | Median/Worst 히스토그램 버킷 간격 (ms). 이상치로 인한 그래프 붕괴를 막고 도메인에 맞는 고정된 시각적 해상도를 제공하기 위해 수동 설정. |
-| `app.latency.jitter-bucket-size-ms` | 2 | Jitter 히스토그램 버킷 간격 (ms). 표준편차 값이 작게 몰려있는 특성을 반영하기 위해 별도로 수동 설정. |
+| `app.latency.histogram-bucket-size-ms` | 2 | Median/Worst 히스토그램 버킷 간격 (ms). 이상치로 인한 그래프 붕괴를 막고 도메인에 맞는 고정된 시각적 해상도를 제공하기 위해 수동 설정. |
+| `app.latency.jitter-bucket-size-ms` | 1 | Jitter 히스토그램 버킷 간격 (ms). 표준편차 값이 작게 몰려있는 특성을 반영하기 위해 별도로 수동 설정. |
 
 ```yaml
 app:
@@ -354,8 +309,8 @@ app:
     sample-min-ms: 1
     sample-max-ms: 30000
     distribution-cache-ttl: 5m
-    histogram-bucket-size-ms: 10
-    jitter-bucket-size-ms: 2
+    histogram-bucket-size-ms: 2
+    jitter-bucket-size-ms: 1
 ```
 
 ---
@@ -457,11 +412,24 @@ UI에서만 "핑 테스트"라는 명칭을 사용하며, 프론트엔드의 나
 ```
 
 ### UI 시각화 포인트
-1. **권한별 렌더링 차이**
-   - **GUEST**: [Median 분포 - 평소 속도] 그래프만 렌더링됩니다. 그래프 내에 "로그인하면 내 위치와 상세 지연(Worst, Jitter) 통계를 볼 수 있습니다" 라는 CTA(Call To Action) 오버레이를 띄워 회원가입/로그인을 유도합니다.
-   - **MEMBER**: 3개의 그래프가 모두 렌더링됩니다.
-2. **상세 히스토그램 시각화**
-   - `percentage`를 이용해 막대 그래프의 높이를 매핑합니다.
-   - 각 그래프에는 `myValue` 위치에 마커를 표시합니다.
-   - `summary` 데이터를 활용해 "전체 평균", "전체 중앙값" 등을 점선으로 표시해주면 사용자가 자신의 위치를 더 입체적으로 파악할 수 있습니다.
-   - 분포 속에서 자신이 우측(느리거나 불안정)에 치우쳐 있을수록 수강신청 경쟁에 불리하다는 것을 직관적으로 전달합니다.
+1. **측정 흐름**
+   - 테스트 시작 버튼 클릭 → 0.5초 간격으로 10회 측정 → 결과 제출 → 분포 조회
+   - 측정 중에는 진행 바와 현재 측정 횟수 표시
+   - 제출 완료 후 바로 분포 그래프 표시
+
+2. **권한별 렌더링 차이**
+   - **GUEST**: [Median 분포] 그래프만 렌더링됩니다. "로그인하면 Worst, Jitter 분포와 내 위치를 확인할 수 있어요" 안내 표시
+   - **MEMBER**: 3개의 그래프가 모두 렌더링되며, 각 그래프에 내 위치 마커 표시
+
+3. **그래프 시각화**
+   - `percentage`를 이용해 막대 그래프의 높이를 매핑
+   - 각 그래프에 `myValue` 위치에 빨간색 점선 마커 표시
+   - `summary` 데이터를 활용해 평균, 중앙값, P90을 하단에 텍스트로 표시
+   - 막대 간격 없이 연속적으로 표시하여 부드러운 분포 곡선 느낌
+   - 그래프 상단 패딩으로 마커 텍스트가 잘리지 않도록 처리
+
+4. **결과 카드 디자인**
+   - 측정 결과는 카드 형태로 구분
+   - 샘플별 진행 바는 최대값 기준으로 비율 표시
+   - 통계 요약은 그라데이션 배경으로 강조
+   - 속도 평가 라벨 (매우 빠름/빠름/보통/느림/매우 느림) 색상으로 구분

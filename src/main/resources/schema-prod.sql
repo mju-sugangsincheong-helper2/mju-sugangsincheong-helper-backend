@@ -480,3 +480,23 @@ CREATE TABLE IF NOT EXISTS notice (
     created_at TIMESTAMP    NOT NULL DEFAULT now()
 );
 
+-- ============================================================
+-- 21. latency (핑 테스트)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS latency (
+    id            BIGSERIAL    PRIMARY KEY,
+    member_id     BIGINT       NOT NULL REFERENCES member(id) ON DELETE CASCADE,
+    median_ms     DOUBLE PRECISION NOT NULL,  -- 평소 속도 (중앙값)
+    max_ms        DOUBLE PRECISION NOT NULL,  -- 최악의 지연 (최대값)
+    min_ms        DOUBLE PRECISION NOT NULL,  -- 최고의 속도 (최소값)
+    std_dev_ms    DOUBLE PRECISION NOT NULL,  -- 들쑥날쑥 정도 (표준편차)
+    sample_count  INT          NOT NULL,      -- 샘플 개수 (보통 10)
+    samples       JSONB        NOT NULL,      -- 원천 샘플 배열 [45.123, 52.456, ...]
+    created_at    TIMESTAMP    NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_latency_member ON latency (member_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_latency_median ON latency (median_ms);
+CREATE INDEX IF NOT EXISTS idx_latency_max ON latency (max_ms);
+CREATE INDEX IF NOT EXISTS idx_latency_stddev ON latency (std_dev_ms);
+

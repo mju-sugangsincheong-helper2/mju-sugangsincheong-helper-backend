@@ -148,6 +148,7 @@ app:
       singlegame-rank: 5m
       singlegame-stats: 5m
       multigame-rank: 5m
+      latency-distribution: 5m
 
   # --- PGMQ / Firebase ---
   pgmq:
@@ -201,3 +202,13 @@ app:
     supply:
       total-ramp-up-duration: 30s  # 봇 공급 점진적 증가 시간
       step-sleep-interval: 1s  # 단계별 대기 시간
+
+  # --- Latency ---
+  latency:
+    sample-min-ms: 1
+    sample-max-ms: 30000
+    distribution-cache-ttl: 5m
+    histogram-bucket-size-ms: 5
+    jitter-bucket-size-ms: 3
+    histogram-max-ms: 300
+    jitter-max-ms: 30
