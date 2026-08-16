@@ -16,7 +16,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
  * 않도록 용도별 {@link TaskScheduler} 풀로 격리한다:
  *
  * <ul>
- *   <li>{@code taskScheduler} (primary): 캐시 더블 evict 같은 짧은 일회성 지연 작업</li>
+ *   <li>{@code taskScheduler} (primary): 짧은 일회성 지연 작업(기타 단발성 스케줄)</li>
  *   <li>{@code pgmqScheduler}: PGMQ 폴링 워커(notification/cycle-detection)와 아카이브 정리 크론</li>
  *   <li>{@code multigameScheduler}: 게임 라이프사이클 크론 — start는 공급 램프업 동안
  *       스레드를 점유하므로(약 30초) 별도 풀로 격리</li>

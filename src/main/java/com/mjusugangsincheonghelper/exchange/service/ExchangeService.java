@@ -140,12 +140,15 @@ public class ExchangeService {
 	public MainResponse getMain(Long memberId) {
 		String term = systemConfigService.getCurrentTerm();
 
-		MainResponse cached = cacheService.getMainCache(term, memberId);
-		if (cached != null) {
-			return cached;
+		MainResponse stored = cacheService.getStoredMain(term, memberId);
+		if (stored != null) {
+			return stored;
 		}
+		return computeMain(term, memberId);
+	}
 
-		List<IntentCacheDto> myIntents = cacheService.getMemberIntents(term, memberId);
+	private List<IntentItem> computeMyIntents(String term, Long memberId) {
+		List<IntentCacheDto> myIntents = cacheService.computeMemberIntents(term, memberId);
 
 		List<IntentItem> intentItems = new ArrayList<>();
 		for (IntentCacheDto intent : myIntents) {
@@ -153,7 +156,7 @@ public class ExchangeService {
 			List<RoomItem> roomItems = new ArrayList<>();
 
 			for (ExchangeRoomIntentEntity roomIntent : roomIntents) {
-				RoomMetaCacheDto roomMeta = cacheService.getRoomMeta(term, roomIntent.getRoomId());
+				RoomMetaCacheDto roomMeta = cacheService.computeRoomMeta(term, roomIntent.getRoomId());
 				if (roomMeta == null) {
 					continue;
 				}
@@ -212,6 +215,12 @@ public class ExchangeService {
 					.build());
 		}
 
+		return intentItems;
+	}
+
+	public MainResponse computeMain(String term, Long memberId) {
+		List<IntentItem> intentItems = computeMyIntents(term, memberId);
+
 		List<FeedCacheDto> feed = cacheService.getFeed(term);
 		List<RecentIntentItem> recentItems = feed.stream()
 				.map(feedItem -> RecentIntentItem.builder()
@@ -222,13 +231,16 @@ public class ExchangeService {
 						.build())
 				.toList();
 
-		MainResponse response = MainResponse.builder()
+		return MainResponse.builder()
 				.myIntents(intentItems)
 				.recentIntents(recentItems)
 				.build();
+	}
 
-		cacheService.putMainCache(term, memberId, response);
-		return response;
+	public void rebuildMemberMain(String term, Long memberId) {
+		MainResponse response = computeMain(term, memberId);
+		cacheService.storeMain(term, memberId, response);
+
 	}
 
 	public RecentIntentsResponse getRecentIntents() {

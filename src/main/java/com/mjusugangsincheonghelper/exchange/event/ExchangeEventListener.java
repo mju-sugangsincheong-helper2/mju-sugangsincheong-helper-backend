@@ -5,6 +5,7 @@ import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentReposi
 import com.mjusugangsincheonghelper.exchange.dto.CycleDetectionMessage;
 import com.mjusugangsincheonghelper.exchange.service.ExchangeCacheService;
 import com.mjusugangsincheonghelper.exchange.service.ExchangeCycleDetector;
+import com.mjusugangsincheonghelper.exchange.service.ExchangeService;
 import com.mjusugangsincheonghelper.notification.publisher.NotificationPublisher;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -15,12 +16,16 @@ import org.springframework.transaction.event.TransactionalEventListener;
 /**
  * 교환 쓰기 부작용의 유일한 응집점.
  *
- * <p>{@link ExchangeEvents}를 커밋 후(AFTER_COMMIT)에 처리한다. 캐시 evict,
- * 사이클 탐지 큐 적재, Firebase Cloud Messaging 발행은 전부 트랜잭션이 성공적으로 커밋된 뒤에야
- * 일어나므로 롤백된 데이터에 대한 부작용이 없다.
+ * <p>{@link ExchangeEvents}를 커밋 후(AFTER_COMMIT)에 처리한다. 사이클 탐지 큐 적재,
+ * Firebase Cloud Messaging 발행, 그리고 MAIN 읽기 모델 갱신은 전부 트랜잭션이 성공적으로
+ * 커밋된 뒤에야 일어나므로 롤백된 데이터에 대한 부작용이 없다.</p>
+ *
+ * <p>MAIN 갱신은 <b>단일 writer 경로</b>다. 갱신은 오직 이 핸들러(afterCommit)만 담당하며
+ * 항상 올바른 값으로 덮쓰기(SET) 한다. reader는 갱신하지 않으므로 evict/재캐시 순서 역전 경합이
+ * 발생하지 않는다(기존 2초 double-evict는 제거).</p>
  *
  * <p>참고: 트랜잭션 밖에서 발행된 이벤트는 전달되지 않는다. 교환 쓰기 경로는
- * 전부 {@code @Transactional} 안에서만 이벤트를 발행한다.
+ * 전부 {@code @Transactional} 안에서만 이벤트를 발행한다.</p>
  */
 @Slf4j
 @Component
@@ -31,12 +36,12 @@ public class ExchangeEventListener {
 	private final ExchangeCycleDetector cycleDetector;
 	private final ExchangeRoomIntentRepository roomIntentRepository;
 	private final NotificationPublisher notificationPublisher;
+	private final ExchangeService exchangeService;
 
 	@TransactionalEventListener
 	public void onIntentCreated(ExchangeEvents.IntentCreated event) {
 		cacheService.evictFeed(event.term());
-		cacheService.evictMainCache(event.term(), event.memberId());
-		cacheService.evictMemberIntents(event.term(), event.memberId());
+		exchangeService.rebuildMemberMain(event.term(), event.memberId());
 		cycleDetector.enqueueCycleDetection(CycleDetectionMessage.builder()
 				.term(event.term())
 				.intentId(event.intentId())
@@ -49,15 +54,14 @@ public class ExchangeEventListener {
 	@TransactionalEventListener
 	public void onIntentDeleted(ExchangeEvents.IntentDeleted event) {
 		cacheService.evictFeed(event.term());
-		cacheService.evictMemberIntents(event.term(), event.memberId());
 		for (Long roomId : event.roomIds()) {
 			cacheService.evictRoomMeta(event.term(), roomId);
 		}
-		// 철회자 본인은 방 참여 여부와 무관하게 항상 evict
-		cacheService.evictMainCache(event.term(), event.memberId());
+		// 철회자 본인은 방 참여 여부와 무관하게 항상 갱신
+		exchangeService.rebuildMemberMain(event.term(), event.memberId());
 		for (Long memberId : event.memberIds()) {
 			if (!memberId.equals(event.memberId())) {
-				cacheService.evictMainCache(event.term(), memberId);
+				exchangeService.rebuildMemberMain(event.term(), memberId);
 			}
 		}
 	}
@@ -65,7 +69,7 @@ public class ExchangeEventListener {
 	@TransactionalEventListener
 	public void onRoomCreated(ExchangeEvents.RoomCreated event) {
 		for (Long memberId : event.memberIds()) {
-			cacheService.evictMainCache(event.term(), memberId);
+			exchangeService.rebuildMemberMain(event.term(), memberId);
 		}
 		notificationPublisher.publishToMembers(event.memberIds(), "EXCHANGE_ROOM",
 				"/exchange/rooms/" + event.roomId(), "수강신청 교환 매칭 성공", "[시스템] 교환 매칭이 성사되었습니다!");
@@ -79,7 +83,7 @@ public class ExchangeEventListener {
 		roomIntents.stream()
 				.map(ExchangeRoomIntentEntity::getMemberId)
 				.distinct()
-				.forEach(memberId -> cacheService.evictMainCache(event.term(), memberId));
+				.forEach(memberId -> exchangeService.rebuildMemberMain(event.term(), memberId));
 
 		List<Long> targetMemberIds = roomIntents.stream()
 				.filter(ri -> ri.isOn() && !ri.isDeleted() && !ri.getMemberId().equals(event.senderMemberId()))
@@ -98,11 +102,11 @@ public class ExchangeEventListener {
 	public void onRoomToggled(ExchangeEvents.RoomToggled event) {
 		cacheService.evictRoomMeta(event.term(), event.roomId());
 		roomIntentRepository.findDistinctMemberIdsByTermAndRoomId(event.term(), event.roomId())
-				.forEach(memberId -> cacheService.evictMainCache(event.term(), memberId));
+				.forEach(memberId -> exchangeService.rebuildMemberMain(event.term(), memberId));
 	}
 
 	@TransactionalEventListener
 	public void onRoomViewed(ExchangeEvents.RoomViewed event) {
-		cacheService.evictMainCache(event.term(), event.memberId());
+		exchangeService.rebuildMemberMain(event.term(), event.memberId());
 	}
 }

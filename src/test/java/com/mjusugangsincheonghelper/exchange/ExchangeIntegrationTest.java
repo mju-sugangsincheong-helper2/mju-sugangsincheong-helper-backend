@@ -630,7 +630,7 @@ class ExchangeIntegrationTest {
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterOff.getStatus()).isEqualTo("PARTIAL_OFF");
 
-			cacheService.evictMainCache(term, memberA.getId());
+			exchangeService.rebuildMemberMain(term, memberA.getId());
 			var mainRespAfterOff = exchangeService.getMain(memberA.getId());
 			var roomItemOff = mainRespAfterOff.getMyIntents().get(0).getRooms().get(0);
 			assertThat(roomItemOff.isOn()).isFalse();
@@ -645,7 +645,7 @@ class ExchangeIntegrationTest {
 					new ExchangeRoomEntity.ExchangeRoomId(term, room.getId())).orElseThrow();
 			assertThat(afterOn.getStatus()).isEqualTo("ACTIVE");
 
-			cacheService.evictMainCache(term, memberA.getId());
+			exchangeService.rebuildMemberMain(term, memberA.getId());
 			var mainRespAfterOn = exchangeService.getMain(memberA.getId());
 			var roomItemOn = mainRespAfterOn.getMyIntents().get(0).getRooms().get(0);
 			assertThat(roomItemOn.isOn()).isTrue();
