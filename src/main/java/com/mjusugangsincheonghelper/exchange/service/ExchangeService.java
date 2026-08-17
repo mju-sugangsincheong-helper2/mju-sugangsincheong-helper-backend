@@ -140,12 +140,15 @@ public class ExchangeService {
 	public MainResponse getMain(Long memberId) {
 		String term = systemConfigService.getCurrentTerm();
 
-		MainResponse cached = cacheService.getMainCache(term, memberId);
-		if (cached != null) {
-			return cached;
+		MainResponse stored = cacheService.getStoredMain(term, memberId);
+		if (stored != null) {
+			return stored;
 		}
+		return computeMain(term, memberId);
+	}
 
-		List<IntentCacheDto> myIntents = cacheService.getMemberIntents(term, memberId);
+	private List<IntentItem> computeMyIntents(String term, Long memberId) {
+		List<IntentCacheDto> myIntents = cacheService.computeMemberIntents(term, memberId);
 
 		List<IntentItem> intentItems = new ArrayList<>();
 		for (IntentCacheDto intent : myIntents) {
@@ -153,7 +156,7 @@ public class ExchangeService {
 			List<RoomItem> roomItems = new ArrayList<>();
 
 			for (ExchangeRoomIntentEntity roomIntent : roomIntents) {
-				RoomMetaCacheDto roomMeta = cacheService.getRoomMeta(term, roomIntent.getRoomId());
+				RoomMetaCacheDto roomMeta = cacheService.computeRoomMeta(term, roomIntent.getRoomId());
 				if (roomMeta == null) {
 					continue;
 				}
@@ -212,6 +215,12 @@ public class ExchangeService {
 					.build());
 		}
 
+		return intentItems;
+	}
+
+	public MainResponse computeMain(String term, Long memberId) {
+		List<IntentItem> intentItems = computeMyIntents(term, memberId);
+
 		List<FeedCacheDto> feed = cacheService.getFeed(term);
 		List<RecentIntentItem> recentItems = feed.stream()
 				.map(feedItem -> RecentIntentItem.builder()
@@ -222,13 +231,16 @@ public class ExchangeService {
 						.build())
 				.toList();
 
-		MainResponse response = MainResponse.builder()
+		return MainResponse.builder()
 				.myIntents(intentItems)
 				.recentIntents(recentItems)
 				.build();
+	}
 
-		cacheService.putMainCache(term, memberId, response);
-		return response;
+	public void rebuildMemberMain(String term, Long memberId) {
+		MainResponse response = computeMain(term, memberId);
+		cacheService.storeMain(term, memberId, response);
+
 	}
 
 	public RecentIntentsResponse getRecentIntents() {
@@ -395,14 +407,25 @@ public class ExchangeService {
 	}
 
 	private void updateRoomStatusAndState(String term, Long roomId, Long triggerIntentId, Long triggerMemberId) {
+		// [동시성] 집계 기반 갱신의 원자성 보장 (Lost Update P4 / Read Skew A5A 방지)
+		// room.status 는 자식 행 exchange_room_intent 의 집계(n/d/o)로 산출되는 파생값이다.
+		// 따라서 자식 행을 읽기 *전에* 부모 행(room)에 대해 SELECT FOR UPDATE 락을 먼저 획득해야
+		// 읽기-갱신 구간이 동시 트랜잭션에 끼어드는 것을 막을 수 있다.
+		// exchange_room 은 방 1개당 1행이므로 이 단일 행 락은 deleteIntent/toggleRoom 등
+		// 해당 방에 대한 모든 writer(updateRoomStatusAndState 경유)를 직렬화한다.
+		// 주의: room_intent 행에 FOR UPDATE 를 걸면 markDeleted() setter 의 auto-flush UPDATE 가
+		// 정렬되지 않은 순서로 행 잠금을 선점해 A-B 데드락을 유발하므로 채택하지 않았다.
+		ExchangeRoomEntity room = roomRepository.findByIdForUpdate(term, roomId)
+				.orElseThrow(() -> new BaseException(ErrorCode.EXCHANGE_ROOM_NOT_FOUND));
+
+		// 부모 행 락 확보 이후 자식 행을 읽어 집계한다.
+		// READ COMMITTED 에서 일반 SELECT 는 최신 커밋을 반환하며, 같은 트랜잭션의 미커밋 변경(markDeleted/toggle)
+		// 도 JPA auto-flush 에 의해 이 질의 직전에 반영되므로 자기 쓰기까지 일관되게 보인다.
 		List<ExchangeRoomIntentEntity> roomIntents = roomIntentRepository.findByTermAndRoomId(term, roomId);
 		int n = roomIntents.size();
 		int d = (int) roomIntents.stream().filter(ExchangeRoomIntentEntity::isDeleted).count();
 		int o = (int) roomIntents.stream().filter(ri -> !ri.isDeleted() && !ri.isOn()).count();
 		int activeCount = n - d;
-
-		ExchangeRoomEntity room = roomRepository.findByIdForUpdate(term, roomId)
-				.orElseThrow(() -> new BaseException(ErrorCode.EXCHANGE_ROOM_NOT_FOUND));
 
 		String newStatus;
 		if (d == n) {

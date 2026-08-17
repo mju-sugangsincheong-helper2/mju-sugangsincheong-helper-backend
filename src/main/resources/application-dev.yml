@@ -138,7 +138,6 @@ app:
       thread-name-prefix: "multigame-scheduler-"
 
   cache:
-    double-evict-delay: 2s  # 이중 캐시 무효화 간격 (1차 즉시, 2차 지연)
     default-ttl: 24h
     ttls:
       # evict 대상: 데이터 변경 시 즉시 무효화, 24h는 최대 수명

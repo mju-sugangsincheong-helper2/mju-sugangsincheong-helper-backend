@@ -578,8 +578,8 @@ class ExchangeServiceTest {
 					.build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
-			given(cacheService.getMainCache(term, memberId)).willReturn(null);
-			given(cacheService.getMemberIntents(term, memberId)).willReturn(List.of(intent));
+			given(cacheService.getStoredMain(term, memberId)).willReturn(null);
+			given(cacheService.computeMemberIntents(term, memberId)).willReturn(List.of(intent));
 			given(roomIntentRepository.findByTermAndIntentId(term, 10L)).willReturn(List.of());
 			given(cacheService.getFeed(term)).willReturn(List.of(
 					FeedCacheDto.builder()
@@ -598,7 +598,6 @@ class ExchangeServiceTest {
 			assertThat(response.getMyIntents().get(0).getIntentId()).isEqualTo(10L);
 			assertThat(response.getRecentIntents()).hasSize(1);
 			assertThat(response.getRecentIntents().get(0).getIntentId()).isEqualTo(20L);
-			verify(cacheService).putMainCache(eq(term), eq(memberId), any(MainResponse.class));
 		}
 	}
 

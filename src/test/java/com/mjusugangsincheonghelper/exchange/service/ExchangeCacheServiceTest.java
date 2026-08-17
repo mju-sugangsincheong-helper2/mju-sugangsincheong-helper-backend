@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
@@ -26,7 +24,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
@@ -44,9 +41,6 @@ class ExchangeCacheServiceTest {
 	private ExchangeIntentRepository intentRepository;
 
 	@Mock
-	private TaskScheduler taskScheduler;
-
-	@Mock
 	private CacheProperties cacheProperties;
 
 	@Mock
@@ -58,7 +52,6 @@ class ExchangeCacheServiceTest {
 	@BeforeEach
 	void setUp() {
 		org.mockito.Mockito.lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-		org.mockito.Mockito.lenient().when(cacheProperties.getDoubleEvictDelay()).thenReturn(Duration.ofSeconds(2));
 	}
 
 	@Nested
@@ -103,12 +96,12 @@ class ExchangeCacheServiceTest {
 	}
 
 	@Nested
-	@DisplayName("getMainCache / putMainCache / evictMainCache 메서드는")
-	class Describe_mainCache {
+	@DisplayName("MAIN 읽기 모델 (exchange-main, 단일 writer 경로)")
+	class Describe_mainReadModel {
 
 		@Test
-		@DisplayName("캐시된 MainResponse가 있으면 반환한다")
-		void it_returns_main_response_from_cache() {
+		@DisplayName("저장된 MainResponse가 있으면 getStoredMain이 반환한다")
+		void it_returns_main_response_from_store() {
 			// Given
 			String term = "202620";
 			Long memberId = 1L;
@@ -118,15 +111,15 @@ class ExchangeCacheServiceTest {
 			given(valueOperations.get(key)).willReturn(expected);
 
 			// When
-			MainResponse result = cacheService.getMainCache(term, memberId);
+			MainResponse result = cacheService.getStoredMain(term, memberId);
 
 			// Then
 			assertThat(result).isEqualTo(expected);
 		}
 
 		@Test
-		@DisplayName("putMainCache로 MainResponse를 캐시에 저장한다")
-		void it_puts_main_cache() {
+		@DisplayName("storeMain은 항상 올바른 값으로 덮쓰기(SET) 한다")
+		void it_sets_main_store() {
 			// Given
 			String term = "202620";
 			Long memberId = 1L;
@@ -135,31 +128,10 @@ class ExchangeCacheServiceTest {
 			given(cacheProperties.getTtl("exchange-main")).willReturn(Duration.ofMinutes(10));
 
 			// When
-			cacheService.putMainCache(term, memberId, response);
+			cacheService.storeMain(term, memberId, response);
 
 			// Then
 			verify(valueOperations).set(key, response, Duration.ofMinutes(10));
-		}
-
-		@Test
-		@DisplayName("evictMainCache는 캐시를 삭제하고 이중 무효화를 스케줄링한다")
-		void it_evicts_main_cache() {
-			// Given
-			String term = "202620";
-			Long memberId = 1L;
-			String key = "exchange-main::" + term + ":member:" + memberId + ":main:cache";
-
-			doAnswer(invocation -> {
-				Runnable runnable = invocation.getArgument(0);
-				runnable.run();
-				return null;
-			}).when(taskScheduler).schedule(any(Runnable.class), any(java.time.Instant.class));
-
-			// When
-			cacheService.evictMainCache(term, memberId);
-
-			// Then
-			verify(redisTemplate, times(2)).delete(key);
 		}
 	}
 }
