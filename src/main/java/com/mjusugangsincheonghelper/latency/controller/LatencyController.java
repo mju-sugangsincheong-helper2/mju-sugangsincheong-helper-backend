@@ -4,7 +4,6 @@ import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.PagedSuccessResponseEnvelope;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
-import com.mjusugangsincheonghelper.latency.dto.LatencyDistributionResponse;
 import com.mjusugangsincheonghelper.latency.dto.LatencyMyRecordResponse;
 import com.mjusugangsincheonghelper.latency.dto.LatencySubmitRequest;
 import com.mjusugangsincheonghelper.latency.dto.LatencySubmitResponse;
