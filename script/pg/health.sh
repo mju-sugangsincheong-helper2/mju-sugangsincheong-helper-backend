@@ -3,14 +3,15 @@ source "$(dirname "$0")/lib.sh"
 
 section "PostgreSQL health"
 show_context
-query "SELECT version();"
+
 query_table "
 SELECT
   current_database() AS database,
+  current_setting('server_version') AS postgres_version,
   pg_size_pretty(pg_database_size(current_database())) AS database_size,
-  now() AS checked_at,
-  current_setting('server_version') AS postgres_version;
+  now() AS checked_at;
 "
+
 query_table "
 SELECT
   count(*) FILTER (WHERE state = 'active') AS active,
