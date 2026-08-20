@@ -1,17 +1,17 @@
 # script/pg
 
-PostgreSQL 운영 상태 **조회 전용** 스크립트 모음.
+PostgreSQL 운영 **조회 전용** 스크립트.
 
-## 중요
+## 반드시 지키는 것
 
-- 프로젝트 루트의 기존 `.env`를 그대로 사용한다.
-- `.env`를 `source`하지 않는다.
-- 추가 환경변수를 요구하지 않는다.
-- `docker compose`를 사용하지 않는다.
-- `COMPOSE_FILE`을 사용하지 않는다.
-- PostgreSQL 컨테이너 이름을 `db`로 가정하지 않는다.
-- 실행 중인 Docker 컨테이너의 `POSTGRES_USER` / `POSTGRES_DB`를 검사해서 PostgreSQL 컨테이너를 찾는다.
-- DB 변경 명령은 실행하지 않는다.
+1. 프로젝트 루트의 기존 `.env`를 그대로 사용한다.
+2. `.env`를 `source`하지 않는다.
+3. 추가 환경변수를 요구하지 않는다.
+4. `docker compose`를 호출하지 않는다.
+5. `db`라는 컨테이너 이름을 하드코딩하지 않는다.
+6. `postgres:*` 이미지를 하드코딩하지 않는다.
+7. 실제 실행 중인 컨테이너에 `psql`이 존재하고 `.env`의 DB 계정으로 실제 접속되는지 검사해서 PostgreSQL 컨테이너를 찾는다.
+8. 조회 스크립트에서는 `VACUUM`, `ANALYZE`, `DELETE`, `UPDATE`, `ALTER` 등을 실행하지 않는다.
 
 ## 실행
 
@@ -20,10 +20,3 @@ chmod +x script/pg/*.sh
 bash script/pg/health.sh
 bash script/pg/all.sh
 ```
-
-## 포함
-
-health, activity, locks, long-transactions, dead-tuples, vacuum 상태,
-bloat 지표, XID age, connections, slow queries, query statistics,
-tables, indexes, unused indexes, queue health, pg_cron, replication,
-중요 PostgreSQL settings.
