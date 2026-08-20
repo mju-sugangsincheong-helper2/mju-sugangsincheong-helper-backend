@@ -1,31 +1,27 @@
 #!/usr/bin/env bash
-# Common helpers for script/pg.
-# IMPORTANT: do not `source .env`.
-# The project's .env contains values (Firebase private key) that are not valid
-# shell assignments because they contain unquoted spaces.
-set -u
+set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$PROJECT_DIR/.env"
 
-die() {
-    echo "ERROR: $*" >&2
-    return 1
-}
+die() { echo "ERROR: $*" >&2; exit 1; }
 
 [[ -f "$ENV_FILE" ]] || die ".env not found: $ENV_FILE"
+command -v docker >/dev/null 2>&1 || die "docker command not found"
 
-# Read one dotenv assignment without executing the file.
-dotenv_get() {
+# IMPORTANT:
+# Do NOT `source .env`.
+# The Firebase private key contains shell-sensitive characters.
+env_value() {
     local key="$1"
-    awk -v key="$key" '
+    awk -v k="$key" '
         /^[[:space:]]*#/ { next }
         {
             line=$0
             sub(/^[[:space:]]*/, "", line)
-            if (line ~ ("^" key "[[:space:]]*=")) {
-                sub(("^" key "[[:space:]]*="), "", line)
+            if (index(line, k "=") == 1) {
+                sub("^[^=]*=", "", line)
                 print line
                 exit
             }
@@ -33,52 +29,65 @@ dotenv_get() {
     ' "$ENV_FILE"
 }
 
-DB_URL="$(dotenv_get DB_URL)"
-DB_USERNAME="$(dotenv_get DB_USERNAME)"
-DB_PASSWORD="$(dotenv_get DB_PASSWORD)"
+DB_URL="$(env_value DB_URL)"
+DB_USERNAME="$(env_value DB_USERNAME)"
+DB_PASSWORD="$(env_value DB_PASSWORD)"
 
-[[ -n "$DB_URL" ]] || die "DB_URL is missing in $ENV_FILE"
-[[ -n "$DB_USERNAME" ]] || die "DB_USERNAME is missing in $ENV_FILE"
-[[ -n "$DB_PASSWORD" ]] || die "DB_PASSWORD is missing in $ENV_FILE"
+[[ -n "$DB_URL" ]] || die "DB_URL missing in .env"
+[[ -n "$DB_USERNAME" ]] || die "DB_USERNAME missing in .env"
+[[ -n "$DB_PASSWORD" ]] || die "DB_PASSWORD missing in .env"
 
-# jdbc:postgresql://db:5432/database
-DB_HOST="$(printf '%s\n' "$DB_URL" | sed -nE 's#^jdbc:postgresql://([^:/]+)(:[0-9]+)?/.*#\1#p')"
-DB_PORT="$(printf '%s\n' "$DB_URL" | sed -nE 's#^jdbc:postgresql://[^:/]+:([0-9]+)/.*#\1#p')"
+DB_HOST="$(printf '%s\n' "$DB_URL" | sed -nE 's#^jdbc:postgresql://([^:/?]+)(:[0-9]+)?/.*#\1#p')"
+DB_PORT="$(printf '%s\n' "$DB_URL" | sed -nE 's#^jdbc:postgresql://[^:/?]+:([0-9]+)/.*#\1#p')"
 DB_NAME="$(printf '%s\n' "$DB_URL" | sed -nE 's#^jdbc:postgresql://[^/]+/([^?]+).*#\1#p')"
-
-[[ -n "$DB_HOST" ]] || die "Cannot extract DB host from DB_URL"
-[[ -n "$DB_NAME" ]] || die "Cannot extract DB name from DB_URL"
-
 DB_PORT="${DB_PORT:-5432}"
 
-# DB_URL's host is the Docker Compose service name in this project (db).
-# Use docker compose exec rather than docker exec so we do not assume the
-# generated container name.
-if [[ -f "$PROJECT_DIR/compose.yml" ]]; then
-    COMPOSE_FILE="$PROJECT_DIR/compose.yml"
-elif [[ -f "$PROJECT_DIR/docker-compose.yml" ]]; then
-    COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
-elif [[ -f "$PROJECT_DIR/compose.yaml" ]]; then
-    COMPOSE_FILE="$PROJECT_DIR/compose.yaml"
-elif [[ -f "$PROJECT_DIR/docker-compose.yaml" ]]; then
-    COMPOSE_FILE="$PROJECT_DIR/docker-compose.yaml"
-else
-    die "Docker Compose file not found in $PROJECT_DIR"
-fi
+[[ -n "$DB_HOST" ]] || die "Cannot parse DB_HOST from DB_URL"
+[[ -n "$DB_NAME" ]] || die "Cannot parse DB_NAME from DB_URL"
 
-command -v docker >/dev/null 2>&1 || die "docker command not found"
+# Find the actual running PostgreSQL container.
+# No compose filename and no container-name assumption are required.
+# Prefer POSTGRES_USER + POSTGRES_DB, then fall back to a container
+# running postgres/postmaster.
+find_pg_container() {
+    local cid envs image
+    while IFS= read -r cid; do
+        [[ -n "$cid" ]] || continue
 
-# Verify that the DB service exists. DB_HOST comes directly from DB_URL.
-docker compose -f "$COMPOSE_FILE" config --services 2>/dev/null |
-    grep -Fxq "$DB_HOST" ||
-    die "Docker Compose service '$DB_HOST' from DB_URL was not found"
+        envs="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$cid" 2>/dev/null || true)"
+        if printf '%s\n' "$envs" | grep -Fxq "POSTGRES_USER=$DB_USERNAME" &&
+           printf '%s\n' "$envs" | grep -Fxq "POSTGRES_DB=$DB_NAME"; then
+            echo "$cid"
+            return 0
+        fi
+    done < <(docker ps -q)
+
+    while IFS= read -r cid; do
+        [[ -n "$cid" ]] || continue
+        image="$(docker inspect --format '{{.Config.Image}}' "$cid" 2>/dev/null || true)"
+        case "$image" in
+            postgres|postgres:*|*/postgres|*/postgres:*)
+                echo "$cid"
+                return 0
+                ;;
+        esac
+    done < <(docker ps -q)
+
+    return 1
+}
+
+PG_CONTAINER="$(find_pg_container || true)"
+[[ -n "$PG_CONTAINER" ]] || die "Running PostgreSQL container not found. Check: docker ps"
+
+PG_CONTAINER_NAME="$(docker inspect --format '{{.Name}}' "$PG_CONTAINER" 2>/dev/null | sed 's#^/##')"
 
 psql() {
-    docker compose -f "$COMPOSE_FILE" exec -T \
+    docker exec -i \
         -e "PGPASSWORD=$DB_PASSWORD" \
-        "$DB_HOST" \
+        "$PG_CONTAINER" \
         psql -X -v ON_ERROR_STOP=1 \
-        -U "$DB_USERNAME" -d "$DB_NAME" "$@"
+        -U "$DB_USERNAME" \
+        -d "$DB_NAME" "$@"
 }
 
 query() {
@@ -90,13 +99,15 @@ query_table() {
 }
 
 section() {
-    printf '\n\033[1;36m%s\033[0m\n' "$1"
-    printf '%s\n' '────────────────────────────────────────────────────────────────'
+    printf '\n################################################################\n'
+    printf '# %s\n' "$1"
+    printf '################################################################\n'
 }
 
 show_context() {
-    echo "compose   : $COMPOSE_FILE"
-    echo "service   : $DB_HOST"
-    echo "database  : $DB_NAME"
-    echo "user      : $DB_USERNAME"
+    printf '%-16s %s\n' "DB_HOST" "$DB_HOST"
+    printf '%-16s %s\n' "DB_PORT" "$DB_PORT"
+    printf '%-16s %s\n' "DB_NAME" "$DB_NAME"
+    printf '%-16s %s\n' "DB_USER" "$DB_USERNAME"
+    printf '%-16s %s\n' "CONTAINER" "$PG_CONTAINER_NAME"
 }
