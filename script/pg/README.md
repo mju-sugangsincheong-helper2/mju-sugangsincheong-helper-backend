@@ -1,119 +1,105 @@
-# PostgreSQL production operations
+# PostgreSQL 운영 조회 스크립트
 
-이 디렉터리는 이 프로젝트의 `docker-compose-prod.yml`과 `.env`를 전제로 한다.
+이 디렉터리는 **read-only 운영 진단**을 목적으로 한다.
 
-## 추가 환경변수 없음
+## 중요한 원칙
 
-스크립트는 실행 시 자동으로:
+- 프로젝트 루트의 `.env`를 `source`하지 않는다.
+- `.env`에서 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`만 텍스트로 읽는다.
+- Firebase private key 등 다른 환경변수는 읽지 않는다.
+- 기본적으로 SQL `SELECT` 조회만 수행한다.
+- `VACUUM`, `REINDEX`, `DELETE`, `UPDATE`, `pg_terminate_backend()` 등 변경 작업은 포함하지 않는다.
+- `all.sh`는 한 진단이 실패해도 나머지 진단을 계속 실행한다.
+
+## 실행
+
+프로젝트 루트에서:
+
+```bash
+bash script/pg/health.sh
+bash script/pg/activity.sh
+bash script/pg/locks.sh
+bash script/pg/long-transactions.sh
+bash script/pg/dead-tuples.sh
+bash script/pg/vacuum.sh
+bash script/pg/bloat.sh
+bash script/pg/xid-age.sh
+bash script/pg/connections.sh
+bash script/pg/slow-queries.sh
+bash script/pg/query-stats.sh
+bash script/pg/tables.sh
+bash script/pg/indexes.sh
+bash script/pg/unused-indexes.sh
+bash script/pg/queue-pgmq.sh
+bash script/pg/queue-health.sh
+bash script/pg/cron.sh
+bash script/pg/replication.sh
+bash script/pg/settings.sh
+```
+
+전체:
+
+```bash
+bash script/pg/all.sh
+```
+
+## 주요 진단 흐름
 
 ```text
-프로젝트 루트/.env
+activity
+   │
+   ├── long transaction
+   │       │
+   │       └── MVCC horizon
+   │
+   ├── locks / blocking
+   │
+   └── slow queries
+           │
+           ↓
+      dead tuples
+           │
+           ↓
+        VACUUM
+           │
+           ├── 정상적으로 감소
+           │
+           └── 계속 누적
+                  │
+                  ↓
+                bloat
 ```
 
-를 읽는다.
-
-따라서 별도의:
+큐 환경에서는 추가로:
 
 ```text
-PG_CONTAINER=
-PG_DATABASE=
-PG_USER=
-PG_PASSWORD=
+PGMQ
+ ├── queue state
+ ├── queue-related activity
+ └── cron jobs
 ```
 
-같은 환경변수를 설정할 필요가 없다.
+를 함께 확인한다.
 
-현재 프로젝트의 `.env`에서:
+## DB 연결
+
+현재 프로젝트의 `.env` 형식:
 
 ```text
-DB_URL
-DB_USERNAME
-DB_PASSWORD
+DB_URL=jdbc:postgresql://db:5432/mjusugangsincheonghelperdb_prod
+DB_USERNAME=...
+DB_PASSWORD=...
 ```
 
-를 읽고 DB 이름을 `DB_URL`에서 자동 추출한다.
-
-PostgreSQL 컨테이너는 `docker-compose-prod.yml`에 정의된:
+에서 자동으로:
 
 ```text
-mju-sugangsincheong-helper-db
+container = mju-sugangsincheong-helper-db
+database  = mjusugangsincheonghelperdb_prod
+user      = DB_USERNAME
+password  = DB_PASSWORD
 ```
 
-를 사용한다.
+를 결정한다.
 
-## 기본 사용
-
-```bash
-./script/pg/health.sh
-```
-
-전체 운영 점검:
-
-```bash
-./script/pg/all.sh
-```
-
-## 운영 장애 시 추천 순서
-
-```bash
-./script/pg/health.sh
-./script/pg/activity.sh
-./script/pg/locks.sh
-./script/pg/long-transactions.sh
-./script/pg/dead-tuples.sh
-./script/pg/vacuum.sh
-./script/pg/bloat.sh
-```
-
-큐 문제가 의심되면:
-
-```bash
-./script/pg/queue-health.sh
-./script/pg/queue-pgmq.sh
-```
-
-쿼리 성능:
-
-```bash
-./script/pg/slow-queries.sh
-./script/pg/query-stats.sh
-```
-
-DB 자체 상태:
-
-```bash
-./script/pg/connections.sh
-./script/pg/xid-age.sh
-./script/pg/settings.sh
-```
-
-## Long transaction
-
-기본 1분:
-
-```bash
-./script/pg/long-transactions.sh
-```
-
-5분:
-
-```bash
-./script/pg/long-transactions.sh "5 minutes"
-```
-
-## 안전성
-
-현재 스크립트 모음은 **진단 전용(read-only)** 이다.
-
-자동으로 다음을 수행하지 않는다.
-
-- DELETE
-- TRUNCATE
-- VACUUM FULL
-- REINDEX
-- DROP INDEX
-- pg_terminate_backend()
-- ALTER SYSTEM
-- PostgreSQL 설정 변경
-
-운영 조치는 별도의 `maintenance/` 계층으로 분리하는 것을 권장한다.
+추가 환경변수는 필요하지 않다.

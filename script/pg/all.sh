@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-scripts=(
+SCRIPTS=(
   health.sh
   activity.sh
   locks.sh
@@ -25,10 +25,29 @@ scripts=(
   settings.sh
 )
 
-for script in "${scripts[@]}"; do
-  echo
-  echo "################################################################"
-  echo "# $script"
-  echo "################################################################"
-  "$SCRIPT_DIR/$script"
+failed=0
+
+for script in "${SCRIPTS[@]}"; do
+  printf '\n################################################################\n'
+  printf '# %s\n' "$script"
+  printf '################################################################\n'
+
+  if bash "$SCRIPT_DIR/$script"; then
+    echo "[OK] $script"
+  else
+    echo "[FAILED] $script"
+    failed=$((failed + 1))
+  fi
 done
+
+printf '\n################################################################\n'
+printf '# SUMMARY\n'
+printf '################################################################\n'
+
+if (( failed == 0 )); then
+  echo "ALL CHECKS PASSED"
+  exit 0
+else
+  echo "$failed CHECK(S) FAILED"
+  exit 1
+fi

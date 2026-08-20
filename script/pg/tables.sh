@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 
-section "User tables"
-
+section "Tables"
 query_table "
 SELECT
   schemaname,
-  relname,
+  relname AS table_name,
+  pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
   n_live_tup,
   n_dead_tup,
-  pg_size_pretty(pg_relation_size(relid)) AS table_size,
-  pg_size_pretty(pg_indexes_size(relid)) AS index_size,
-  pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
   seq_scan,
-  idx_scan
+  idx_scan,
+  n_tup_ins,
+  n_tup_upd,
+  n_tup_del,
+  n_tup_hot_upd
 FROM pg_stat_user_tables
 ORDER BY pg_total_relation_size(relid) DESC;
 "
