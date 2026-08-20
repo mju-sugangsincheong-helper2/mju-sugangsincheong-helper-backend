@@ -10,9 +10,6 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ -f "$ENV_FILE" ]] || die ".env not found: $ENV_FILE"
 command -v docker >/dev/null 2>&1 || die "docker command not found"
 
-# IMPORTANT:
-# Do NOT `source .env`.
-# The Firebase private key contains shell-sensitive characters.
 env_value() {
     local key="$1"
     awk -v k="$key" '
@@ -45,15 +42,10 @@ DB_PORT="${DB_PORT:-5432}"
 [[ -n "$DB_HOST" ]] || die "Cannot parse DB_HOST from DB_URL"
 [[ -n "$DB_NAME" ]] || die "Cannot parse DB_NAME from DB_URL"
 
-# Find the actual running PostgreSQL container.
-# No compose filename and no container-name assumption are required.
-# Prefer POSTGRES_USER + POSTGRES_DB, then fall back to a container
-# running postgres/postmaster.
 find_pg_container() {
     local cid envs image
     while IFS= read -r cid; do
         [[ -n "$cid" ]] || continue
-
         envs="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$cid" 2>/dev/null || true)"
         if printf '%s\n' "$envs" | grep -Fxq "POSTGRES_USER=$DB_USERNAME" &&
            printf '%s\n' "$envs" | grep -Fxq "POSTGRES_DB=$DB_NAME"; then
