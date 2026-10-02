@@ -1,20 +1,10 @@
 package com.mjusugangsincheonghelper.system.service;
 
 import com.mjusugangsincheonghelper.database.entity.Member;
-import com.mjusugangsincheonghelper.database.repository.CourseRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeIntentRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomMessageRepository;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomRepository;
-import com.mjusugangsincheonghelper.database.repository.MemberDeviceRepository;
-import com.mjusugangsincheonghelper.database.repository.MemberRepository;
-import com.mjusugangsincheonghelper.database.repository.MultigameRoundRepository;
-import com.mjusugangsincheonghelper.database.repository.NoticeRepository;
-import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
+import com.mjusugangsincheonghelper.database.repository.SystemRepository;
 import com.mjusugangsincheonghelper.global.config.PgmqProperties;
 import com.mjusugangsincheonghelper.global.config.PgmqService;
 import com.mjusugangsincheonghelper.database.entity.MultigameRoundEntity;
-import com.mjusugangsincheonghelper.database.repository.ExchangeRoomIntentRepository;
-import com.mjusugangsincheonghelper.database.repository.MultigameRoundMemberRepository;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.CourseStats;
 import com.mjusugangsincheonghelper.system.dto.SystemStatsResponse.CourseTermCount;
@@ -38,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.springframework.data.domain.PageRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 관리자 모니터링용 도메인 지표 조회.
  * 인프라 지표(메모리/CPU 등)는 별도로 Actuator + Prometheus(VictoriaMetrics)에서 담당하므로
  * 여기서는 서비스의 실제 사용자/데이터 규모만 집계한다.
+ * DB 접근은 {@link SystemRepository} 단일 파일에만 둔다.
  */
 @Slf4j
 @Service
@@ -57,17 +47,7 @@ public class SystemStatsService {
 	private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
 	private static final String EXCHANGE_ROOM_ACTIVE = "ACTIVE";
 
-	private final MemberRepository memberRepository;
-	private final MemberDeviceRepository memberDeviceRepository;
-	private final NoticeRepository noticeRepository;
-	private final CourseRepository courseRepository;
-	private final ExchangeIntentRepository exchangeIntentRepository;
-	private final ExchangeRoomRepository exchangeRoomRepository;
-	private final ExchangeRoomIntentRepository exchangeRoomIntentRepository;
-	private final ExchangeRoomMessageRepository exchangeRoomMessageRepository;
-	private final SingleGameRepository singleGameRepository;
-	private final MultigameRoundRepository multigameRoundRepository;
-	private final MultigameRoundMemberRepository multigameRoundMemberRepository;
+	private final SystemRepository systemRepository;
 	private final SystemConfigService systemConfigService;
 	private final PgmqService pgmqService;
 	private final PgmqProperties pgmqProperties;
@@ -80,7 +60,7 @@ public class SystemStatsService {
 		String currentTerm = systemConfigService.getCurrentTerm();
 
 		Map<Member.Role, Long> byRole = new EnumMap<>(Member.Role.class);
-		for (Object[] row : memberRepository.countByRole()) {
+		for (Object[] row : systemRepository.countMembersByRole()) {
 			byRole.put((Member.Role) row[0], (Long) row[1]);
 		}
 
@@ -92,26 +72,26 @@ public class SystemStatsService {
 				byRole.getOrDefault(Member.Role.ADMIN, 0L)
 		);
 
-		List<CourseTermCount> coursesByTerm = courseRepository.countByTerm().stream()
+		List<CourseTermCount> coursesByTerm = systemRepository.countCoursesByTerm().stream()
 				.map(row -> new CourseTermCount((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
 
-		List<DeviceDistribution> devicesByOs = memberDeviceRepository.countByPlatformJsOs().stream()
+		List<DeviceDistribution> devicesByOs = systemRepository.countDevicesByOs().stream()
 				.map(row -> new DeviceDistribution((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
-		List<DeviceDistribution> devicesByBrowser = memberDeviceRepository.countByPlatformJsName().stream()
+		List<DeviceDistribution> devicesByBrowser = systemRepository.countDevicesByBrowser().stream()
 				.map(row -> new DeviceDistribution((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
 
 		return new SystemStatsResponse(
 				memberStats,
-				memberRepository.countByCreatedAtGreaterThanEqual(startOfToday),
-				memberRepository.countByCreatedAtGreaterThanEqual(startOfThisWeek),
-				memberDeviceRepository.count(),
-				memberDeviceRepository.countByLastAccessedAtGreaterThanEqual(startOfThisWeek),
-				noticeRepository.count(),
-				courseRepository.count(),
-				courseRepository.countDistinctTerms(),
+				systemRepository.countMembersCreatedSince(startOfToday),
+				systemRepository.countMembersCreatedSince(startOfThisWeek),
+				systemRepository.countDevices(),
+				systemRepository.countActiveDevicesSince(startOfThisWeek),
+				systemRepository.countNotices(),
+				systemRepository.countCourses(),
+				systemRepository.countDistinctCourseTerms(),
 				coursesByTerm,
 				devicesByOs,
 				devicesByBrowser,
@@ -124,13 +104,13 @@ public class SystemStatsService {
 
 	/** 교환(Exchange) 지표: 활성 의도/방, 매칭률, 방 상태 분포 (현재 학기) */
 	private ExchangeStats buildExchangeStats(String currentTerm) {
-		long intents = exchangeIntentRepository.countByTermAndIsDeletedFalse(currentTerm);
-		long activeRooms = exchangeRoomRepository.countByTermAndStatus(currentTerm, EXCHANGE_ROOM_ACTIVE);
-		long messages = exchangeRoomMessageRepository.countByTerm(currentTerm);
-		long matchedIntents = exchangeRoomIntentRepository.countDistinctIntentIdByTermAndIsDeletedFalse(currentTerm);
+		long intents = systemRepository.countExchangeIntents(currentTerm);
+		long activeRooms = systemRepository.countExchangeRoomsByStatus(currentTerm, EXCHANGE_ROOM_ACTIVE);
+		long messages = systemRepository.countExchangeMessages(currentTerm);
+		long matchedIntents = systemRepository.countMatchedIntents(currentTerm);
 		int matchedRate = intents > 0 ? (int) Math.round(matchedIntents * 100.0 / intents) : 0;
 
-		List<RoomStatusCount> roomsByStatus = exchangeRoomRepository.countByTermGroupByStatus(currentTerm).stream()
+		List<RoomStatusCount> roomsByStatus = systemRepository.countExchangeRoomsGroupByStatus(currentTerm).stream()
 				.map(row -> new RoomStatusCount((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
 
@@ -139,16 +119,16 @@ public class SystemStatsService {
 
 	/** 싱글게임 지표: 기록 규모/완주율/속도/종목별 분포 */
 	private SingleGameStats buildSingleGameStats(Instant startOfToday, Instant startOfThisWeek) {
-		long total = singleGameRepository.count();
-		long completed = singleGameRepository.countByIsCompletedTrue();
-		long completedToday = singleGameRepository.countByIsCompletedTrueAndCreatedAtGreaterThanEqual(startOfToday);
-		long completedThisWeek = singleGameRepository.countByIsCompletedTrueAndCreatedAtGreaterThanEqual(startOfThisWeek);
+		long total = systemRepository.countSingleGames();
+		long completed = systemRepository.countCompletedSingleGames();
+		long completedToday = systemRepository.countCompletedSingleGamesSince(startOfToday);
+		long completedThisWeek = systemRepository.countCompletedSingleGamesSince(startOfThisWeek);
 		int completionRate = total > 0 ? (int) Math.round(completed * 100.0 / total) : 0;
 
-		Double avgMs = singleGameRepository.averageTTotalByIsCompletedTrue();
-		Integer bestMs = singleGameRepository.minTTotalByIsCompletedTrue();
+		Double avgMs = systemRepository.avgCompletedSingleGameTTotal();
+		Integer bestMs = systemRepository.minCompletedSingleGameTTotal();
 
-		List<CourseStats> byCourse = singleGameRepository.aggregateByTotalCourses().stream()
+		List<CourseStats> byCourse = systemRepository.aggregateSingleGamesByTotalCourses().stream()
 				.map(row -> {
 					int totalCourses = ((Number) row[0]).intValue();
 					long courseTotal = ((Number) row[1]).longValue();
@@ -179,13 +159,12 @@ public class SystemStatsService {
 
 	/** 멀티게임 지표: 라운드 규모/피크 참여자/성공률/최근 라운드별 집계 */
 	private MultigameStats buildMultigameStats() {
-		long rounds = multigameRoundRepository.countByParticipantCountGreaterThan(0);
-		long peakParticipants = multigameRoundRepository.findMaxParticipantCount().orElse(0);
+		long rounds = systemRepository.countNonEmptyRounds();
+		long peakParticipants = systemRepository.findMaxRoundParticipants().orElse(0);
 
 		// 최근 10개 라운드 (참여 인원순 제한 없이 최신순)
-		List<MultigameRoundEntity> recent = multigameRoundRepository
-				.findAllByOrderByStartTimeDesc(PageRequest.of(0, 10))
-				.getContent()
+		List<MultigameRoundEntity> recent = systemRepository
+				.findRecentRounds(10)
 				.stream()
 				.filter(round -> round.getParticipantCount() > 0)
 				.toList();
@@ -196,7 +175,7 @@ public class SystemStatsService {
 
 		Map<String, long[]> resultByStartTime = new HashMap<>();
 		if (!recentStartTimes.isEmpty()) {
-			for (Object[] row : multigameRoundMemberRepository.aggregateResultByStartTimes(recentStartTimes)) {
+			for (Object[] row : systemRepository.aggregateMultigameByStartTimes(recentStartTimes)) {
 				resultByStartTime.put((String) row[0], new long[] {
 						nvl(row[1]), nvl(row[2])
 				});
@@ -218,7 +197,7 @@ public class SystemStatsService {
 
 		long successCount = 0;
 		long failedCount = 0;
-		List<Object[]> overall = multigameRoundMemberRepository.aggregateOverallResult();
+		List<Object[]> overall = systemRepository.aggregateMultigameOverall();
 		if (!overall.isEmpty() && overall.get(0) != null) {
 			successCount = nvl(overall.get(0)[0]);
 			failedCount = nvl(overall.get(0)[1]);
@@ -227,14 +206,14 @@ public class SystemStatsService {
 				? (int) Math.round(successCount * 100.0 / (successCount + failedCount))
 				: 0;
 
-		List<HourCount> roundsByHour = multigameRoundRepository.countRoundsByHour().stream()
+		List<HourCount> roundsByHour = systemRepository.countRoundsByHour().stream()
 				.map(row -> new HourCount(((Number) row[0]).intValue(), ((Number) row[1]).longValue()))
 				.toList();
-		List<DayOfWeekCount> roundsByDayOfWeek = multigameRoundRepository.countRoundsByDayOfWeek().stream()
+		List<DayOfWeekCount> roundsByDayOfWeek = systemRepository.countRoundsByDayOfWeek().stream()
 				.map(row -> new DayOfWeekCount(((Number) row[0]).intValue(), ((Number) row[1]).longValue()))
 				.toList();
 		String from = LocalDate.now(ZONE).minusDays(13).format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "000000";
-		List<DailyCount> roundsByDay = multigameRoundRepository.countRoundsByDaySince(from).stream()
+		List<DailyCount> roundsByDay = systemRepository.countRoundsByDaySince(from).stream()
 				.map(row -> new DailyCount((String) row[0], ((Number) row[1]).longValue()))
 				.toList();
 

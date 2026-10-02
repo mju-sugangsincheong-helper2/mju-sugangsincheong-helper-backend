@@ -1,6 +1,6 @@
 package com.mjusugangsincheonghelper.system.controller;
 
-import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
+import com.mjusugangsincheonghelper.system.service.SystemMaintenanceService;
 import com.mjusugangsincheonghelper.global.api.exception.GlobalExceptionHandler;
 import com.mjusugangsincheonghelper.global.api.filter.GlobalMetaFilter;
 import com.mjusugangsincheonghelper.global.api.support.ClientInfoExtractor;
@@ -37,7 +37,7 @@ class SystemMaintenanceControllerTest {
 	private MockMvc mockMvc;
 
 	@MockitoBean
-	private DeviceSessionService deviceSessionService;
+	private SystemMaintenanceService systemMaintenanceService;
 
 	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;
@@ -64,7 +64,7 @@ class SystemMaintenanceControllerTest {
 	@Test
 	@DisplayName("만료 기기 정리 API가 삭제 개수를 반환한다")
 	void shouldCleanupExpiredDevices() throws Exception {
-		given(deviceSessionService.deleteExpired()).willReturn(23L);
+		given(systemMaintenanceService.cleanupExpiredDevices()).willReturn(23L);
 
 		mockMvc.perform(post("/api/v1/system/devices/cleanup")
 						.with(csrf()))

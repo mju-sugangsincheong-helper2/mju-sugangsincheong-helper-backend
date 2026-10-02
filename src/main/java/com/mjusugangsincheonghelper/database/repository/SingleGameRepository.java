@@ -12,33 +12,6 @@ import org.springframework.data.repository.query.Param;
 
 public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Long> {
 
-	/** 완주(완료)된 싱글게임 기록 수 (도메인 지표) */
-	long countByIsCompletedTrue();
-
-	/** 특정 시각 이후 완주 기록 수 (도메인 지표) */
-	long countByIsCompletedTrueAndCreatedAtGreaterThanEqual(java.time.Instant instant);
-
-	/** 완주 기록의 평균 총 소요시간(ms) - 전체 종목 통합 (도메인 지표) */
-	@Query("SELECT AVG(s.tTotal) FROM SingleGameEntity s WHERE s.isCompleted = true")
-	Double averageTTotalByIsCompletedTrue();
-
-	/** 완주 기록 중 최고(최소) 총 소요시간(ms) (도메인 지표) */
-	@Query("SELECT MIN(s.tTotal) FROM SingleGameEntity s WHERE s.isCompleted = true")
-	Integer minTTotalByIsCompletedTrue();
-
-	/** 종목(과목 수)별 기록 집계: 전체/완주 수, 완주 평균·최단 소요시간(ms) (도메인 지표) */
-	@Query("""
-			SELECT s.totalCourses,
-			       COUNT(s),
-			       SUM(CASE WHEN s.isCompleted = true THEN 1 ELSE 0 END),
-			       AVG(CASE WHEN s.isCompleted = true THEN s.tTotal END),
-			       MIN(CASE WHEN s.isCompleted = true THEN s.tTotal END)
-			FROM SingleGameEntity s
-			GROUP BY s.totalCourses
-			ORDER BY s.totalCourses
-			""")
-	List<Object[]> aggregateByTotalCourses();
-
 	@Modifying(clearAutomatically = true)
 	@Query("UPDATE SingleGameEntity s SET s.memberId = :newMemberId WHERE s.memberId = :oldMemberId")
 	void updateMemberId(@Param("oldMemberId") Long oldMemberId, @Param("newMemberId") Long newMemberId);

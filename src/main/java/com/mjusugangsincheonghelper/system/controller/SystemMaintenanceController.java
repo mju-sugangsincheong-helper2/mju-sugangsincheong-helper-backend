@@ -1,6 +1,6 @@
 package com.mjusugangsincheonghelper.system.controller;
 
-import com.mjusugangsincheonghelper.auth.session.device.DeviceSessionService;
+import com.mjusugangsincheonghelper.system.service.SystemMaintenanceService;
 import com.mjusugangsincheonghelper.global.annotation.OperationErrorCodes;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.envelope.SingleSuccessResponseEnvelope;
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/{version}/system")
 public class SystemMaintenanceController {
 
-	private final DeviceSessionService deviceSessionService;
+	private final SystemMaintenanceService systemMaintenanceService;
 
 	@PostMapping(path = "/devices/cleanup", version = "1+")
 	@Operation(
@@ -36,7 +36,7 @@ public class SystemMaintenanceController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<DeviceCleanupResult>> cleanupExpiredDevices() {
-		long cleared = deviceSessionService.deleteExpired();
+		long cleared = systemMaintenanceService.cleanupExpiredDevices();
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(new DeviceCleanupResult(cleared)));
 	}
 }

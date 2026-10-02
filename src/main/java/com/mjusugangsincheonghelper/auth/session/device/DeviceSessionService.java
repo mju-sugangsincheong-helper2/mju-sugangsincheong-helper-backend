@@ -111,17 +111,6 @@ public class DeviceSessionService {
 	}
 
 	/**
-	 * 만료된 기기 세션(세션 만료 시각이 지난 기기, Firebase Cloud Messaging 토큰 포함)을 일괄 삭제한다.
-	 * 관리자 정리 버튼용: 삭제된 개수를 반환한다.
-	 */
-	@Transactional
-	public long deleteExpired() {
-		long deletedCount = memberDeviceRepository.deleteExpired(java.time.Instant.now());
-		log.info("Cleaned up expired device sessions. deletedCount={}", deletedCount);
-		return deletedCount;
-	}
-
-	/**
 	 * 만료된 디바이스 세션을 별도 트랜잭션(REQUIRES_NEW)에서 즉시 삭제한다.
 	 * <p>{@code SessionService.refreshSession}의 만료 분기에서 호출된다.
 	 * 호출 컨텍스트(refresh)가 이어서 예외를 던지며 rollback되더라도,
