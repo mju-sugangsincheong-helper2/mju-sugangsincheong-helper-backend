@@ -4,19 +4,18 @@ import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.diagnostics.dto.QueryTimingResponse;
+import com.mjusugangsincheonghelper.diagnostics.dto.SeedResetResponse;
 import com.mjusugangsincheonghelper.diagnostics.dto.SeedResultResponse;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -42,6 +41,7 @@ public class DiagnosticsService {
 	private static final int MAX_SEED_COUNT = 1_000_000;
 	private static final int SEED_GAMES_CHUNK = 5000;
 	private static final int DETAIL_ROWS_PER_STATEMENT = 10000;
+	private static final int RESET_GAMES_CHUNK = 5000;
 
 	/**
 	 * 시드 학과 풀. 게임과 멤버를 라운드로빈으로 균등 분산한다.
@@ -58,69 +58,35 @@ public class DiagnosticsService {
 	private final SingleGameRepository singleGameRepository;
 	private final MemberRepository memberRepository;
 	private final JdbcTemplate jdbcTemplate;
-	private final CacheManager cacheManager;
 	private final PlatformTransactionManager transactionManager;
 
 	/**
-	 * findDeptSequencePercentileStats 쿼리를 전 학과에 대해 실행 시간을 측정한다.
+	 * findDeptSequencePercentileStats 쿼리를 단일 학과에 대해 1회 실행 시간을 측정한다.
 	 * SingleGameStatsService를 경유하지 않으므로 통계 캐시의 영향을 받지 않는다.
-	 * warmup은 첫 학과에서만 수행한다 (학과마다 하면 측정 비용이 학과 수에 비례해 폭증하므로).
+	 * 학과당 1회 측정한다. 반복 실행이 박스권에 평평해 워밍업·반복이 유의미하지 않음을 확인했기 때문이다.
 	 */
-	public QueryTimingResponse timeDeptSequenceStats(int totalCourses, int warmup, int repeats) {
-		if (warmup < 0 || warmup > 5 || repeats < 1 || repeats > 10) {
+	public QueryTimingResponse timeDeptSequenceStats(int totalCourses, String department) {
+		if (department == null || department.isBlank()) {
 			throw new BaseException(ErrorCode.GLOBAL_VALIDATION_ERROR);
 		}
 
-		List<String> departments = singleGameRepository.findDistinctDepartments();
+		long start = System.nanoTime();
+		List<Object[]> rows = singleGameRepository.findDeptSequencePercentileStats(totalCourses, department);
+		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 
-		List<QueryTimingResponse.DeptTiming> breakdown = new ArrayList<>(departments.size());
-		List<Double> allRuns = new ArrayList<>();
-		int totalRows = 0;
-		boolean warmedUp = false;
-		for (String department : departments) {
-			if (!warmedUp) {
-				for (int i = 0; i < warmup; i++) {
-					singleGameRepository.findDeptSequencePercentileStats(totalCourses, department);
-				}
-				warmedUp = true;
-			}
-			List<Double> runs = new ArrayList<>(repeats);
-			int rowCount = 0;
-			for (int i = 0; i < repeats; i++) {
-				long start = System.nanoTime();
-				List<Object[]> rows = singleGameRepository.findDeptSequencePercentileStats(totalCourses, department);
-				double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
-				runs.add(elapsedMs);
-				rowCount = rows.size();
-			}
-			double deptAvg = runs.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-			breakdown.add(new QueryTimingResponse.DeptTiming(department, List.copyOf(runs), deptAvg, rowCount));
-			allRuns.addAll(runs);
-			totalRows += rowCount;
-		}
-
-		double min = allRuns.stream().mapToDouble(Double::doubleValue).min().orElse(0);
-		double max = allRuns.stream().mapToDouble(Double::doubleValue).max().orElse(0);
-		double avg = allRuns.stream().mapToDouble(Double::doubleValue).average().orElse(0);
-
-		log.info("Dev diagnostics timing. query=findDeptSequencePercentileStats totalCourses={} departments={} warmup={} runs={} avgMs={}",
-				totalCourses, departments.size(), warmup, allRuns.size(), avg);
+		log.info("Dev diagnostics timing. query=findDeptSequencePercentileStats totalCourses={} department={} ms={}",
+				totalCourses, department, elapsedMs);
 
 		Map<String, Object> params = new LinkedHashMap<>();
 		params.put("totalCourses", totalCourses);
-		params.put("departmentCount", departments.size());
+		params.put("department", department);
 
 		return new QueryTimingResponse(
 				"findDeptSequencePercentileStats",
 				params,
-			warmup,
-			List.copyOf(allRuns),
-				min,
-				avg,
-				max,
-			totalRows,
-			List.copyOf(breakdown),
-				"전 학과 측정 (warmup은 첫 학과에서만, Repository 직접 호출로 캐시 우회). 순수 DB 실행 시간."
+			elapsedMs,
+			rows.size(),
+				"단일 학과 1회 측정 (Repository 직접 호출로 캐시 우회). 순수 DB 실행 시간."
 		);
 	}
 
@@ -183,17 +149,65 @@ public class DiagnosticsService {
 			}
 		}
 
-		// 3. 데이터가 대규모로 바뀌었으므로 통계 캐시 전체 무효화 (global/dept 구분 없이 clear)
-		Cache cache = cacheManager.getCache(CacheProperties.SINGLEGAME_STATS);
-		if (cache != null) {
-			cache.clear();
-		}
-
 		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 		log.info("Dev diagnostics seed done. games={} details={} totalCourses={} members={} elapsedMs={}",
 				inserted, detailCount, totalCourses, poolSize, elapsedMs);
 
 		return new SeedResultResponse(inserted, detailCount, totalCourses, SEED_DEPARTMENTS, poolSize, elapsedMs);
+	}
+
+	/**
+	 * 시드로 쌓은 데이터만 초기화한다. 이름이 {@code SEED_}로 시작하는 멤버와
+	 * 그 멤버의 게임·디테일이 대상이며, 일반(비시드) 데이터는 건드리지 않는다.
+	 *
+	 * <p>100만 게임(디테일 수백만 행) 규모를 고려해 게임 id를 먼저 모아 청크(5000게임)마다
+	 * 독립 트랜잭션으로 detail→game 순서로 지운 뒤 멤버를 지운다. 단일 트랜잭션으로
+	 * 수백만 행을 지우면 WAL 폭증·장시간 락으로 dev DB가 멈출 수 있기 때문이다.</p>
+	 */
+	@Transactional
+	public SeedResetResponse resetSeedSingleGames() {
+		long start = System.nanoTime();
+
+		List<Long> seedMemberIds = jdbcTemplate.queryForList(
+				"SELECT id FROM member WHERE name LIKE 'SEED\\_%' ESCAPE '\\'", Long.class);
+		if (seedMemberIds.isEmpty()) {
+			return new SeedResetResponse(0, 0, 0, (System.nanoTime() - start) / 1_000_000.0);
+		}
+
+		String memberPlaceholders = String.join(",", Collections.nCopies(seedMemberIds.size(), "?"));
+		List<Long> gameIds = jdbcTemplate.queryForList(
+				"SELECT id FROM single_game WHERE member_id IN (" + memberPlaceholders + ")",
+				Long.class, seedMemberIds.toArray());
+
+		TransactionTemplate chunkTx = new TransactionTemplate(transactionManager);
+		chunkTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+		int deletedDetails = 0;
+		int deletedGames = 0;
+		int chunkIndex = 0;
+		for (int offset = 0; offset < gameIds.size(); offset += RESET_GAMES_CHUNK) {
+			List<Long> chunk = gameIds.subList(offset, Math.min(offset + RESET_GAMES_CHUNK, gameIds.size()));
+			String placeholders = String.join(",", Collections.nCopies(chunk.size(), "?"));
+			Object[] args = chunk.toArray();
+			deletedDetails += chunkTx.execute(
+					status -> jdbcTemplate.update("DELETE FROM single_game_detail WHERE game_id IN (" + placeholders + ")", args));
+			deletedGames += chunkTx.execute(
+					status -> jdbcTemplate.update("DELETE FROM single_game WHERE id IN (" + placeholders + ")", args));
+			chunkIndex++;
+			if (chunkIndex % 10 == 0 || offset + chunk.size() == gameIds.size()) {
+				log.info("Dev diagnostics reset. progress={}/{} games, {} details", deletedGames, gameIds.size(), deletedDetails);
+			}
+		}
+
+		String memberChunkPlaceholders = String.join(",", Collections.nCopies(seedMemberIds.size(), "?"));
+		int deletedMembers = chunkTx.execute(status -> jdbcTemplate.update(
+				"DELETE FROM member WHERE id IN (" + memberChunkPlaceholders + ")", seedMemberIds.toArray()));
+
+		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
+		log.info("Dev diagnostics reset done. games={} details={} members={} elapsedMs={}",
+				deletedGames, deletedDetails, deletedMembers, elapsedMs);
+
+		return new SeedResetResponse(deletedGames, deletedDetails, deletedMembers, elapsedMs);
 	}
 
 	/**
