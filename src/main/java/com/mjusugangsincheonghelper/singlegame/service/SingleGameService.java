@@ -11,30 +11,24 @@ import com.mjusugangsincheonghelper.global.api.exception.BaseException;
 import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import com.mjusugangsincheonghelper.singlegame.config.SingleGameProperties;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.BasicEvent;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.DeptRankInfo;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.DetailEvent;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.PopulationStats;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.RankDetail;
-import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.RankingSummary;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.RankInfo;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.TimelineEvent;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.RecordInfo;
 import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
-import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RankInfo;
-import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RecordRanking;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.MyRankInfo;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.RankingEntry;
-import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.SubEntry;
-import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.SubRankings;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.cache.StatsBundle;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -44,13 +38,13 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
 @Transactional(readOnly = true)
 public class SingleGameService {
+
+	private static final int RANKING_LIMIT = 20;
 
 	private final SingleGameRepository singleGameRepository;
 	private final SingleGameDetailRepository singleGameDetailRepository;
@@ -153,19 +147,7 @@ public class SingleGameService {
 				.toList();
 		singleGameDetailRepository.saveAll(details);
 
-		// 완료된 게임이면 통계 캐시 evict (totalCourses 단위)
-		if (request.isCompleted()) {
-			if (TransactionSynchronizationManager.isSynchronizationActive()) {
-				TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-					@Override
-					public void afterCommit() {
-						singleGameStatsService.evict(totalCourses);
-					}
-				});
-			} else {
-				singleGameStatsService.evict(totalCourses);
-			}
-		}
+		// 통계 캐시는 건드리지 않는다. TTL 만료로만 갱신해 쿼리 시간을 일정하게 유지한다.
 
 		log.debug("Saved single game record. memberId={}, gameId={}, totalCourses={}, completed={}, tTotal={}",
 				memberId, gameId, totalCourses, request.isCompleted(), tTotal);
@@ -191,9 +173,9 @@ public class SingleGameService {
 		String resolvedDept = department;
 		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
 			if (myDept == null || myDept.isBlank()) {
-				resolvedScope = "GLOBAL";
-				resolvedDept = null;
-			} else if (resolvedDept == null || resolvedDept.isBlank()) {
+				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_RANK_DEPARTMENT);
+			}
+			if (resolvedDept == null || resolvedDept.isBlank()) {
 				resolvedDept = myDept;
 			}
 		}
@@ -201,16 +183,16 @@ public class SingleGameService {
 		// 2. 공용 랭킹 스냅샷 (캐시 공유, myRank 없음)
 		RankingResponse base = getRankingsSnapshot(totalCourses, resolvedScope, resolvedDept);
 
-		// 3. 개인 myRank (요청마다 계산, 캐시 비타기)
-		MyRankInfo myRank = computeMyRank(totalCourses, memberId);
+		// 3. 개인 myRank (요청마다 계산, 캐시 비타기, scope 기준)
+		MyRankInfo myRank = computeMyRank(totalCourses, resolvedScope, resolvedDept, memberId);
 
 		// 4. 조합
 		return RankingResponse.builder()
 				.totalCourses(base.getTotalCourses())
 				.scope(base.getScope())
+				.department(base.getDepartment())
 				.rankings(base.getRankings())
 				.myRank(myRank)
-				.subRankings(base.getSubRankings())
 				.build();
 	}
 
@@ -236,110 +218,72 @@ public class SingleGameService {
 
 	/**
 	 * DB에서 랭킹 스냅샷을 계산한다. myRank는 포함하지 않는다.
+	 * raw는 인당 대표 1판 ORDER BY t_total이므로, 동점자는 앞선 사람 수 + 1(같은 블록 첫 번호)을 준다 (00 §7).
 	 */
 	private RankingResponse computeRankingsSnapshot(int totalCourses, String scope, String department) {
 		List<Object[]> raw;
 		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
 			String dept = (department != null && !department.isBlank()) ? department : "";
-			raw = singleGameRepository.findDeptRankingRaw(totalCourses, dept);
+			raw = singleGameRepository.findDeptRankingRaw(totalCourses, dept, RANKING_LIMIT);
 		} else {
-			raw = singleGameRepository.findRankingRaw(totalCourses);
+			raw = singleGameRepository.findRankingRaw(totalCourses, RANKING_LIMIT);
 		}
 
-		List<RankingEntry> allRankings = new ArrayList<>();
-		int rank = 1;
-		for (Object[] row : raw) {
-			allRankings.add(RankingEntry.builder()
+		List<RankingEntry> rankings = new ArrayList<>();
+		for (int i = 0; i < raw.size(); i++) {
+			Object[] row = raw.get(i);
+			int tTotal = toInt(row[5]);
+			int rank = i + 1;
+			for (int j = i - 1; j >= 0; j--) {
+				if (toInt(raw.get(j)[5]) == tTotal) {
+					rank = j + 1;
+				} else {
+					break;
+				}
+			}
+			rankings.add(RankingEntry.builder()
 					.rank(rank)
 					.gameId(toLong(row[0]))
 					.name(maskName((String) row[2]))
 					.department((String) row[3])
-					.tTotal(toInt(row[5]))
+					.tTotal(tTotal)
 					.tEnterMain(toInt(row[6]))
 					.build());
-			rank++;
-		}
-
-		List<RankingEntry> rankings = allRankings.stream().limit(20).toList();
-
-		SubRankings subRankings = null;
-		if (totalCourses >= 3) {
-			Map<Long, Integer> firstClickByGame = new HashMap<>();
-			List<Object[]> firstClicks = singleGameRepository.findFirstClickRaw(totalCourses);
-			for (Object[] row : firstClicks) {
-				firstClickByGame.put(toLong(row[0]), toInt(row[2]));
-			}
-
-			List<Object[]> allForSub;
-			if ("GLOBAL".equalsIgnoreCase(scope)) {
-				allForSub = raw;
-			} else {
-				allForSub = singleGameRepository.findRankingRaw(totalCourses);
-			}
-			Map<Long, Integer> enterMainByGame = new HashMap<>();
-			for (Object[] row : allForSub) {
-				enterMainByGame.put(toLong(row[0]), toInt(row[6]));
-			}
-
-			List<Object[]> enterMainSorted = allForSub.stream()
-					.sorted(Comparator.comparingInt(r -> toInt(r[6])))
-					.limit(3)
-					.toList();
-			List<SubEntry> enterMainTop3 = new ArrayList<>();
-			for (int i = 0; i < enterMainSorted.size(); i++) {
-				Object[] r = enterMainSorted.get(i);
-				enterMainTop3.add(SubEntry.builder()
-						.rank(i + 1)
-						.name((String) r[2])
-						.tEnterMain(toInt(r[6]))
-						.tClickCourse1st(firstClickByGame.getOrDefault(toLong(r[0]), 0))
-						.build());
-			}
-
-			List<SubEntry> firstClickTop3 = new ArrayList<>();
-			List<Object[]> firstClickLimited = firstClicks.stream().limit(3).toList();
-			for (int i = 0; i < firstClickLimited.size(); i++) {
-				Object[] r = firstClickLimited.get(i);
-				firstClickTop3.add(SubEntry.builder()
-						.rank(i + 1)
-						.name((String) r[1])
-						.tClickCourse1st(toInt(r[2]))
-						.tEnterMain(enterMainByGame.getOrDefault(toLong(r[0]), 0))
-						.build());
-			}
-			subRankings = SubRankings.builder()
-					.enterMainTop3(enterMainTop3)
-					.firstClickTop3(firstClickTop3)
-					.build();
 		}
 
 		return RankingResponse.builder()
 				.totalCourses(totalCourses)
 				.scope(scope)
+				.department("DEPARTMENT".equalsIgnoreCase(scope) ? department : null)
 				.rankings(rankings)
-				.subRankings(subRankings)
 				.build();
 	}
 
 	/**
-	 * 요청자의 최신 게임 랭킹을 계산한다. 캐시와 무관하게 DB에서 직접 계산.
+	 * 요청자의 대표판(인당 최고 기록) 랭킹을 계산한다. scope이 DEPARTMENT면 해당 학과 내 순위.
+	 * 캐시와 무관하게 DB에서 직접 계산. 완료판이 없으면 null.
 	 */
-	private MyRankInfo computeMyRank(int totalCourses, Long memberId) {
+	private MyRankInfo computeMyRank(int totalCourses, String scope, String department, Long memberId) {
 		if (memberId == null) {
 			return null;
 		}
-		Optional<SingleGameEntity> latestGame = singleGameRepository
-				.findTopByMemberIdAndTotalCoursesAndIsCompletedTrueOrderByCreatedAtDesc(memberId, totalCourses);
-		if (latestGame.isEmpty()) {
+		List<Object[]> bestRows = singleGameRepository.findMyBestGame(memberId, totalCourses);
+		if (bestRows == null || bestRows.isEmpty()) {
 			return null;
 		}
-		SingleGameEntity game = latestGame.get();
-		int myRank = computeRank(totalCourses, game.getTTotal());
+		Object[] best = bestRows.get(0);
+		int bestTTotal = toInt(best[1]);
+		int myRank;
+		if ("DEPARTMENT".equalsIgnoreCase(scope) && department != null && !department.isBlank()) {
+			myRank = (int) singleGameRepository.countBetterDeptPersons(totalCourses, department, bestTTotal) + 1;
+		} else {
+			myRank = (int) singleGameRepository.countBetterPersons(totalCourses, bestTTotal) + 1;
+		}
 		return MyRankInfo.builder()
 				.rank(myRank)
-				.gameId(game.getId())
-				.tTotal(game.getTTotal())
-				.tEnterMain(game.getTEnterMain())
+				.gameId(toLong(best[0]))
+				.tTotal(bestTTotal)
+				.tEnterMain(toInt(best[2]))
 				.build();
 	}
 
@@ -349,10 +293,7 @@ public class SingleGameService {
 				.findByMemberIdOrderByCreatedAtDesc(memberId, pageable);
 		List<SingleGameEntity> games = gamesPage.getContent();
 
-		Member member = memberRepository.findById(memberId).orElse(null);
-		String myDept = member != null ? member.getDepartment() : null;
-
-		List<MyRecordResponse> records = games.stream().map(g -> buildMyRecordResponse(g, myDept)).toList();
+		List<MyRecordResponse> records = games.stream().map(this::buildMyRecordResponse).toList();
 
 		return new PageImpl<>(records, pageable, gamesPage.getTotalElements());
 	}
@@ -372,126 +313,121 @@ public class SingleGameService {
 
 		int totalCourses = game.getTotalCourses();
 
-		boolean isOwner = game.getMemberId().equals(memberId);
+		boolean isOwner = memberId != null && game.getMemberId().equals(memberId);
 		Member gameOwner = memberRepository.findById(game.getMemberId()).orElse(null);
+		String ownerDept = gameOwner != null ? gameOwner.getDepartment() : null;
+		if (ownerDept != null && ownerDept.isBlank()) {
+			ownerDept = null;
+		}
+
+		Member viewer = memberId != null ? memberRepository.findById(memberId).orElse(null) : null;
+		boolean fullAccess = viewer != null && viewer.getRole() != Member.Role.GUEST;
 		boolean isMember = gameOwner != null && gameOwner.getRole() != Member.Role.GUEST;
 
 		// 통계는 캐시된 StatsBundle에서
 		StatsBundle globalStats = singleGameStatsService.getGlobalStats(totalCourses);
 
-		String myDept = null;
 		StatsBundle deptStats = null;
-		if (isMember && gameOwner != null) {
-			myDept = gameOwner.getDepartment();
-			if (myDept != null && !myDept.isBlank()) {
-				deptStats = singleGameStatsService.getDeptStats(totalCourses, myDept);
-			}
+		if (ownerDept != null) {
+			deptStats = singleGameStatsService.getDeptStats(totalCourses, ownerDept);
 		}
 
-		RankingSummary ranking = buildRankingSummary(game, memberId);
+		RankInfo globalRank = buildGlobalRank(totalCourses, game.getTTotal());
+		DeptRankInfo deptRank = null;
+		if (fullAccess && ownerDept != null) {
+			deptRank = buildDeptRank(totalCourses, ownerDept, game.getTTotal());
+		}
 
-		List<BasicEvent> basic = buildBasicEvents(game, details);
 		List<DetailEvent> detail = buildDetailEvents(game, details,
 				globalStats.getSeqPercentileStats(),
 				globalStats.getEnterMainPercentileStats(),
 				deptStats != null ? deptStats.getSeqPercentileStats() : null,
-				deptStats != null ? deptStats.getEnterMainPercentileStats() : null);
+				deptStats != null ? deptStats.getEnterMainPercentileStats() : null,
+				fullAccess);
 
-		var feedbacks = buildFeedbacks(game, details, globalStats.getAggregates());
+		var feedbacks = fullAccess
+				? buildFeedbacks(game, details, globalStats.getAggregates())
+				: null;
 
 		return AnalysisResponse.builder()
 				.gameId(gameId)
 				.isOwner(isOwner)
 				.isMember(isMember)
 				.totalCourses(totalCourses)
-				.totalTime(game.getTTotal())
-				.ranking(ranking)
-				.basic(basic)
+				.record(RecordInfo.builder()
+						.tTotal(game.getTTotal())
+						.tEnterMain(game.getTEnterMain())
+						.completed(game.isCompleted())
+						.createdAt(game.getCreatedAt())
+						.build())
+				.globalRank(globalRank)
+				.departmentRank(deptRank)
+				.globalTimeline(buildGlobalTimeline(detail))
+				.departmentTimeline(fullAccess && deptStats != null ? buildDeptTimeline(detail) : null)
 				.detail(detail)
 				.feedbacks(feedbacks)
 				.build();
 	}
 
-	private RankingSummary buildRankingSummary(SingleGameEntity game, Long memberId) {
-		int totalCourses = game.getTotalCourses();
-		int globalRank = computeRank(totalCourses, game.getTTotal());
-		long totalPlayers = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(totalCourses);
-		double globalPercentile = totalPlayers > 0 ? (double) (globalRank - 1) / totalPlayers * 100 : 0;
-
-		RankDetail globalDetail = RankDetail.builder()
-				.rank(globalRank)
-				.totalParticipants((int) totalPlayers)
-				.percentile(Math.round(globalPercentile * 10.0) / 10.0)
-				.build();
-
-		RankDetail deptDetail = null;
-		if (memberId != null) {
-			Member member = memberRepository.findById(memberId).orElse(null);
-			String myDept = member != null ? member.getDepartment() : null;
-			if (myDept != null && !myDept.isBlank()) {
-				List<Long> deptRanked = singleGameRepository
-						.findDeptRankedGameIds(totalCourses, myDept);
-				int deptPlayers = deptRanked.size();
-				int deptRank = 0;
-				for (int i = 0; i < deptRanked.size(); i++) {
-					if (deptRanked.get(i).equals(game.getId())) {
-						deptRank = i + 1;
-						break;
-					}
-				}
-				double deptPercentile = deptPlayers > 0 ? (double) (deptRank - 1) / deptPlayers * 100 : 0;
-				deptDetail = RankDetail.builder()
-						.rank(deptRank)
-						.totalParticipants(deptPlayers)
-						.percentile(Math.round(deptPercentile * 10.0) / 10.0)
-						.build();
-			}
-		}
-
-		return RankingSummary.builder()
-				.global(globalDetail)
-				.department(deptDetail)
+	/**
+	 * 이 판의 전체 순위. 사람 기준(00 §5): 나보다 최고 기록이 좋은 사람 수 + 1 (00 §7).
+	 */
+	private RankInfo buildGlobalRank(int totalCourses, int tTotal) {
+		int rank = (int) singleGameRepository.countBetterPersons(totalCourses, tTotal) + 1;
+		long totalPersons = singleGameRepository.countDistinctPersons(totalCourses);
+		double percentile = totalPersons > 0 ? (double) (rank - 1) / totalPersons * 100 : 0;
+		return RankInfo.builder()
+				.rank(rank)
+				.totalPersons(totalPersons)
+				.percentile(Math.round(percentile * 10.0) / 10.0)
 				.build();
 	}
 
-	private List<BasicEvent> buildBasicEvents(SingleGameEntity game, List<SingleGameDetailEntity> details) {
-		List<BasicEvent> events = new ArrayList<>();
+	/**
+	 * 이 판의 학과 순위. 판 주인 학과 기준(00 §6), 동점 정책은 전체와 동일(00 §7).
+	 */
+	private DeptRankInfo buildDeptRank(int totalCourses, String ownerDept, int tTotal) {
+		int rank = (int) singleGameRepository.countBetterDeptPersons(totalCourses, ownerDept, tTotal) + 1;
+		long totalPersons = singleGameRepository.countDistinctDeptPersons(totalCourses, ownerDept);
+		double percentile = totalPersons > 0 ? (double) (rank - 1) / totalPersons * 100 : 0;
+		return DeptRankInfo.builder()
+				.department(ownerDept)
+				.rank(rank)
+				.totalPersons(totalPersons)
+				.percentile(Math.round(percentile * 10.0) / 10.0)
+				.build();
+	}
 
-		events.add(BasicEvent.builder()
-				.sequence(0)
-				.type("ENTRY")
-				.label("메인방 진입")
-				.durationMs(game.getTEnterMain())
-				.build());
+	/**
+	 * 차트용 타임라인. 표(detail)에서 duration과 분포만 뽑는다. 등급·백분위는 제외.
+	 */
+	private List<TimelineEvent> buildGlobalTimeline(List<DetailEvent> detail) {
+		return detail.stream()
+				.map(d -> TimelineEvent.builder()
+						.sequence(d.getSequence())
+						.type(d.getType())
+						.label(d.getLabel())
+						.durationMs(d.getDurationMs())
+						.population(d.getGlobalPopulation())
+						.build())
+				.toList();
+	}
 
-		for (SingleGameDetailEntity d : details) {
-			int seq = d.getSequence();
-			events.add(BasicEvent.builder()
-					.sequence(seq)
-					.type("AIM")
-					.label(seq + "순위 과목 조준")
-					.durationMs(d.getTClickCourse())
-					.build());
-			events.add(BasicEvent.builder()
-					.sequence(seq)
-					.type("CONFIRM")
-					.label("신청 확인")
-					.durationMs(d.getTClickYes())
-					.build());
-			events.add(BasicEvent.builder()
-					.sequence(seq)
-					.type("COMPLETE")
-					.label("완료 확인")
-					.durationMs(d.getTClickOk())
-					.build());
-		}
-
-		return events;
+	private List<TimelineEvent> buildDeptTimeline(List<DetailEvent> detail) {
+		return detail.stream()
+				.map(d -> TimelineEvent.builder()
+						.sequence(d.getSequence())
+						.type(d.getType())
+						.label(d.getLabel())
+						.durationMs(d.getDurationMs())
+						.population(d.getDepartmentPopulation())
+						.build())
+				.toList();
 	}
 
 	private List<DetailEvent> buildDetailEvents(SingleGameEntity game, List<SingleGameDetailEntity> details,
 			Map<Integer, double[]> globalSeqStats, double[] globalEntryStats,
-			Map<Integer, double[]> deptSeqStats, double[] deptEntryStats) {
+			Map<Integer, double[]> deptSeqStats, double[] deptEntryStats, boolean fullAccess) {
 		List<DetailEvent> events = new ArrayList<>();
 
 		double entryP = computeEnterMainPercentile(game.getTotalCourses(), game.getTEnterMain());
@@ -522,9 +458,9 @@ public class SingleGameService {
 				.label("메인방 진입")
 				.durationMs(game.getTEnterMain())
 				.percentile(Math.round(entryP * 10.0) / 10.0)
-				.grade(computeGrade(entryP))
+				.grade(fullAccess ? computeGrade(entryP) : null)
 				.globalPopulation(entryGlobalPop)
-				.departmentPopulation(entryDeptPop)
+				.departmentPopulation(fullAccess ? entryDeptPop : null)
 				.build());
 
 		for (SingleGameDetailEntity d : details) {
@@ -533,11 +469,11 @@ public class SingleGameService {
 			double[] dStats = deptSeqStats != null ? deptSeqStats.getOrDefault(seq, new double[16]) : null;
 
 			events.add(buildDetailEvent(seq, "AIM", seq + "순위 과목 조준", d.getTClickCourse(),
-					gStats, 0, 1, 2, 3, dStats, 0, 1, 2, 3));
+					gStats, 0, 1, 2, 3, dStats, 0, 1, 2, 3, fullAccess));
 			events.add(buildDetailEvent(seq, "CONFIRM", "신청 확인", d.getTClickYes(),
-					gStats, 4, 5, 6, 7, dStats, 4, 5, 6, 7));
+					gStats, 4, 5, 6, 7, dStats, 4, 5, 6, 7, fullAccess));
 			events.add(buildDetailEvent(seq, "COMPLETE", "완료 확인", d.getTClickOk(),
-					gStats, 8, 9, 10, 11, dStats, 8, 9, 10, 11));
+					gStats, 8, 9, 10, 11, dStats, 8, 9, 10, 11, fullAccess));
 		}
 
 		return events;
@@ -545,7 +481,7 @@ public class SingleGameService {
 
 	private DetailEvent buildDetailEvent(int seq, String type, String label, int durationMs,
 			double[] gStats, int gP10, int gP30, int gP50, int gP70,
-			double[] dStats, int dP10, int dP30, int dP50, int dP70) {
+			double[] dStats, int dP10, int dP30, int dP50, int dP70, boolean fullAccess) {
 		int gp10 = (int) gStats[gP10];
 		int gp30 = (int) gStats[gP30];
 		int gp50 = (int) gStats[gP50];
@@ -572,18 +508,18 @@ public class SingleGameService {
 				.label(label)
 				.durationMs(durationMs)
 				.percentile(Math.round(percentile * 10.0) / 10.0)
-				.grade(computeGrade(percentile))
+				.grade(fullAccess ? computeGrade(percentile) : null)
 				.globalPopulation(globalPop)
-				.departmentPopulation(deptPop)
+				.departmentPopulation(fullAccess ? deptPop : null)
 				.build();
 	}
 
 	private double computeEnterMainPercentile(int totalCourses, int tEnterMain) {
-		List<Long> betterOrEqual = singleGameRepository
-				.findGameIdsWithBetterOrEqualEnterMain(totalCourses, tEnterMain);
-		long total = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(totalCourses);
+		long betterOrEqual = singleGameRepository
+				.countEnterMainBetterOrEqual(totalCourses, tEnterMain);
+		long total = singleGameRepository.countCompletedGames(totalCourses);
 		if (total == 0) return 0;
-		return Math.max(0, (double) (betterOrEqual.size() - 1) / total * 100);
+		return Math.max(0, (double) (betterOrEqual - 1) / total * 100);
 	}
 
 	private double interpolatePercentile(int value, int p10, int p30, int p50, int p70) {
@@ -625,48 +561,13 @@ public class SingleGameService {
 		return feedbackEngine.determineFeedbacks(aimP, burstP, eP, startP, paceP, N, totals, myAvgTotal, paceStddev);
 	}
 
-	private MyRecordResponse buildMyRecordResponse(SingleGameEntity g, String myDept) {
-		int globalRank = computeRank(g.getTotalCourses(), g.getTTotal());
-		long totalPlayers = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(g.getTotalCourses());
-		double globalPercentile = totalPlayers > 0 ? (double) (globalRank - 1) / totalPlayers * 100 : 0;
-
-		RankInfo globalInfo = RankInfo.builder()
-				.rank(globalRank)
-				.totalParticipants((int) totalPlayers)
-				.percentile(Math.round(globalPercentile * 10.0) / 10.0)
-				.build();
-
-		RankInfo deptInfo = null;
-		if (myDept != null && !myDept.isBlank()) {
-			List<Long> deptRanked = singleGameRepository
-					.findDeptRankedGameIds(g.getTotalCourses(), myDept);
-			int deptPlayers = deptRanked.size();
-			int deptRank = 0;
-			for (int i = 0; i < deptRanked.size(); i++) {
-				if (deptRanked.get(i).equals(g.getId())) {
-					deptRank = i + 1;
-					break;
-				}
-			}
-			double deptPercentile = deptPlayers > 0 ? (double) (deptRank - 1) / deptPlayers * 100 : 0;
-			deptInfo = RankInfo.builder()
-					.rank(deptRank)
-					.totalParticipants(deptPlayers)
-					.percentile(Math.round(deptPercentile * 10.0) / 10.0)
-					.build();
-		}
-
+	private MyRecordResponse buildMyRecordResponse(SingleGameEntity g) {
 		return MyRecordResponse.builder()
 				.gameId(g.getId())
 				.totalCourses(g.getTotalCourses())
 				.completed(g.isCompleted())
 				.tTotal(g.getTTotal())
-				.tEnterMain(g.getTEnterMain())
 				.createdAt(g.getCreatedAt())
-				.ranking(RecordRanking.builder()
-						.global(globalInfo)
-						.department(deptInfo)
-						.build())
 				.build();
 	}
 
@@ -701,11 +602,6 @@ public class SingleGameService {
 		return value < timing.getMinMs() || value > timing.getMaxMs();
 	}
 
-	private int computeRank(int totalCourses, int tTotal) {
-		List<Long> betterOrEqual = singleGameRepository
-				.findGameIdsWithBetterOrEqualTTotal(totalCourses, tTotal);
-		return betterOrEqual.size();
-	}
 
 	private String maskName(String name) {
 		if (name == null || name.isEmpty()) return name;
@@ -724,8 +620,4 @@ public class SingleGameService {
 		return 0;
 	}
 
-	private double toDouble(Object o) {
-		if (o instanceof Number n) return n.doubleValue();
-		return 0;
-	}
 }

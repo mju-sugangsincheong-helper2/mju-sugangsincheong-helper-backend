@@ -60,9 +60,11 @@ UI를 모방하는 기능에서 나아가 사용자의 클릭 반응 속도를 �
 
 ### 등수 및 백분위 (Ranking & Percentile)
 
-동일한 `totalCourses` 종목의 전체 완료 게임 중 `totalTime` 기준으로 순위와 백분위를 산출한다.
+동일한 `totalCourses` 종목에서 사람 기준으로 순위와 백분위를 산출한다 (1인당 최고 기록 1판, `tTotal` 기준).
+분모는 판 수가 아니라 사람 수다.
 
-- **백분위 공식:** $Percentile = \frac{rank - 1}{totalParticipants} \times 100$ (0% = 최고, 100% = 최하)
+- **순위:** 나보다 최고 기록이 좋은 사람 수 + 1. 동점자는 같은 순위, 다음 순위는 건너뛴다.
+- **백분위 공식:** $Percentile = \frac{rank - 1}{totalPersons} \times 100$ (0% = 최고, 100% = 최하)
 - `detail`의 각 이벤트는 `percentile` 값을 포함하여 전체 유저 대비 자신의 위치를 제공한다.
 
 ---
@@ -303,13 +305,14 @@ GET /api/{version}/singlegame/rank?totalCourses={totalCourses}&scope={scope}&dep
 |----------|------|------|
 | `totalCourses` | O | 과목 수 (1, 3, 6, 7, 8) |
 | `scope` | O | 조회 범위 (`GLOBAL` 또는 `DEPARTMENT`) |
-| `department` | X | 학과명 (DEPARTMENT일 때, 없으면 본인 학과) |
+| `department` | X | 학과명. DEPARTMENT일 때 적으면 그 학과, 생략하면 요청자 본인 학과. 학과 없는 요청자는 DEPARTMENT 사용 불가(400) |
 
 **응답 구조:**
 ```json
 {
   "totalCourses": 6,
   "scope": "GLOBAL",
+  "department": null,
   "rankings": [
     {
       "rank": 1,
@@ -323,29 +326,25 @@ GET /api/{version}/singlegame/rank?totalCourses={totalCourses}&scope={scope}&dep
   "myRank": {
     "rank": 42,
     "gameId": 5678,
-    "tTotal": 12000,
-    "tEnterMain": 1800
-  },
-  "subRankings": {
-    "enterMainTop3": [...],
-    "firstClickTop3": [...]
+    "tTotal": 12000
   }
 }
 ```
 
+**순위 규칙 (사람 기준):**
+- 1인당 최고 기록 1판으로 매긴다 (판 건수 아님). 동점은 가장 이른 판이 대표.
+- 동점자는 같은 순위, 다음 순위는 건너뛴다 (1, 2, 2, 4식).
+- `department`는 DEPARTMENT일 때 적용된 학과가 나가고, GLOBAL이면 `null`.
+
 **처리 절차:**
-1. 캐시 확인 (키: `{totalCourses}:{scope}:cache`)
-2. 캐시 미스 시 DB 조회
-   - `GLOBAL`: 전체 완료 게임 조회 (게스트 포함)
-   - `DEPARTMENT`: 현재 사용자의 학과와 동일한 게임만 조회
-     - **게스트 요청 시:** `department = null`이므로 DEPARTMENT 조회가 불가능하다. 게스트에게 DEPARTMENT 랭킹을 제공할 수 없음을 응답하고 GLOBAL 랭킹을 대신 반환하거나 에러 응답을 반환한다.
-3. 랭킹 계산 (tTotal 기준 오름차순)
-4. 상위 20개 랭킹 추출
-5. 내 최신 완료 게임의 랭킹 확인
-6. `totalCourses >= 3`인 경우 보조 랭킹 생성
-   - `enterMainTop3`: 메인방 진입 시간 상위 3명
-   - `firstClickTop3`: 첫 과목 클릭 시간 상위 3명
-7. 결과 반환 및 캐시 저장
+1. scope 정규화: DEPARTMENT + 학과 지정 → 그 학과, 생략 → 요청자 본인 학과.
+   학과 없는 요청자의 DEPARTMENT 사용은 400 (`SINGLEGAME_INVALID_RANK_DEPARTMENT`, 폴백 없음).
+2. 캐시 확인 (스냅샷 공유, myRank 제외)
+3. 캐시 미스 시 DB 조회 — DB에서 상위 20줄만 (`ORDER BY t_total, created_at LIMIT 20`).
+   `GLOBAL`은 전체, `DEPARTMENT`는 해당 학과. 둘 다 인당 대표 1판(`ROW_NUMBER rn=1`) 구조.
+4. myRank 계산 (요청마다, 캐시 안 탐): 내 대표판(최고 기록) 1행 + 나보다 좋은 사람 수 COUNT + 1.
+   scope이 DEPARTMENT면 학과 내 순위. 완료판 없으면 `null`.
+5. 결과 반환 및 캐시 저장 (`subRankings`는 삭제됨)
 
 ---
 
@@ -372,20 +371,7 @@ GET /api/{version}/singlegame/my?page={page}&size={size}
       "totalCourses": 6,
       "completed": true,
       "tTotal": 8500,
-      "tEnterMain": 1200,
-      "createdAt": "2024-01-15T10:30:00Z",
-      "ranking": {
-        "global": {
-          "rank": 42,
-          "totalParticipants": 1000,
-          "percentile": 4.2
-        },
-        "department": {
-          "rank": 3,
-          "totalParticipants": 50,
-          "percentile": 4.0
-        }
-      }
+      "createdAt": "2024-01-15T10:30:00Z"
     }
   ],
   "page": {
@@ -403,14 +389,9 @@ GET /api/{version}/singlegame/my?page={page}&size={size}
 > `data`는 단건 봉투의 `content`가 아니라 목록(배열)이며, 페이징 메타는 `page` 객체로 내려간다.
 
 **처리 절차:**
-1. 첫 페이지 요청(`page=0`, `size=10`)인 경우 캐시 확인
-2. 캐시 미스 시 DB에서 페이징 조회
-3. 각 게임에 대해 전체/학과 랭킹 계산
-4. 퍼센타일 계산: `(rank - 1) / totalParticipants * 100`
-5. 결과 반환
-
-> **게스트 처리:** 게스트의 경우 `ranking.department`는 `null`로 응답한다.
-> 프론트는 `department`가 `null`일 때 "명지대 구글 로그인시 학과내 랭킹도 볼 수 있어요"와 같은 안내를 표시할 수 있다.
+1. 요청자 본인의 판을 최신순으로 페이징 조회
+2. 순위 계산 없음 — 목록에는 판 식별 정보만 나간다 (순위 보고 싶으면 랭킹·분석 API)
+3. 결과 반환
 
 ---
 
@@ -421,12 +402,17 @@ GET /api/{version}/singlegame/{gameId}/analysis
 ```
 
 **설명:**
-응답은 `basic`(자신의 기록), `detail`(상세 분석), `feedbacks`(피드백) 3개 영역으로 구성된다.
+남의 판도 볼 수 있으며, 붙는 통계·순위는 전부 판 주인 기준이다. 요청자로 따지는 건 `isOwner`뿐.
+판(record) + 순위 2종 + 차트 타임라인 2종 + 성적표(detail) + 피드백으로 구성된다.
 
 | 응답 영역 | 설명 |
 |----------|------|
-| `basic` | 게임 전체 흐름을 플랫한 이벤트 배열로 표현 (sequence, type, label, durationMs) |
-| `detail` | 각 이벤트별 percentile, grade, population 통계 포함 |
+| `record` | 판 원본 (`tTotal`, `tEnterMain`, `completed`, `createdAt`) |
+| `globalRank` | 전체 순위 (`rank`, `totalPersons`, `percentile`) — 순위는 사람 기준, 분모는 사람 수 |
+| `departmentRank` | 판 주인 학과 내 순위 (`department`, `rank`, `totalPersons`, `percentile`). 주인 학과 없으면 `null` |
+| `globalTimeline` | 전체 분포 차트용: 구간별 `durationMs` + `population`(p10·p30·p50·p70) |
+| `departmentTimeline` | 학과 분포 차트용. 주인 학과 없으면 `null` |
+| `detail` | 구간별 성적표: `durationMs`, `percentile`, `grade`, `globalPopulation`, `departmentPopulation` |
 | `feedbacks` | 종합 평가 코드 및 메시지 (primary, secondary) |
 
 **응답 구조:**
@@ -436,46 +422,45 @@ GET /api/{version}/singlegame/{gameId}/analysis
   "isOwner": true,
   "isMember": true,
   "totalCourses": 6,
-  "totalTime": 8500,
-  "ranking": {
-    "global": { "rank": 42, "totalParticipants": 1000, "percentile": 4.2 },
-    "department": { "rank": 3, "totalParticipants": 50, "percentile": 4.0 }
-  },
+  "record": { "tTotal": 8500, "tEnterMain": 1500, "completed": true, "createdAt": "2024-01-15T10:30:00Z" },
+  "globalRank": { "rank": 42, "totalPersons": 1000, "percentile": 4.2 },
+  "departmentRank": { "department": "컴퓨터공학과", "rank": 3, "totalPersons": 50, "percentile": 4.0 },
 
-  "basic": [
-    { "sequence": 0, "type": "ENTRY",   "label": "메인방 진입",  "durationMs": 1500 },
-    { "sequence": 1, "type": "AIM",     "label": "1순위 과목 조준", "durationMs": 800 },
-    { "sequence": 1, "type": "CONFIRM", "label": "신청 확인",    "durationMs": 200 },
-    { "sequence": 1, "type": "COMPLETE","label": "완료 확인",    "durationMs": 150 },
-    { "sequence": 2, "type": "AIM",     "label": "2순위 과목 조준", "durationMs": 350 },
-    { "sequence": 2, "type": "CONFIRM", "label": "신청 확인",    "durationMs": 180 },
-    { "sequence": 2, "type": "COMPLETE","label": "완료 확인",    "durationMs": 140 }
+  "globalTimeline": [
+    { "sequence": 0, "type": "ENTRY", "label": "메인방 진입", "durationMs": 1500,
+      "population": { "p10": 800, "p30": 1200, "p50": 1600, "p70": 2200 } },
+    { "sequence": 1, "type": "AIM", "label": "1순위 과목 조준", "durationMs": 800,
+      "population": { "p10": 400, "p30": 600, "p50": 850, "p70": 1200 } }
+  ],
+  "departmentTimeline": [
+    { "sequence": 0, "type": "ENTRY", "label": "메인방 진입", "durationMs": 1500,
+      "population": { "p10": 900, "p30": 1300, "p50": 1700, "p70": 2400 } }
   ],
 
   "detail": [
     {
       "sequence": 0, "type": "ENTRY", "label": "메인방 진입", "durationMs": 1500,
       "percentile": 15.2, "grade": "A",
-      "global_population":     { "p10": 800, "p30": 1200, "p50": 1600, "p70": 2200 },
-      "department_population": { "p10": 900, "p30": 1300, "p50": 1700, "p70": 2400 }
+      "globalPopulation":     { "p10": 800, "p30": 1200, "p50": 1600, "p70": 2200 },
+      "departmentPopulation": { "p10": 900, "p30": 1300, "p50": 1700, "p70": 2400 }
     },
     {
       "sequence": 1, "type": "AIM", "label": "1순위 과목 조준", "durationMs": 800,
       "percentile": 22.0, "grade": "A",
-      "global_population":     { "p10": 400, "p30": 600, "p50": 850, "p70": 1200 },
-      "department_population": { "p10": 450, "p30": 650, "p50": 900, "p70": 1300 }
+      "globalPopulation":     { "p10": 400, "p30": 600, "p50": 850, "p70": 1200 },
+      "departmentPopulation": { "p10": 450, "p30": 650, "p50": 900, "p70": 1300 }
     },
     {
       "sequence": 1, "type": "CONFIRM", "label": "신청 확인", "durationMs": 200,
       "percentile": 60.0, "grade": "B",
-      "global_population":     { "p10": 100, "p30": 150, "p50": 210, "p70": 300 },
-      "department_population": { "p10": 110, "p30": 160, "p50": 220, "p70": 320 }
+      "globalPopulation":     { "p10": 100, "p30": 150, "p50": 210, "p70": 300 },
+      "departmentPopulation": { "p10": 110, "p30": 160, "p50": 220, "p70": 320 }
     },
     {
       "sequence": 1, "type": "COMPLETE", "label": "완료 확인", "durationMs": 150,
       "percentile": 55.0, "grade": "B",
-      "global_population":     { "p10": 80, "p30": 120, "p50": 160, "p70": 220 },
-      "department_population": { "p10": 90, "p30": 130, "p50": 170, "p70": 240 }
+      "globalPopulation":     { "p10": 80, "p30": 120, "p50": 160, "p70": 220 },
+      "departmentPopulation": { "p10": 90, "p30": 130, "p50": 170, "p70": 240 }
     }
   ],
 
@@ -498,15 +483,17 @@ GET /api/{version}/singlegame/{gameId}/analysis
 - `isOwner`: 요청한 사람이 이 게임의 소유자인지 여부
 - `isMember`: 게임 소유주가 인증 회원인지 여부. `false`면 게스트의 게임
 
-**`basic` 배열 규칙:**
+**이벤트 배열 규칙 (`globalTimeline`·`departmentTimeline`·`detail` 공통):**
 - `sequence = 0`: ENTRY (메인방 진입, 전체 1개)
 - `sequence = 1..N`: 각 과목별 AIM → CONFIRM → COMPLETE (과목 수 = totalCourses)
 - 총 이벤트 수: `1 + (totalCourses * 3)`
+- `detail`은 타임라인에 `percentile`, `grade`가 붙은 성적표 버전
+- 차트는 타임라인(`durationMs` + `population`)으로 그리고, 표는 `detail`로 뿌린다
 
-**`detail` 배열 규칙:**
-- `basic`과 동일한 순서/개수
-- 각 이벤트에 `percentile`, `grade`, `global_population`, `department_population` 추가
-- `department_population`: 게스트(department = null)인 경우 `null`
+**순위 규칙:**
+- 이 판의 순위 = 나보다 최고 기록이 좋은 사람 수 + 1 (사람 기준, 동점은 같은 번호 다음 건너뛰기)
+- 분모(`totalPersons`)는 사람 수 (`COUNT(DISTINCT member_id)`)
+- 학과 순위의 학과는 판 주인 학과
 
 **grade 산출 기준 (percentile 기반):**
 
@@ -529,7 +516,9 @@ GET /api/{version}/singlegame/{gameId}/analysis
 - `secondary`: 1순위 축 다음으로 우선순위가 높은 축의 피드백 (2순위)
 - 최대 2개 반환
 
-> **게스트 처리:** 게스트의 경우 `ranking.department`, `detail[].department_population` 모두 `null`이다.
+> **게스트 처리:** 게스트 조회에서는 `departmentRank`, `departmentTimeline`, `feedbacks`가 `null`이고,
+> `detail[]`의 `grade`, `departmentPopulation`도 `null`이다. 전체 순위·전체 분포만 받는다.
+> 판 주인이 게스트면(학과 없음) `departmentRank`, `departmentTimeline`이 `null`이다.
 
 ---
 
@@ -600,7 +589,7 @@ GET /api/{version}/singlegame/{gameId}/analysis
 ├─────────────────────────────────────────────────────────────────────┤
 │ DB (SingleGameEntity)                                               │
 │   ↓                                                                 │
-│ [조합/계산] 정렬 + 상위 20명 추출                                   │
+│ DB에서 상위 20줄만 (ORDER BY t_total, created_at LIMIT 20)          │
 │   ↓                                                                 │
 │ 응답 (RankingResponse) - myRank 제외                                │
 │                                                                     │
@@ -691,10 +680,9 @@ GET /api/{version}/singlegame/{gameId}/analysis
 
 **전략:**
 - **TTL 기반 캐시 (5m)**: L2 스냅샷 허용 시간에 따라 5분 TTL
-- **evict 병행**: L5 재생성 비용 매우 높음 → 새 게임 저장 시 해당 totalCourses 캐시 evict
+- **evict 없음**: 저장은 저장만 하고 신선도는 TTL에만 맡긴다 (쿼리 시간 일정 유지). 저장 활발 시간대의 미스 폭증을 피한다.
 - **흐름 적용:**
   - `DB -> 조합 및 계산 -> 응답`: 캐시 미스 시 DB에서 전체 데이터를 가져와 집계 계산
-  - `요청 -> 계산 (Evict) -> DB`: 게임 저장 시 해당 totalCourses의 캐시 evict
 
 ---
 
@@ -703,7 +691,7 @@ GET /api/{version}/singlegame/{gameId}/analysis
 | 캐시 | 형식 단계 | TTL | evict | 렌즈 근거 |
 |------|-----------|-----|-------|-----------|
 | `singlegame-rank` | 5. 응답 형식 | 5m | ❌ 없음 | L2 스냅샷, L3 정합성 낮음 |
-| `singlegame-stats` | 4. 조합 후 형식 | 5m | ✅ afterCommit | L5 재생성 매우 높음 |
+| `singlegame-stats` | 4. 조합 후 형식 | 5m | ❌ 없음 | TTL 만료까지 stale 허용, 쿼리 시간 일정 유지 |
 
 ### 캐시하지 않는 데이터
 
@@ -759,4 +747,5 @@ app:
 | `SINGLEGAME_INVALID_DETAILS_COUNT` | 상세 데이터 개수 불일치 |
 | `SINGLEGAME_INVALID_REACTION_TIME` | 반응 시간 범위 초과 |
 | `SINGLEGAME_GAME_NOT_FOUND` | 게임을 찾을 수 없음 |
+| `SINGLEGAME_INVALID_RANK_DEPARTMENT` | 학과 없는 요청자의 DEPARTMENT 랭킹 조회 (400) |
 | `AUTH_MEMBER_NOT_FOUND` | 회원을 찾을 수 없음 |

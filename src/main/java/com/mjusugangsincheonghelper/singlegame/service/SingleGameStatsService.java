@@ -10,8 +10,6 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class SingleGameStatsService {
 
 	private final SingleGameRepository singleGameRepository;
-	private final CacheManager cacheManager;
 
 	/**
 	 * totalCourses별 전역 통계 번들을 가져온다. 캐시 미스 시 DB에서 계산.
@@ -55,22 +52,6 @@ public class SingleGameStatsService {
 				.seqPercentileStats(loadDeptSeqPercentileStats(totalCourses, department))
 				.enterMainPercentileStats(loadDeptEnterMainPercentileStats(totalCourses, department))
 				.build();
-	}
-
-	/**
-	 * 해당 totalCourses의 모든 통계 캐시를 무효화한다.
-	 * 새 게임 저장 시 호출.
-	 */
-	public void evict(int totalCourses) {
-		Cache cache = cacheManager.getCache(CacheProperties.SINGLEGAME_STATS);
-		if (cache == null) return;
-
-		// global 캐시 evict
-		cache.evict(totalCourses + ":global:cache");
-
-		// dept 캐시는 조회된 학과만 evict (전체 학과 목록 조회는 비용이 크므로 생략)
-		// TTL이 자동으로 정리하므로 여기서는 global만 명시적 evict
-		log.debug("Evicted single game stats cache. totalCourses={}", totalCourses);
 	}
 
 	// ============ 내부 로딩 메서드 ============

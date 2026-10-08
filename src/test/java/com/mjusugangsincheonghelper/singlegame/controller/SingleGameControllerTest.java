@@ -9,8 +9,6 @@ import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.FeedbackItem;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.FeedbacksResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
-import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RankInfo;
-import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse.RecordRanking;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.RankingEntry;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
@@ -172,11 +170,7 @@ class SingleGameControllerTest {
 		void it_returns_my_records_page() throws Exception {
 			MyRecordResponse record = MyRecordResponse.builder()
 					.gameId(1L).totalCourses(6).completed(true)
-					.tTotal(5000).tEnterMain(2000).createdAt(java.time.Instant.now())
-					.ranking(RecordRanking.builder()
-							.global(RankInfo.builder().rank(1).totalParticipants(50).percentile(0).build())
-							.department(RankInfo.builder().rank(1).totalParticipants(10).percentile(0).build())
-							.build())
+					.tTotal(5000).createdAt(java.time.Instant.now())
 					.build();
 			given(singleGameService.getMyRecords(anyLong(), anyInt(), anyInt()))
 					.willReturn(new PageImpl<>(List.of(record), PageRequest.of(0, 10), 1));
@@ -202,7 +196,10 @@ class SingleGameControllerTest {
 		void it_returns_analysis() throws Exception {
 			AnalysisResponse serviceResponse = AnalysisResponse.builder()
 					.gameId(1L).totalCourses(6)
-					.totalTime(12000)
+					.record(AnalysisResponse.RecordInfo.builder()
+							.tTotal(12000).tEnterMain(200).completed(true).build())
+					.globalRank(AnalysisResponse.RankInfo.builder()
+							.rank(1).totalPersons(100L).percentile(0.0).build())
 					.feedbacks(FeedbacksResponse.builder()
 							.primary(FeedbackItem.builder()
 									.code("GOD_TIER_PHYSICAL")
@@ -217,6 +214,7 @@ class SingleGameControllerTest {
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.gameId").value(1))
 					.andExpect(jsonPath("$.data.feedbacks.primary.code").value("GOD_TIER_PHYSICAL"))
+					.andExpect(jsonPath("$.data.record.tTotal").value(12000))
 					.andExpect(jsonPath("$.meta").exists());
 		}
 	}

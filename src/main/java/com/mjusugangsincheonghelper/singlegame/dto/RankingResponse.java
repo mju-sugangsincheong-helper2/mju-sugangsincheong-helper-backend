@@ -19,9 +19,9 @@ public class RankingResponse implements Serializable {
 
 	private int totalCourses;
 	private String scope;
+	private String department;
 	private List<RankingEntry> rankings;
 	private MyRankInfo myRank;
-	private SubRankings subRankings;
 
 	@Getter
 	@Builder
@@ -58,33 +58,6 @@ public class RankingResponse implements Serializable {
 		@JsonProperty("tEnterMain")
 		private int tEnterMain;
 	}
-
-	@Getter
-	@Builder
-	@NoArgsConstructor
-	@AllArgsConstructor
-	public static class SubRankings implements Serializable {
-
-		private static final long serialVersionUID = 1L;
-
-		private List<SubEntry> enterMainTop3;
-		private List<SubEntry> firstClickTop3;
-	}
-
-	@Getter
-	@Builder
-	@NoArgsConstructor
-	@AllArgsConstructor
-	@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY, getterVisibility = JsonAutoDetect.Visibility.NONE)
-	public static class SubEntry implements Serializable {
-
-		private static final long serialVersionUID = 1L;
-
-		private int rank;
-		private String name;
-		@JsonProperty("tEnterMain")
-		private int tEnterMain;
-		@JsonProperty("tClickCourse1st")
-		private int tClickCourse1st;
-	}
 }
+
+

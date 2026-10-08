@@ -92,7 +92,7 @@ class SingleGameRepositoryTest {
 					.memberId(otherMember.getId()).tTotal(4000).tEnterMain(100)
 					.isCompleted(true).totalCourses(6).build());
 
-			List<Object[]> rankings = singleGameRepository.findRankingRaw(6);
+			List<Object[]> rankings = singleGameRepository.findRankingRaw(6, 20);
 
 			assertThat(rankings).hasSize(2);
 			assertThat(((Number) rankings.get(0)[5]).intValue()).isEqualTo(3000);
@@ -109,7 +109,7 @@ class SingleGameRepositoryTest {
 					.memberId(testMember.getId()).tTotal(3000).tEnterMain(150)
 					.isCompleted(true).totalCourses(3).build());
 
-			List<Object[]> rankings = singleGameRepository.findRankingRaw(6);
+			List<Object[]> rankings = singleGameRepository.findRankingRaw(6, 20);
 
 			assertThat(rankings).hasSize(1);
 		}
@@ -135,7 +135,7 @@ class SingleGameRepositoryTest {
 					.memberId(otherDeptMember.getId()).tTotal(3000).tEnterMain(150)
 					.isCompleted(true).totalCourses(6).build());
 
-			List<Object[]> rankings = singleGameRepository.findDeptRankingRaw(6, "컴퓨터공학과");
+			List<Object[]> rankings = singleGameRepository.findDeptRankingRaw(6, "컴퓨터공학과", 20);
 
 			assertThat(rankings).hasSize(1);
 			assertThat(((Number) rankings.get(0)[5]).intValue()).isEqualTo(5000);
@@ -143,8 +143,8 @@ class SingleGameRepositoryTest {
 	}
 
 	@Nested
-	@DisplayName("countByTotalCoursesAndIsCompletedTrue 메서드는")
-	class Describe_countByTotalCoursesAndIsCompletedTrue {
+	@DisplayName("countCompletedGames 메서드는")
+	class Describe_countCompletedGames {
 
 		@Test
 		@DisplayName("완료된 게임 수를 반환한다")
@@ -159,34 +159,9 @@ class SingleGameRepositoryTest {
 					.memberId(testMember.getId()).tTotal(4000).tEnterMain(100)
 					.isCompleted(false).totalCourses(6).build());
 
-			long count = singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6);
+			long count = singleGameRepository.countCompletedGames(6);
 
 			assertThat(count).isEqualTo(2);
-		}
-	}
-
-	@Nested
-	@DisplayName("findFirstClickRaw 메서드는")
-	class Describe_findFirstClickRaw {
-
-		@Test
-		@DisplayName("첫 번째 과목의 클릭 속도를 반환한다")
-		void it_returns_first_click_data() {
-			SingleGameEntity game = singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
-					.isCompleted(true).totalCourses(6).build());
-
-			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
-					.gameId(game.getId()).sequence(1)
-					.tClickCourse(450).tClickYes(180).tClickOk(200).build());
-			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
-					.gameId(game.getId()).sequence(2)
-					.tClickCourse(300).tClickYes(150).tClickOk(180).build());
-
-			List<Object[]> firstClicks = singleGameRepository.findFirstClickRaw(6);
-
-			assertThat(firstClicks).hasSize(1);
-			assertThat(((Number) firstClicks.get(0)[2]).intValue()).isEqualTo(450);
 		}
 	}
 

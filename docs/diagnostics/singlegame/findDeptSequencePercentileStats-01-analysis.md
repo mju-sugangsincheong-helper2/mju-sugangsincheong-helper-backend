@@ -128,6 +128,7 @@ nearest-rank 방식: `rn = CEIL(cnt * p)`인 행 1개를 지표·분위마다 �
 
 ## 다음 문서
 
+- `singlegame-api-01-structure.md` (별도 트랙): 실API(`SingleGameController` 일대) 구조 검토. 쿼리 손보기 전에 이쪽 §5 순서대로 먼저.
 - `02-explain-실측.md` (예정): `EXPLAIN (ANALYZE, BUFFERS)` 결과 기록 + §4 가설 검증.
   실행 쿼리는 이 문서 §1 전문에 `totalCourses=6, department='컴퓨터공학과'` 바인딩.
   실행 전 `VACUUM ANALYZE single_game / single_game_detail / member` 필수 (dev는 `ddl-auto=update`라 통계가 낡기 쉬움).

@@ -19,32 +19,5 @@ public class MyRecordResponse implements Serializable {
 	private int totalCourses;
 	private boolean completed;
 	private int tTotal;
-	private int tEnterMain;
 	private Instant createdAt;
-	private RecordRanking ranking;
-
-	@Getter
-	@Builder
-	@NoArgsConstructor
-	@AllArgsConstructor
-	public static class RecordRanking implements Serializable {
-
-		private static final long serialVersionUID = 1L;
-
-		private RankInfo global;
-		private RankInfo department;
-	}
-
-	@Getter
-	@Builder
-	@NoArgsConstructor
-	@AllArgsConstructor
-	public static class RankInfo implements Serializable {
-
-		private static final long serialVersionUID = 1L;
-
-		private int rank;
-		private int totalParticipants;
-		private double percentile;
-	}
 }
