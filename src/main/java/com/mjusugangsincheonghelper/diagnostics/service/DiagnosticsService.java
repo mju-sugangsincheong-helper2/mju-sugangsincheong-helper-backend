@@ -1,8 +1,12 @@
 package com.mjusugangsincheonghelper.diagnostics.service;
 
 import com.mjusugangsincheonghelper.database.entity.Member;
+import com.mjusugangsincheonghelper.database.entity.SingleGameEntity;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
+import com.mjusugangsincheonghelper.global.config.CacheProperties;
+import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
 import com.mjusugangsincheonghelper.diagnostics.dto.QueryTimingResponse;
 import com.mjusugangsincheonghelper.diagnostics.dto.SeedResetResponse;
 import com.mjusugangsincheonghelper.diagnostics.dto.SeedResultResponse;
@@ -16,6 +20,8 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -28,7 +34,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * dev 전용 진단 측정/시드 서비스.
  *
  * <p>진입점({@code DiagnosticsController})과 마찬가지로 {@code dev} 프로파일에서만
- * 빈으로 등록된다. 측정은 Repository 직접 호출(서비스 캐시 우회)로 순수 DB 실행 시간을 잰다.</p>
+ * 빈으로 등록된다. 측정 지점은 2개다. analysis/db(Repository 단일 쿼리 직접 호출, 서비스·캐시 없음)와 analysis/api(SingleGameService 전체 경로, 측정 직전 캐시 evict로 cold 측정).</p>
  */
 @Slf4j
 @Service
@@ -57,15 +63,17 @@ public class DiagnosticsService {
 
 	private final SingleGameRepository singleGameRepository;
 	private final MemberRepository memberRepository;
+	private final SingleGameService singleGameService;
+	private final CacheManager cacheManager;
 	private final JdbcTemplate jdbcTemplate;
 	private final PlatformTransactionManager transactionManager;
 
 	/**
-	 * findDeptSequencePercentileStats 쿼리를 단일 학과에 대해 1회 실행 시간을 측정한다.
+	 * analysis/db 지점 평가. 학과 분위수 단일 쿼리를 Repository 직접 호출로 잰다.
 	 * SingleGameStatsService를 경유하지 않으므로 통계 캐시의 영향을 받지 않는다.
 	 * 학과당 1회 측정한다. 반복 실행이 박스권에 평평해 워밍업·반복이 유의미하지 않음을 확인했기 때문이다.
 	 */
-	public QueryTimingResponse timeDeptSequenceStats(int totalCourses, String department) {
+	public QueryTimingResponse timeAnalysisDb(int totalCourses, String department) {
 		if (department == null || department.isBlank()) {
 			throw new BaseException(ErrorCode.GLOBAL_VALIDATION_ERROR);
 		}
@@ -74,7 +82,7 @@ public class DiagnosticsService {
 		List<Object[]> rows = singleGameRepository.findDeptSequencePercentileStats(totalCourses, department);
 		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 
-		log.info("Dev diagnostics timing. query=findDeptSequencePercentileStats totalCourses={} department={} ms={}",
+		log.info("Dev diagnostics timing. query=analysis/db totalCourses={} department={} ms={}",
 				totalCourses, department, elapsedMs);
 
 		Map<String, Object> params = new LinkedHashMap<>();
@@ -82,12 +90,83 @@ public class DiagnosticsService {
 		params.put("department", department);
 
 		return new QueryTimingResponse(
-				"findDeptSequencePercentileStats",
+				"analysis/db",
 				params,
 			elapsedMs,
 			rows.size(),
-				"단일 학과 1회 측정 (Repository 직접 호출로 캐시 우회). 순수 DB 실행 시간."
+				"단일 학과 1회 측정 (Repository 직접 호출, 서비스·캐시 없음). 순수 DB 실행 시간."
 		);
+	}
+
+	/**
+	 * analysis/api 지점 평가. 기존 인프라와 동일한 DB 접근을 유지하되 캐시는 타지 않는다.
+	 *
+	 * <p>{@code SingleGameService.getAnalysis}를 그대로 호출하므로 실제 응답이 거치는
+	 * DB 접근(원본 조회 + 전역/학과 통계 + 랭킹 + 피드백 집계)을 전부 포함한다.
+	 * 측정 직전에 해당 totalCourses의 통계 캐시(global/dept)를 evict해 cold 경로를 잰다.
+	 * 계측 구간에는 캐시 evict를 포함하지 않는다.</p>
+	 *
+	 * <p>해당 totalCourses의 완료 게임 중 아무거나 1개를 대표로 골라 측정한다.
+	 * viewer(memberId)는 판 주인으로 둔다(isOwner=true, 학과 통계 경로 포함).</p>
+	 */
+	public QueryTimingResponse timeAnalysisApi(int totalCourses) {
+		long resolvedGameId = resolveAnalysisGameId(totalCourses);
+		SingleGameEntity game = singleGameRepository.findById(resolvedGameId)
+				.orElseThrow(() -> new BaseException(ErrorCode.SINGLEGAME_GAME_NOT_FOUND));
+		int resolvedTotalCourses = game.getTotalCourses();
+		Long viewerMemberId = game.getMemberId();
+
+		String dept = null;
+		Member owner = memberRepository.findById(game.getMemberId()).orElse(null);
+		if (owner != null && owner.getDepartment() != null && !owner.getDepartment().isBlank()) {
+			dept = owner.getDepartment();
+		}
+
+		evictStatsCache(resolvedTotalCourses, dept);
+
+		long start = System.nanoTime();
+		AnalysisResponse analysis = singleGameService.getAnalysis(resolvedGameId, viewerMemberId);
+		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
+
+		log.info("Dev diagnostics timing. query=analysis/api gameId={} totalCourses={} dept={} ms={}",
+				resolvedGameId, resolvedTotalCourses, dept, elapsedMs);
+
+		Map<String, Object> params = new LinkedHashMap<>();
+		params.put("gameId", resolvedGameId);
+		params.put("totalCourses", resolvedTotalCourses);
+		if (dept != null) {
+			params.put("department", dept);
+		}
+
+		int rowCount = analysis.getDetail() != null ? analysis.getDetail().size() : 0;
+		return new QueryTimingResponse(
+				"analysis/api",
+				params,
+			elapsedMs,
+			rowCount,
+				"getAnalysis 동일 경로를 통계 캐시 evict 후 1회 측정 (cold). 실제 API DB 접근 전체 포함."
+		);
+	}
+
+	private long resolveAnalysisGameId(int totalCourses) {
+		List<Long> ids = jdbcTemplate.queryForList(
+				"SELECT id FROM single_game WHERE total_courses = ? AND is_completed = TRUE ORDER BY id DESC LIMIT 1",
+				Long.class, totalCourses);
+		if (ids.isEmpty()) {
+			throw new BaseException(ErrorCode.SINGLEGAME_GAME_NOT_FOUND);
+		}
+		return ids.get(0);
+	}
+
+	private void evictStatsCache(int totalCourses, String department) {
+		Cache cache = cacheManager.getCache(CacheProperties.SINGLEGAME_STATS);
+		if (cache == null) {
+			return;
+		}
+		cache.evict(totalCourses + ":global:cache");
+		if (department != null && !department.isBlank()) {
+			cache.evict(totalCourses + ":dept:" + department + ":cache");
+		}
 	}
 
 	/**

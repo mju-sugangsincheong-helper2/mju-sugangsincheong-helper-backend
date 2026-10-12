@@ -56,5 +56,16 @@ tasks.named('jar') {
 }
 
 tasks.withType(JavaCompile) {
-	options.compilerArgs << "-Xlint:deprecation"
+    options.compilerArgs += ["-Xlint:deprecation"]
+}
+
+tasks.named('bootRun') {
+	doFirst {
+        file("build/jfr").mkdirs()
+    }
+    jvmArgs = [
+        "-XX:StartFlightRecording=filename=build/jfr/build-${System.currentTimeMillis()}.jfr,settings=profile,dumponexit=true",
+        // 진단용: Spring+Hibernate+PG 깊은 스택도 컨트롤러까지 짤리지 않게 기록 (기본 64)
+        "-XX:FlightRecorderOptions=stackdepth=256"
+    ]
 }

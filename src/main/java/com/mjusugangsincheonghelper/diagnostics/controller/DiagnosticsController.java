@@ -26,6 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
  * dev 전용 진단 API 진입점. 앞으로 추가되는 쿼리 속도 측정·디버깅용 API는
  * 도메인별 컨트롤러가 아닌 여기에 엔드포인트로 추가한다.
  *
+ * <p>측정 API 명명: {@code <도메인>/<기능>/<측정지점>}.
+ * 싱글게임 분석은 {@code analysis} 아래에 2개 지점을 둔다.
+ * {@code db}(Repository 단일 쿼리 직접 호출, 서비스·캐시 없음)와
+ * {@code api}(SingleGameService 전체 경로, 측정 직전 캐시 evict로 cold 측정).</p>
+ *
  * <p>{@code @Profile("dev")}이므로 prod에서는 빈 자체가 등록되지 않아(404)
  * 실수로 운영에 노출될 수 없다.</p>
  */
@@ -39,11 +44,11 @@ public class DiagnosticsController {
 
 	private final DiagnosticsService diagnosticsService;
 
-	@GetMapping(value = "/singlegame/dept-sequence-stats", version = "1+")
+	@GetMapping(value = "/singlegame/analysis/db", version = "1+")
 	@Operation(
-			summary = "Time dept sequence stats query (dev only)",
-			description = "findDeptSequencePercentileStats 쿼리를 지정 학과 1곳에 대해 1회 실행 시간을 측정합니다. "
-					+ "Repository 직접 호출(통계 캐시 우회)이므로 순수 DB 실행 시간입니다. (dev 환경 전용)",
+			summary = "Time analysis DB query (dev only)",
+			description = "DB 지점 평가. 학과 분위수 단일 쿼리를 Repository 직접 호출로 1회 측정합니다. "
+					+ "서비스·캐시를 타지 않으므로 순수 DB 실행 시간입니다. (dev 환경 전용)",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "측정 성공")
 			}
@@ -52,13 +57,34 @@ public class DiagnosticsController {
 			ErrorCode.GLOBAL_VALIDATION_ERROR,
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
-	public ResponseEntity<SingleSuccessResponseEnvelope<QueryTimingResponse>> timeDeptSequenceStats(
+	public ResponseEntity<SingleSuccessResponseEnvelope<QueryTimingResponse>> timeAnalysisDb(
 			@Parameter(description = "과목 수", example = "6", required = true)
 			@RequestParam("totalCourses") int totalCourses,
 			@Parameter(description = "측정 학과 (데이터 균등 분산이므로 1곳이 대표값)", example = "컴퓨터공학과", required = true)
 			@RequestParam("department") String department) {
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(
-				diagnosticsService.timeDeptSequenceStats(totalCourses, department)));
+				diagnosticsService.timeAnalysisDb(totalCourses, department)));
+	}
+
+	@GetMapping(value = "/singlegame/analysis/api", version = "1+")
+	@Operation(
+			summary = "Time analysis API path without cache (dev only)",
+			description = "API 지점 평가. SingleGameService.getAnalysis 전체 경로를 통계 캐시 evict 후 1회 측정합니다. "
+					+ "캐시를 타지 않는 cold 경로이며 실제 API의 DB 접근 전체를 포함합니다. 해당 totalCourses의 완료 게임 중 아무거나 1개를 대표로 골라 측정합니다. (dev 환경 전용)",
+			responses = {
+					@ApiResponse(responseCode = "200", description = "측정 성공")
+			}
+	)
+	@OperationErrorCodes({
+			ErrorCode.GLOBAL_VALIDATION_ERROR,
+			ErrorCode.SINGLEGAME_GAME_NOT_FOUND,
+			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
+	})
+	public ResponseEntity<SingleSuccessResponseEnvelope<QueryTimingResponse>> timeAnalysisApi(
+			@Parameter(description = "과목 수", example = "6", required = true)
+			@RequestParam("totalCourses") int totalCourses) {
+		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(
+				diagnosticsService.timeAnalysisApi(totalCourses)));
 	}
 
 	@PostMapping(value = "/singlegame/seed", version = "1+")
