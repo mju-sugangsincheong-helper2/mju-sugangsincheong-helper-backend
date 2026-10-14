@@ -44,3 +44,11 @@ k6/report/
 logs/
 # prod secrets
 .env
+
+# pinpoint agent 바이너리 (dev 전용, compose agent-setup이 내려받음)
+pinpoint/agent/*
+!pinpoint/agent/.gitkeep
+
+# mini-collector 부산물 (proto 캐시/생성 스텁/JSONL)
+pinpoint/collector/.mini-collector-cache/
+pinpoint/collector/mini-collector-data/

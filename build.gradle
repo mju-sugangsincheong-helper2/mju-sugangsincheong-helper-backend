@@ -50,6 +50,17 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
+// Pinpoint Agent 설정
+tasks.named('bootRun') {
+	jvmArgs(
+		"-javaagent:${projectDir}/pinpoint/agent/pinpoint-agent-3.1.1/pinpoint-bootstrap-3.1.1.jar",
+		"-Dpinpoint.agentId=dev-local-1",
+		"-Dpinpoint.applicationName=mju-sugangsincheong-helper-dev",
+		"-Dprofiler.sampling.type=PERCENT",
+		"-Dprofiler.sampling.percent.sampling-rate=100"
+	)
+}
+
 // 실행 가능한 jar 는 bootJar 산출물만 사용한다 (plain jar 미생성 → docker 이미지 COPY 단순화)
 tasks.named('jar') {
 	enabled = false
