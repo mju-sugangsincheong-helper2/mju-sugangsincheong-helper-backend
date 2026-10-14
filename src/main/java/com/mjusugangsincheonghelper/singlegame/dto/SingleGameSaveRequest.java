@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -15,6 +16,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY, getterVisibility = JsonAutoDetect.Visibility.NONE, isGetterVisibility = JsonAutoDetect.Visibility.NONE)
 public class SingleGameSaveRequest {
 
 	@Min(1)
@@ -24,6 +26,7 @@ public class SingleGameSaveRequest {
 	@JsonProperty("isCompleted")
 	private boolean isCompleted;
 
+	@JsonProperty("tEnterMain")
 	private int tEnterMain;
 
 	@NotEmpty

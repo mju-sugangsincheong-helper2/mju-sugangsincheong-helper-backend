@@ -5,17 +5,16 @@
 # ///
 """Pinpoint mini-collector JSONL -> 단일 요청 CallStack JSON.
 
-계층: <action> 2개 — list(전체 목록), show(1건 상세).
-show 옵션: 조건(어떤 요청을) / 출력 형태(tree/json/yaml) /
-상세도·직렬화·위치(얼마나·어떻게 찍나·어디에).
+계층: stats(url|jvm 구간 요약) / list(전체 목록) / trace(1건 상세, 형식 하위) / help.
+자세한 설명은 `--help` 전역 옵션으로 (예: 축 기호, 조건식, 조합 규칙).
 
 실행: uv run pinpoint/analyze/analyze.py <action> [options]
 
     uv run pinpoint/analyze/analyze.py list --sort elapsed --limit 5
-    uv run pinpoint/analyze/analyze.py show --tx 42
-    uv run pinpoint/analyze/analyze.py show --tx 42 --name full
-    uv run pinpoint/analyze/analyze.py show --rpc orders --status 200 --pick latest
-    uv run pinpoint/analyze/analyze.py show --tx 42 --format yaml
+    uv run pinpoint/analyze/analyze.py trace --tx 42 tree
+    uv run pinpoint/analyze/analyze.py trace --tx 42 tree --name full
+    uv run pinpoint/analyze/analyze.py trace --rpc orders --status 200 --pick latest json
+    uv run pinpoint/analyze/analyze.py trace --tx 42 yaml
 
 Pinpoint Web의 CallTree와 동일한 규칙을 단순화해 재현한다.
 (단일 노드/단일 spanId 케이스만 지원 — 분산 링크/비동기 분기는 표시만)
@@ -381,27 +380,27 @@ def service_type_name(code) -> str:
 # ════════════════════════════════════════════════════════
 
 def load_metadata(data_dir: Path) -> tuple[dict, dict]:
-    """metadata.jsonl -> (apiId→apiInfo, sqlId→sql)."""
+    """metadata.jsonl -> (apiId→apiInfo, sqlId→sql). 스트리밍 읽기."""
     api: dict[str, str] = {}
     sql: dict[str, str] = {}
-    for line in (data_dir / "metadata.jsonl").read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        o = json.loads(line)
-        m, msg = o["method"], o["msg"]
-        if m == "RequestApiMetaData":
-            api[str(msg.get("apiId"))] = msg.get("apiInfo", "")
-        elif m in ("RequestSqlMetaData", "RequestSqlUidMetaData"):
-            sql[str(msg.get("sqlId", msg.get("sqlUid", "")))] = msg.get("sql", "")
+    with open(data_dir / "metadata.jsonl", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            o = json.loads(line)
+            m, msg = o["method"], o["msg"]
+            if m == "RequestApiMetaData":
+                api[str(msg.get("apiId"))] = msg.get("apiInfo", "")
+            elif m in ("RequestSqlMetaData", "RequestSqlUidMetaData"):
+                sql[str(msg.get("sqlId", msg.get("sqlUid", "")))] = msg.get("sql", "")
     return api, sql
 
 
 def load_spans(data_dir: Path) -> list[dict]:
-    """spans.jsonl 한 줄 = PSpanMessage{span|spanChunk}."""
-    return [json.loads(line) for line in
-            (data_dir / "spans.jsonl").read_text(encoding="utf-8").splitlines()
-            if line.strip()]
+    """spans.jsonl 한 줄 = PSpanMessage{span|spanChunk}. 스트리밍 읽기."""
+    with open(data_dir / "spans.jsonl", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
 
 
 def tx_key_of(body: dict) -> tuple:
@@ -635,6 +634,16 @@ def analyze_transaction(group_key: tuple, group: dict, api: dict, sql: dict,
         return {"error": "root span 없음 (chunk만 존재)", "key": str(group_key)}
     tree, warnings = build_call_tree(root, events)
     agent_id, start_time, seq, span_id = group_key
+    records = build_records(root, tree, api, sql, limit)
+    by_id = {r["id"]: r for r in records}
+    kids: dict[int, list] = {}
+    for r in records:
+        if r["parentId"] is not None:
+            kids.setdefault(r["parentId"], []).append(r)
+    for r in records:  # selfMs: 자식으로 설명 안 되는 시간(어림, 0 미만은 0)
+        el = r.get("elapsedMs")
+        r["selfMs"] = (None if el is None else max(
+            0, el - sum(c.get("elapsedMs") or 0 for c in kids.get(r["id"], []))))
     return {
         "transactionId": {"agentId": agent_id, "agentStartTime": start_time,
                           "sequence": seq, "spanId": span_id},
@@ -645,28 +654,46 @@ def analyze_transaction(group_key: tuple, group: dict, api: dict, sql: dict,
         "eventCount": len(events),
         "chunkCount": len(group["chunks"]),
         "warnings": warnings,
-        "records": build_records(root, tree, api, sql, limit),
+        "records": records,
     }
+
+
+def summarize(key: tuple, group: dict) -> dict:
+    """그룹당 1회 계산하는 파생값. 조건식·목록·집계가 공유 (annotation 스캔 1회)."""
+    root = group["root"]
+    chunks = len(group["chunks"])
+    if root is None:
+        return {"tx": key[2], "rpc": "", "status": None,
+                "elapsed": None, "events": 0, "chunks": chunks}
+    return {"tx": key[2],
+            "rpc": (root.get("acceptEvent") or {}).get("rpc", ""),
+            "status": _http_status(root),
+            "elapsed": root.get("elapsed"),
+            "events": (len(root.get("spanEvent", []))
+                       + sum(len(c.get("spanEvent", [])) for c in group["chunks"])),
+            "chunks": chunks}
+
+
+def match(summary: dict, tx=None, rpc=None, status=None) -> bool:
+    """조건식 1벌: 옵션 사이 AND, 같은 옵션 반복은 OR. 없으면 전체(⊤)."""
+    return ((tx is None or summary["tx"] in tx)
+            and (rpc is None or any(r in summary["rpc"] for r in rpc))
+            and (status is None or summary["status"] in status))
 
 
 def list_transactions(groups: dict, rpc: str | None = None, status: int | None = None,
                       sort: str = "tx", limit: int | None = None) -> list[dict]:
     out = []
     for key, g in groups.items():
-        root = g["root"]
-        if root is None:
-            out.append({"tx": key[2], "rpc": "<no-root>", "elapsedMs": None,
-                        "events": 0, "chunks": len(g["chunks"])})
+        s = summarize(key, g)
+        if g["root"] is None:  # chunk만: 필터 없이 그대로 (기존 동작 유지)
+            out.append({"tx": s["tx"], "rpc": "<no-root>", "elapsedMs": None,
+                        "events": 0, "chunks": s["chunks"]})
             continue
-        r = (root.get("acceptEvent") or {}).get("rpc", "")
-        st = _http_status(root)
-        if rpc and rpc not in r:
+        if not match(s, rpc=rpc, status=status):
             continue
-        if status is not None and st != status:
-            continue
-        n = len(root.get("spanEvent", [])) + sum(len(c.get("spanEvent", [])) for c in g["chunks"])
-        out.append({"tx": key[2], "rpc": r, "httpStatus": st,
-                    "elapsedMs": root.get("elapsed"), "events": n, "chunks": len(g["chunks"])})
+        out.append({"tx": s["tx"], "rpc": s["rpc"], "httpStatus": s["status"],
+                    "elapsedMs": s["elapsed"], "events": s["events"], "chunks": s["chunks"]})
     if sort == "elapsed":
         out.sort(key=lambda r: (r["elapsedMs"] is None, -(r["elapsedMs"] or 0)))
     else:
@@ -678,54 +705,59 @@ def list_transactions(groups: dict, rpc: str | None = None, status: int | None =
 # 3. 보기: 사람용 렌더 (JSON은 그대로 출력)
 # ════════════════════════════════════════════════════════
 
-def render_tree(payload: dict, limit: int | None = DEFAULT_TRUNCATE,
-                full_name: bool = False, show_arg: bool = True) -> str:
-    """Pinpoint CallTree 화면처럼 ASCII 트리로.
+def _event_elapsed(ev: dict) -> int:
+    """span event 1개의 wall-clock."""
+    s = ev.get("startElapsed", 0) or 0
+    e = ev.get("endElapsed", 0) or 0
+    return max(0, e - s)
 
-    full_name=True면 풀패키지(class.method), 기본은 메서드명만.
-    show_arg=False면 :: SQL(argument) 숨기기, 기본은 보이기.
-    """
+
+def render_call_tree(root: dict, events: list[dict], tree: TNode, warnings: list[str],
+                      tx_seq: str, api: dict, sql: dict, limit: int | None = DEFAULT_TRUNCATE,
+                      full_name: bool = False, show_arg: bool = True) -> str:
+    """TNode를 직접 ASCII 트리로. records를 만들지 않는 tree 전용 빠른 길.
+
+    출력은 build_records+render_tree 경로와 바이트 동일 (스냅샷 diff로 검증)."""
     arg_len = None if limit is None else TREE_ARG_LEN
-    lines = [f"{payload.get('rpc')} [{payload.get('httpStatus')}] {payload.get('elapsedMs')}ms "
-             f"(tx={payload.get('transactionId', {}).get('sequence')}, "
-             f"events={payload.get('eventCount')})"]
-    children: dict[int, list[dict]] = defaultdict(list)
-    roots = []
-    for r in payload.get("records", []):
-        (roots if r.get("parentId") is None else children[r["parentId"]]).append(r)
+    total = root.get("elapsed") or 0
+    lines = [f"{(root.get('acceptEvent') or {}).get('rpc')} [{_http_status(root)}] "
+             f"{root.get('elapsed')}ms (tx={tx_seq}, events={len(events)})"]
 
-    total = payload.get("elapsedMs") or 0
-
-    def visit(r: dict, prefix: str, is_last: bool):
-        if r.get("kind") == "root":
-            kids = children.get(r["id"], [])
-            for i, ch in enumerate(kids):
-                visit(ch, "", i == len(kids) - 1)
-            return
-        cls, method = r.get("className", ""), r.get("title", "")
-        if full_name:
-            name = f"{cls}.{method}" if cls else (r.get("api", "") or method)
-        else:
-            name = method or r.get("api", "")
-        el = r.get("elapsedMs")
+    def node_line(node: TNode) -> str:
+        ev = node.align or {}
+        full = api.get(str(ev.get("apiId", "")), f"apiId={ev.get('apiId', '')}")
+        cls, method, _ = split_api(full)
+        shown_api = full if limit is None else _cut(full, 250)
+        name = ((f"{cls}.{method}" if cls else shown_api) if full_name
+                else (method or _cut(full, 120)))
+        el = _event_elapsed(ev)
         pct = f"{el / total * 100:.1f}%" if total and el is not None else "-"
-        arg = (r.get("argument", "") or "") if show_arg else ""
+        kids_el = sum(_event_elapsed(ch.align or {}) for ch in node.children)
+        self_ms = max(0, el - kids_el)  # 어림: async 겹침·시계 오차 포함
+        arg = (resolve_argument(ev, sql, limit) or "") if show_arg else ""
         extra = "".join([
             f" :: {arg if arg_len is None else arg[:arg_len]}" if arg else "",
-            f" !! {r['exception']['message'][:100]}" if r.get("exception") else "",
-            f" [corrupted:{r['corrupted']}]" if r.get("corrupted") else "",
-            " [async]" if r.get("async") else "",
+            (f" !! {_cut(ev['exceptionInfo'].get('stringValue') or '', limit)[:100]}"
+             if ev.get("exceptionInfo") else ""),
+            f" [corrupted:{node.corrupted}]" if node.corrupted else "",
+            " [async]" if (ev.get("_async") or ev.get("asyncEvent")) else "",
         ])
-        lines.append(f"{prefix}{'└─ ' if is_last else '├─ '}[{r['depth']}:{r.get('sequence')}] "
-                     f"{name} ({r.get('serviceTypeName') or r.get('serviceType')}) "
-                     f"{el}ms ({pct}){extra}")
-        kids = children.get(r["id"], [])
-        for i, ch in enumerate(kids):
-            visit(ch, prefix + ("   " if is_last else "│  "), i == len(kids) - 1)
+        return (f"[{node.depth}:{ev.get('_sequence')}] {name} "
+                f"({service_type_name(ev.get('serviceType')) or ev.get('serviceType')}) "
+                f"{el}ms ({pct}, self {self_ms}ms){extra}")
 
-    for r in roots:
-        visit(r, "", True)
-    lines.extend(f"! {w}" for w in payload.get("warnings", []))
+    def visit(node: TNode, prefix: str, is_last: bool):
+        lines.append(f"{prefix}{'└─ ' if is_last else '├─ '}{node_line(node)}")
+        kids = node.children
+        n = len(kids)
+        for i, ch in enumerate(kids):
+            visit(ch, prefix + ("   " if is_last else "│  "), i == n - 1)
+
+    kids = tree.children
+    n = len(kids)
+    for i, ch in enumerate(kids):
+        visit(ch, "", i == n - 1)
+    lines.extend(f"! {w}" for w in warnings)
     return "\n".join(lines)
 
 
@@ -782,104 +814,159 @@ def to_yaml(obj, indent: int = 0) -> str:
 
 
 # ════════════════════════════════════════════════════════
-# 4. CLI: <action> [--option]
-#    list             목록 (필터: --rpc/--status, 정렬/제한)
-#    show             1건 상세 (렌더: tree/json/yaml)
+# 4. CLI: stats(url|jvm) / list / trace(tree|json|yaml) / help
 # ════════════════════════════════════════════════════════
 
-def _emit_json(payload, out: str | None, compact: bool):
-    text = json.dumps(payload, ensure_ascii=False) if compact \
-        else json.dumps(payload, ensure_ascii=False, indent=2)
-    if out:
-        Path(out).write_text(text, encoding="utf-8")
-        print(f"wrote {out} ({len(text)} chars)")
+def _emit_json(payload, compact: bool = False):
+    if compact:
+        print(json.dumps(payload, ensure_ascii=False))
     else:
-        print(text)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def _select(groups: dict, tx: str | None, rpc: str | None,
             status: int | None, pick: str | None) -> tuple[list, str | None]:
     """선택 조건 4개는 수평 관계(위계 없음). 전부 AND로 겹치고, 없으면 전체."""
-    candidates = list(groups.items())
-    if tx is not None:
-        candidates = [(k, g) for k, g in candidates if k[2] == str(tx)]
-    if rpc:
-        candidates = [(k, g) for k, g in candidates
-                      if rpc in (((g["root"] or {}).get("acceptEvent") or {}).get("rpc", ""))]
-    if status is not None:
-        candidates = [(k, g) for k, g in candidates
-                      if g["root"] is not None and _http_status(g["root"]) == status]
+    candidates = [(k, g) for k, g in groups.items()
+                  if match(summarize(k, g), tx, rpc, status)]
     if not candidates:
         return [], "조건에 맞는 트랜잭션 없음 (--tx/--rpc/--status 확인)"
-    if pick == "latest":
-        candidates = [sorted(candidates, key=lambda kv: int(kv[0][2]))[-1]]
-    elif pick == "first":
-        candidates = [sorted(candidates, key=lambda kv: int(kv[0][2]))[0]]
-    elif pick == "slowest":
-        candidates = [sorted(candidates,
-                             key=lambda kv: -((kv[1]["root"] or {}).get("elapsed") or 0))[0]]
-    return candidates, None
+    if pick is None:
+        return candidates, None
+    key = (lambda kv: ((kv[1]["root"] or {}).get("elapsed") or 0)
+           if pick == "slowest" else int(kv[0][2]))
+    ordered = sorted(candidates, key=key, reverse=(pick == "slowest"))
+    return [ordered[0] if pick != "latest" else ordered[-1]], None
 
 
-def _analyze_many(groups: dict, api: dict, sql: dict, args, limit: int | None) -> list[dict]:
+def _analyze_many(groups: dict, api: dict, sql: dict, args) -> list[dict]:
     candidates, err = _select(groups, args.tx, args.rpc, args.status, args.pick)
     if err:
         print(err, file=sys.stderr)
         raise SystemExit(1)
-    return [analyze_transaction(k, g, api, sql, limit) for k, g in candidates]
+    return [analyze_transaction(k, g, api, sql, None) for k, g in candidates]
+
+
+def _load_agent_stats(data_dir: Path) -> list[dict]:
+    p = data_dir / "stat.jsonl"
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        batch = json.loads(line).get("msg", {}).get("agentStatBatch", {})
+        out.extend(batch.get("agentStat", []))
+    return out
+
+
+def _cmd_stats_url(args) -> int:
+    """stats url: URI 집계표(spans.jsonl 정확 집계)."""
+    data_dir = Path(args.data_dir)
+    _, _, groups = load_all(data_dir)
+    agg: dict[str, dict] = {}
+    for key, g in groups.items():
+        s = summarize(key, g)
+        if g["root"] is None:
+            continue
+        if not match(s, rpc=args.rpc, status=args.status):
+            continue
+        rpc = s["rpc"] or "(unknown)"
+        st = s["status"]
+        el = s["elapsed"] or 0
+        r = agg.setdefault(rpc, {"count": 0, "total": 0, "max": 0, "err": 0})
+        r["count"] += 1
+        r["total"] += el
+        r["max"] = max(r["max"], el)
+        if st is not None and st >= 500:  # agent errors=5xx 기준과 동일
+            r["err"] += 1
+    rows = [(rpc, v["count"], v["total"] // v["count"], v["max"], v["err"])
+            for rpc, v in agg.items()]
+    key = {"count": 1, "avg": 2, "max": 3}[args.sort]
+    rows.sort(key=lambda r: (-r[key], r[0]))
+    if args.limit:
+        rows = rows[:args.limit]
+    w = max([3] + [len(r[0]) for r in rows])
+    print("== URI ==")
+    print(f"{'rpc':<{w}}  count  avgMs  maxMs  err")
+    for rpc, c, a, m, e in rows:
+        print(f"{rpc:<{w}}  {c:>5}  {a:>5}  {m:>5}  {e:>3}")
+    return 0
+
+
+def _cmd_stats_jvm(args) -> int:
+    """stats jvm: JVM 요약(stat.jsonl agentStat 시계열)."""
+    from datetime import datetime
+    samples = _load_agent_stats(Path(args.data_dir))
+    if not samples:
+        print("(stat.jsonl 없음: JVM 생략)")
+        return 0
+    ts = sorted(int(s["timestamp"]) for s in samples)
+    t0 = datetime.fromtimestamp(ts[0] / 1000).strftime("%H:%M:%S")
+    t1 = datetime.fromtimestamp(ts[-1] / 1000).strftime("%H:%M:%S")
+    heap = [int(s["gc"]["jvmMemoryHeapUsed"]) for s in samples]
+    heap_max = int(samples[0]["gc"]["jvmMemoryHeapMax"]) // (1024 * 1024)
+    jvm = [float(s["cpuLoad"].get("jvmCpuLoad", 0)) for s in samples]
+    sys = [float(s["cpuLoad"].get("systemCpuLoad", 0)) for s in samples]
+    th = [int(s.get("totalThread", {}).get("totalThreadCount", 0)) for s in samples]
+    mb = lambda v: v // (1024 * 1024)
+    print(f"== JVM ({len(samples)} samples, {t0} ~ {t1}) ==")
+    print(f"heapUsed: min {mb(min(heap))}MB / max {mb(max(heap))}MB (heapMax {heap_max}MB)")
+    print(f"cpu jvm : avg {sum(jvm) / len(jvm) * 100:.1f}% / max {max(jvm) * 100:.1f}%")
+    print(f"cpu sys : avg {sum(sys) / len(sys) * 100:.1f}% / max {max(sys) * 100:.1f}%")
+    print(f"threads : {min(th)}~{max(th)}")
+    return 0
 
 
 def cmd_list(args) -> int:
     _, _, groups = load_all(Path(args.data_dir))
     _emit_json(list_transactions(groups, rpc=args.rpc, status=args.status,
-                                 sort=args.sort, limit=args.limit),
-               args.out, compact=False)
+                                 sort=args.sort, limit=args.limit))
     return 0
 
 
-def _emit_yaml(payload, out: str | None):
-    text = to_yaml(payload)
-    if out:
-        Path(out).write_text(text, encoding="utf-8")
-        print(f"wrote {out} ({len(text)} chars)")
-    else:
-        print(text)
+def _emit_yaml(payload):
+    print(to_yaml(payload))
 
 
-def _reject(msg: str) -> int:  # 축 어긋남: argparse error() 상당, exit 2
-    print(f"analyze.py: error: {msg} (`help` 참조)", file=sys.stderr)
-    return 2
-
-
-def cmd_show(args) -> int:
-    """show: 출력방식 1축(--format)으로 결정. json/yaml은 항상 full(자름 없음)."""
-    if args.format in ("json", "yaml") and (args.name != "short" or args.sql != "show"):
-        return _reject("--name/--sql은 --format tree일 때만")
-    if args.compact and not (args.format == "json" or args.out):
-        return _reject("--compact는 JSON이 나갈 때만 (--format json 또는 --out 병행)")
+def _cmd_trace(args) -> int:
+    """trace: 형식은 하위 서브커맨드(tree/json/yaml). json은 항상 compact 한 줄."""
+    fmt = args.format
     api, sql, groups = load_all(Path(args.data_dir))
-    limit = None if (args.sql == "full" or args.format in ("json", "yaml")) else DEFAULT_TRUNCATE
-    results = _analyze_many(groups, api, sql, args, limit)
-    single = results[0] if len(results) == 1 else results
-    if args.format == "json":
-        _emit_json(single, args.out, args.compact)
+    if fmt in ("json", "yaml"):
+        results = _analyze_many(groups, api, sql, args)
+        single = results[0] if len(results) == 1 else results
+        if fmt == "json":
+            _emit_json(single, True)
+        else:
+            _emit_yaml(single)
         return 0
-    if args.format == "yaml":
-        _emit_yaml(single, args.out)
-        return 0
-    if args.out:  # --out은 항상 JSON 저장, 화면에는 트리 출력
-        _emit_json(single, args.out, args.compact)
-    for p in results:
-        if len(results) > 1:
-            print(f"── tx={p.get('transactionId', {}).get('sequence')} "
-                  f"{p.get('rpc')} [{p.get('httpStatus')}] ──")
-        print(render_tree(p, limit, full_name=(args.name == "full"),
-                          show_arg=(args.sql != "hide")))
+    limit = None if args.sql == "full" else DEFAULT_TRUNCATE
+    candidates, err = _select(groups, args.tx, args.rpc, args.status, args.pick)
+    if err:
+        print(err, file=sys.stderr)
+        raise SystemExit(1)
+    multi = len(candidates) > 1
+    for key, g in candidates:
+        root, events = collect_aligns(g)
+        if root is None:  # chunk만: 기존 퇴화 출력과 동일
+            if multi:
+                print("── tx=None None [None] ──")
+            print("None [None] Nonems (tx=None, events=None)")
+            continue
+        if multi:
+            rpc = (root.get("acceptEvent") or {}).get("rpc")
+            print(f"── tx={key[2]} {rpc} [{_http_status(root)}] ──")
+        tree, warnings = build_call_tree(root, events)
+        print(render_call_tree(root, events, tree, warnings, key[2], api, sql, limit,
+                               full_name=(args.name == "full"),
+                               show_arg=(args.sql != "hide")))
     return 0
 
 
 # ════════════════════════════════════════════════════════
-# 5. 도움말: help [list|show] — --help보다 자세한 설명
+# 5. 도움말: --help — 전역 옵션 (액션 아님, 위치 무관)
 # ════════════════════════════════════════════════════════
 
 HELP_OVERVIEW = """
@@ -891,101 +978,135 @@ Pinpoint Web의 CallStack(CallTree) 1개 트랜잭션을 재현한다.
 읽는 파일 (--data-dir, 기본값은 실행 파일 기준 ../collector/mini-collector-data):
 - spans.jsonl   : PSpanMessage{span|spanChunk} — 호출 트리 원본
 - metadata.jsonl: apiId→apiInfo, sqlId→sql — 이름 해결용
-- stat.jsonl    : JVM/URI 통계. 이 도구는 읽지 않는다.
+- stat.jsonl    : JVM/URI 통계 (stats가 읽음: agentStat 시계열)
 
 전체 구조:
 ([ ]=축 — 분류일 뿐 실제 옵션이 아님 / --opt=실제 옵션 /
- A|B=택1 / A+B=AND 결합 / 대문자=값이 들어갈 자리)
+ A|B=택1 / A+B=AND 결합 / 동일옵션 반복=OR / 대문자=값이 들어갈 자리 / 전역=액션 앞에)
   .
-  ├── list                                  # 목록 (스캔)
-  │   ├── [원본위치] --data-dir DIR
-  │   ├── [출력위치] --out PATH             # 항상 JSON 저장
-  │   ├── [조건식] --rpc SUBSTR + --status CODE
-  │   └── [목록] --sort KEY + --limit N
-  └── show                                  # 상세 (1 트랜잭션)
-      ├── [원본위치] --data-dir DIR
-      ├── [출력위치] --out PATH             # 항상 JSON 저장
+  ├── [원본위치] --data-dir DIR
+  ├── [도움말] --help | -h
+  ├── stats [st]                                # 구간 요약
+  │   └── <mode> (택1, 생략 불가)
+  │       ├── url                               # URI 집계표
+  │       │   └── [조건식] --rpc SUBSTR + --status CODE + --sort KEY + --limit N
+  │       └── jvm                               # JVM 요약 (옵션 없음)
+  ├── list [ls]                               # 목록 (스캔)
+  │   └── [조건식] --rpc SUBSTR + --status CODE + --sort KEY + --limit N
+  └── trace [tr]                              # 상세 (1 트랜잭션)
       ├── [조건식] --tx SEQ + --rpc SUBSTR + --status CODE + --pick PICK
-      └── [출력방식] --format MODE          # 택1
-          ├── tree                          # 기본, 사람용
-          │   ├── --name short|full         # 기본 short
-          │   └── --sql show|hide|full      # 기본 show
-          ├── json                          # 기계용, 항상 전체
-          └── yaml                          # 기계용, 항상 전체
+      └── <format> (택1, 생략 불가)
+          ├── tree                            # 사람용
+          │   ├── --name short|full           # 기본 short
+          │   └── --sql show|hide|full        # 기본 show
+          ├── json                            # 기계용, 항상 전체
+          └── yaml                            # 기계용, 항상 전체
 """.strip()
 
-HELP_CONDITIONS = """
-조건식: 무엇을 고르나 (list/show 공통, 없으면 전체, 여러 개면 AND)
----------------------------------------------------------------
-- --tx SEQ                    : 트랜잭션 번호 직접 지정
+HELP_LIST_COND = """
+list 조건식 [list_condition]: 무엇을 고르나 (없으면 전체, 여러 개면 AND)
+------------------------------------------------------------------
+- --rpc SUBSTR : rpc 부분일치 (acceptEvent.rpc = HTTP URI 템플릿)
+- --status CODE: 응답 상태코드 (annotation key=46 http.status.code)
+- --sort KEY   : 정렬 (tx|elapsed, 기본 tx)
+- --limit N    : 최대 건수
+- 같은 옵션 반복은 OR (예: `--rpc a --rpc b`)
+""".strip()
+
+HELP_STATS = """
+stats: 구간 요약 (alias st)
+-------------------------
+모드는 하위 서브커맨드로 택1 (생략 불가):
+  stats url [...]   # URI 집계표 (spans.jsonl 정확 집계)
+  stats jvm         # JVM 요약 (stat.jsonl agentStat 시계열, 옵션 없음)
+
+- url [stats_url_condition:조건식]: rpc별 count/avgMs/maxMs/err(err는 5xx 기준, agent와 동일).
+  --rpc/--status로 좁히고, --sort count|avg|max, --limit N으로 자른다.
+  같은 옵션 반복은 OR (예: `--rpc a --rpc b`).
+- jvm: 수집 구간의 heap/cpu/스레드 min·avg·max.
+
+예:
+  stats url
+  stats url --rpc orders --sort max
+  stats jvm
+""".strip()
+
+
+HELP_TRACE_COND = """
+trace 조건식 [trace_condition]: 무엇을 고르나 (없으면 전체, 여러 개면 AND)
+-------------------------------------------------------------------
+- --tx SEQ                    : 트랜잭션 번호 직접 지정 (list에는 없음)
 - --rpc SUBSTR                : rpc 부분일치 (acceptEvent.rpc = HTTP URI 템플릿)
 - --status CODE               : 응답 상태코드 (annotation key=46 http.status.code)
-- --pick latest|first|slowest: 다건 매칭 시 1건 선택. show 전용 (list는 --limit로).
-                              단건 매칭이면 아무 일도 안 한다.
+- --pick latest|first|slowest : 다건 매칭 시 1건 선택 (list에는 없음.
+                                단건 매칭이면 아무 일도 안 한다)
+- 같은 옵션 반복은 OR (예: `--status 200 --status 500`)
+
+조건은 형식 앞에 쓴다: `trace --tx 42 tree` (O) / `trace tree --tx 42` (X).
 """.strip()
 
 HELP_LIST = """
-list: 모든 HTTP 요청 목록
-------------------------
+list: 모든 HTTP 요청 목록 (alias ls)
+-----------------------------------
 한 줄=1 요청: tx(번호), rpc, httpStatus, elapsedMs, events, chunks.
-조건식(--rpc/--status)으로 좁히고, --sort tx|elapsed 정렬,
---limit N으로 자른다. 병목 헌팅은 --sort elapsed.
 
 예:
-  list --sort elapsed --limit 5
+  list --sort elapsed --limit 5   # 병목 헌팅: 느린 순
   list --status 500
 """.strip()
 
-HELP_SHOW = """
-show: 1개 요청 상세 (기본 --format tree)
---------------------------------------
-출력방식 (--format, 택1):
-- tree (기본): 사람용 ASCII CallTree
-- json / yaml: 기계용. 항상 전체(자름 없음)
+HELP_TRACE = """
+trace: 1개 요청 상세 (alias tr)
+------------------------------
+형식은 하위 서브커맨드로 택1 (생략 불가):
+  trace [조건] tree [--name short|full] [--sql show|hide|full]
+  trace [조건] json
+  trace [조건] yaml
 
-출력조건 (tree 전용, 각각 1개 질문 = 1개 옵션):
-- --name short|full    : 함수명을 어떻게? short=메서드명만(기본), full=class.method
-- --sql show|hide|full: SQL을 어떻게? show=보이기+120자 자름(기본),
-                        hide=숨기기, full=전문
-
-직렬화·위치:
-- --compact   : JSON 한 줄 출력. JSON이 나갈 때만
-                (--format json 또는 --out 병행). YAML에는 없음
-- --out PATH  : 화면 출력과 병행해 JSON 스냅샷 저장 (--format과 무관)
-- --data-dir D: JSONL 위치 변경
+형식이 구조라서 scope 어긋남이 생기지 않는다.
+(--name/--sql은 tree 뒤에만 존재한다.)
 
 매칭이 여러 건이면 순서대로 전부 출력하고,
 각 결과 앞에 `── tx=N ... ──` 구분줄이 붙는다.
 
+저장은 셸 리다이렉션으로: `> 파일` (예: 아래 예시). 화면+저장 동시는 `tee`.
+
 예:
-  show --tx 20 --format tree --name full --sql full
-  show --tx 42
-  show --rpc orders --status 200 --pick latest
-  show --tx 42 --format json --out /tmp/tx42.json
-  show --tx 42 --format yaml | head -n 20
+  trace --tx 42 tree
+  trace --tx 42 tree --name full --sql full
+  trace --rpc orders --status 200 --pick latest json
+  trace --tx 42 json > /tmp/tx42.json
+  trace --tx 42 json | jq '.records | length'
+  trace --tx 42 json | tee /tmp/tx42.json | jq '.records | length'
+  trace --tx 42 yaml | head -n 20
 """.strip()
 
 HELP_RULES = """
 조합 규칙
 ---------
-- 4축(원본위치/출력위치/조건식/출력방식)은 직교: 어떤 조합이든 가능.
-- scope 어긋남은 에러 종료(exit 2), 조용히 무시하지 않는다:
-  --name/--sql + --format json|yaml, JSON 안 나가는 --compact.
+- 조건식은 수평 AND (없으면 전체). 순서를 바꿔도 같다.
+- 같은 조건 옵션 반복은 OR (`--rpc a --rpc b` = a∨b). 옵션 없으면 전체(⊤).
+- 형식(tree/json/yaml)은 구조라서 어긋날 수 없다.
+- --data-dir는 전역 옵션 (예: `analyze.py --data-dir D trace ...`).
+- 옵션은 외대시 2개 (`--tx`). 외대시 1개 (`-tx`)는 짧은 옵션 문법이라 거부된다.
 """.strip()
 
 HELP_TREE = """
 tree 한 줄 읽기
 ---------------
-  └─ [5:8] prepareStatement (POSTGRESQL) 0ms (0.0%) :: insert into ...
-       └─┬             │         │        │    │          └ argument (:: SQL 본문·어노테이션·목적지)
-         │             │         │        │    └ 전체 시간 대비 비율
-         │             │         │        └ 이 노드 소요 시간
-         │             │         └ Pinpoint ServiceType명
-         │             └ 함수명 (기본 메서드명만, --name full로 풀패키지)
-         └ [depth:sequence] — 깊이와 호출 순서
+  └─ [5:8] prepareStatement (POSTGRESQL) 0ms (0.0%, self 0ms) :: insert into ...
+       │               │         │        │    │    │          └ argument (:: SQL 본문·어노테이션·목적지)
+       │               │         │        │    │    └ self: 자식으로 설명 안 되는 시간 (어림)
+       │               │         │        │    └ 전체 시간 대비 비율
+       │               │         │        └ 이 노드 소요 시간
+       │               │         └ Pinpoint ServiceType명
+       │               └ 함수명 (기본 메서드명만, --name full로 풀패키지)
+       └ [depth:sequence] — 깊이와 호출 순서
 
 줄 끝 표시: !! 예외메시지(실패 노드) / [async](비동기) / [corrupted](수집 결함).
 트리 끝에 `! ...` 줄이 있으면 sequence/depth 어긋남 경고다.
+self = elapsed − 자식 합 (어림: async 겹침·시계 오차 포함, 0 미만은 0).
+자식 합이 부모를 넘을 수 있어서 0이 나와도 정상이다.
 """.strip()
 
 HELP_JSON = """
@@ -998,84 +1119,133 @@ JSON 스키마 (YAML도 동일 구조)
 record 1건: id/parentId/depth(트리 복원용), kind(root|spanEvent|spanChunk),
   sequence, title(메서드명), api(전체 시그니처), className,
   serviceType(+serviceTypeName), argument(SQL 본문 등), destinationId,
-  startTimeMs/elapsedMs/startOffsetMs/endOffsetMs,
+  startTimeMs/elapsedMs/selfMs/startOffsetMs/endOffsetMs,
   exception{intValue, message}|null, annotations[{key, name, value}],
   async, corrupted.
 
 예:
-  show --tx 42 --format json --compact | jq '.records | length'
-  show --tx 42 --format json --compact | jq '[.records[] | select(.exception)]'
+  trace --tx 42 json | jq '.records | length'
+  trace --tx 42 json | jq '[.records[] | select(.exception)]'
 """.strip()
 
 HELP_SECTIONS = {
     "overview": HELP_OVERVIEW,
-    "conditions": HELP_CONDITIONS,
+    "stats": HELP_STATS,
+    "list_cond": HELP_LIST_COND,
+    "trace_cond": HELP_TRACE_COND,
     "list": HELP_LIST,
-    "show": HELP_SHOW,
+    "trace": HELP_TRACE,
     "rules": HELP_RULES,
     "tree": HELP_TREE,
     "json": HELP_JSON,
 }
-HELP_ORDER = ["overview", "conditions", "list", "show", "rules", "tree", "json"]
+HELP_ORDER = ["overview", "stats", "list_cond", "list", "trace_cond", "trace", "rules", "tree", "json"]
 
 
-def cmd_help(args) -> int:
-    print("\n\n".join(HELP_SECTIONS[t] for t in HELP_ORDER))
-    return 0
+def _help_text() -> str:
+    return "\n\n".join(HELP_SECTIONS[t] for t in HELP_ORDER)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(
+    no_help = lambda *a, **k: argparse.ArgumentParser(*a, add_help=False, **k)  # -h 내장 제거 (전역 --help가 처리)
+    ap = no_help(
         prog="analyze.py", description="mini-collector JSONL -> 단일 요청 CallStack JSON")
-    # --rpc = 요청 이름 부분일치. Pinpoint의 rpc = HTTP URI 템플릿 (원시 acceptEvent.rpc)
-    # --status = 응답 HTTP 상태코드 (원시 annotation key=46 http.status.code)
-    sub = ap.add_subparsers(dest="action", required=True, metavar="<action>")
+    # --data-dir는 전역 옵션 (예: analyze.py --data-dir D trace ...)
+    ap.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR),
+                    help="JSONL 위치")
+    sub = ap.add_subparsers(dest="action", required=True, metavar="<action>",
+                            parser_class=no_help)
 
-    p_list = sub.add_parser("list", help="모든 HTTP 요청 목록")
-    g = p_list.add_argument_group("조건식: 무엇을 고르나")
-    g.add_argument("--rpc", metavar="SUBSTR", help="요청 이름 부분일치 (예: --rpc orders)")
-    g.add_argument("--status", type=int, default=None, metavar="CODE",
+    p_stats = sub.add_parser("stats", aliases=["st"], help="구간 요약 (모드는 하위 서브커맨드)")
+    ssub = p_stats.add_subparsers(dest="mode", required=True, metavar="<mode>",
+                                  parser_class=no_help)
+    s_url = ssub.add_parser("url", help="URI 집계표")
+    g = s_url.add_argument_group("조건식 (url 전용)")
+    g.add_argument("--rpc", metavar="SUBSTR", action="append", help="요청 이름 부분일치 (예: --rpc orders, 반복은 OR)")
+    g.add_argument("--status", type=int, default=None, action="append", metavar="CODE",
                    help="HTTP 상태코드 (예: --status 500)")
-    g = p_list.add_argument_group("목록: 어떻게 자르나")
-    g.add_argument("--sort", choices=["tx", "elapsed"], default="tx")
+    g.add_argument("--sort", choices=["count", "avg", "max"], default="count",
+                   help="정렬 (기본 count)")
+    g.add_argument("--limit", type=int, default=None, help="최대 행수")
+    s_url.set_defaults(func=_cmd_stats_url)
+    s_jvm = ssub.add_parser("jvm", help="JVM 요약")
+    s_jvm.set_defaults(func=_cmd_stats_jvm)
+
+    p_list = sub.add_parser("list", aliases=["ls"], help="모든 HTTP 요청 목록")
+    g = p_list.add_argument_group("조건식 (list 전용)")
+    g.add_argument("--rpc", metavar="SUBSTR", action="append", help="요청 이름 부분일치 (예: --rpc orders, 반복은 OR)")
+    g.add_argument("--status", type=int, default=None, action="append", metavar="CODE",
+                   help="HTTP 상태코드 (예: --status 500)")
+    g.add_argument("--sort", choices=["tx", "elapsed"], default="tx",
+                   help="정렬 (기본 tx, 병목은 elapsed)")
     g.add_argument("--limit", type=int, default=None, help="최대 건수")
-    g = p_list.add_argument_group("원본위치: 어디서 읽나")
-    g.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR))
-    g = p_list.add_argument_group("출력위치: 어디에 쓰나 (항상 JSON 저장)")
-    g.add_argument("--out", help="결과 JSON 저장 경로")
     p_list.set_defaults(func=cmd_list)
 
-    p_show = sub.add_parser("show", help="1개 요청 상세 (기본 --format tree)")
-    g = p_show.add_argument_group("조건식: 무엇을 고르나 (없으면 전체, 수평 AND)")
-    g.add_argument("--tx", default=None, metavar="SEQ", help="트랜잭션 번호 (예: --tx 42)")
-    g.add_argument("--rpc", metavar="SUBSTR", help="요청 이름 부분일치 (예: --rpc orders)")
-    g.add_argument("--status", type=int, default=None, metavar="CODE",
+    p_trace = sub.add_parser("trace", aliases=["tr"], help="1개 요청 상세 (형식은 하위 서브커맨드)")
+    g = p_trace.add_argument_group("조건식 (trace 전용, 없으면 전체, 수평 AND)")
+    g.add_argument("--tx", default=None, metavar="SEQ", action="append", help="트랜잭션 번호 (예: --tx 42, 반복은 OR)")
+    g.add_argument("--rpc", metavar="SUBSTR", action="append", help="요청 이름 부분일치 (예: --rpc orders, 반복은 OR)")
+    g.add_argument("--status", type=int, default=None, action="append", metavar="CODE",
                    help="HTTP 상태코드 (예: --status 500)")
     g.add_argument("--pick", choices=["latest", "first", "slowest"], default=None,
                    help="여러 건 매칭 시 1건만: latest(마지막) first(처음) slowest(가장 느림)")
-    g = p_show.add_argument_group("출력방식: 어떻게 보여주나 (택1)")
-    g.add_argument("--format", choices=["tree", "json", "yaml"], default="tree",
-                   help="tree=사람용(기본), json/yaml=기계용(항상 전체, 자름 없음)")
-    g = p_show.add_argument_group("출력조건: --format tree일 때만")
+    tsub = p_trace.add_subparsers(dest="format", required=True, metavar="<format>",
+                                  parser_class=no_help)
+    t_tree = tsub.add_parser("tree", help="사람용 ASCII CallTree")
+    g = t_tree.add_argument_group("출력조건 (tree 하위)")
     g.add_argument("--name", choices=["short", "full"], default="short",
                    help="함수명 표시: short=메서드명만(기본), full=class.method 풀패키지")
     g.add_argument("--sql", choices=["show", "hide", "full"], default="show",
                    help="SQL 표시: show=보이기+120자 자름(기본), hide=숨기기, full=전문")
-    g = p_show.add_argument_group("직렬화: JSON 한 줄로 (JSON이 나갈 때만)")
-    g.add_argument("--compact", action="store_true",
-                   help="--format json 또는 --out 병행 시에만 유효")
-    g = p_show.add_argument_group("원본위치: 어디서 읽나")
-    g.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR))
-    g = p_show.add_argument_group("출력위치: 어디에 쓰나 (항상 JSON 저장)")
-    g.add_argument("--out", help="화면 출력과 병행해 결과 JSON 저장")
-    p_show.set_defaults(func=cmd_show)
+    t_tree.set_defaults(func=_cmd_trace)
+    t_json = tsub.add_parser("json", help="기계용 JSON (항상 전체)")
+    t_json.set_defaults(func=_cmd_trace)
+    t_yaml = tsub.add_parser("yaml", help="기계용 YAML (항상 전체)")
+    t_yaml.set_defaults(func=_cmd_trace)
 
-    p_help = sub.add_parser("help", help="자세한 사용 설명")
-    p_help.set_defaults(func=cmd_help)
     return ap
 
 
+_LONG_OPTS = {"data-dir", "tx", "rpc", "status", "pick",
+              "sort", "limit", "name", "sql"}
+
+
+def _single_dash_typo(argv: list[str]) -> str | None:
+    """외대시 1개 + 긴 이름(예: -tx). 짧은 옵션은 없으니 오타로 확정."""
+    for a in argv:
+        if (len(a) > 2 and a.startswith("-") and not a.startswith("--")
+                and a[1:].replace("-", "").isalpha() and a[1:] in _LONG_OPTS):
+            return a[1:]
+    return None
+
+
+def _global_help(argv: list[str]) -> bool:
+    """전역 구역에 -h/--help가 있으면 True."""
+    skip = False  # --data-dir 값 건너뛰기
+    for a in argv:
+        if skip:
+            skip = False
+            continue
+        if a == "--data-dir":
+            skip = True
+            continue
+        if a in ("-h", "--help"):
+            return True
+        if not a.startswith("-"):
+            return False
+    return False
+
+
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    typo = _single_dash_typo(argv)
+    if typo:
+        print(f"analyze.py: error: '-{typo}'는 짧은 옵션 문법. '--{typo}'처럼 외대시 2개로",
+              file=sys.stderr)
+        return 2
+    if _global_help(argv):
+        print(_help_text())
+        return 0
     args = build_parser().parse_args(argv)
     return args.func(args)
 

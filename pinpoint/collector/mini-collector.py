@@ -98,7 +98,7 @@ def append_jsonl(stream: str, method: str, msg) -> None:
 
 
 def ok():
-    return svc.PResult(success=True)
+    return span_pb2.PResult(success=True)
 
 
 class Agent(svc_grpc.AgentServicer):
@@ -138,6 +138,33 @@ class Metadata(svc_grpc.MetadataServicer):
 
     def RequestExceptionMetaData(self, request, context):
         return self._handle("RequestExceptionMetaData", request)
+
+
+class ProfilerCommandService(svc_grpc.ProfilerCommandServiceServicer):
+    """원격 명령(스레드덤프 등) 미지원 스텁.
+
+    에이전트는起動 시 ProfilerCommandService.HandleCommand[V2] 양방향 스트림을 열어
+    커맨드 채널을 유지하려 한다. 미니컬렉터는 명령을 보낼 일이 없으므로 요청을
+    소비만 하고 응답은 보내지 않는다. 스트림이 열려 있으면 에이전트가 3초마다
+    재접속(UNIMPLEMENTED 스팸)하지 않는다.
+    """
+
+    def _hold(self, request_iterator):
+        try:
+            for _ in request_iterator:
+                pass
+        except Exception:
+            pass
+        return iter(())
+
+    def HandleCommand(self, request_iterator, context):
+        return self._hold(request_iterator)
+
+    def HandleCommandV2(self, request_iterator, context):
+        return self._hold(request_iterator)
+
+    def CommandEcho(self, request, context):
+        return empty_pb2.Empty()
 
 
 class Stat(svc_grpc.StatServicer):
@@ -182,6 +209,7 @@ def main() -> None:
     svc_grpc.add_MetadataServicer_to_server(Metadata(), server)
     svc_grpc.add_StatServicer_to_server(Stat(), server)
     svc_grpc.add_SpanServicer_to_server(Span(), server)
+    svc_grpc.add_ProfilerCommandServiceServicer_to_server(ProfilerCommandService(), server)
     for name, port in PORTS.items():
         server.add_insecure_port(f"[::]:{port}")
         print(f"[listen] {name} -> {port}", flush=True)

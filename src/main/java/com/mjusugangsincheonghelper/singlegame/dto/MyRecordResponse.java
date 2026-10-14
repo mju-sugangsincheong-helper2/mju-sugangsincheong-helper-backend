@@ -1,5 +1,7 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.io.Serializable;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
@@ -11,6 +13,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY, getterVisibility = JsonAutoDetect.Visibility.NONE, isGetterVisibility = JsonAutoDetect.Visibility.NONE)
 public class MyRecordResponse implements Serializable {
 
 	private static final long serialVersionUID = 1L;
@@ -18,7 +21,9 @@ public class MyRecordResponse implements Serializable {
 	private long gameId;
 	private int totalCourses;
 	private boolean completed;
+	@JsonProperty("tTotal")
 	private int tTotal;
+	@JsonProperty("tEnterMain")
 	private int tEnterMain;
 	private Instant createdAt;
 	private RecordRanking ranking;

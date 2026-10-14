@@ -30,39 +30,45 @@ Pinpoint 원본(`github.com/pinpoint-apm/pinpoint@master`) 매핑:
 ## 사용
 
 ```bash
-uv run pinpoint/analyze/analyze.py help   # 전체 설명 (개념·옵션·예시, 90여 줄)
+uv run pinpoint/analyze/analyze.py --help   # 전체 설명 (개념·옵션·예시)
+
+# stats: 구간 요약 (URI 집계 + JVM)
+uv run pinpoint/analyze/analyze.py stats url
+uv run pinpoint/analyze/analyze.py stats url --sort max --limit 5
+uv run pinpoint/analyze/analyze.py stats jvm
 
 # list: 찾기 → 좁히기 (노이즈 제외, 느린 순, 상태 필터)
 uv run pinpoint/analyze/analyze.py list --rpc orders --sort elapsed
 uv run pinpoint/analyze/analyze.py list --status 500
 
-# show: 번호 직접 지정 또는 조건으로 선택 (기본 --format tree)
-uv run pinpoint/analyze/analyze.py show --tx 42
-uv run pinpoint/analyze/analyze.py show --rpc orders --status 200 --pick latest
-uv run pinpoint/analyze/analyze.py show --rpc orders --pick slowest   # elapsed 최대
-uv run pinpoint/analyze/analyze.py show --rpc orders --pick first     # 최초 1건
+# trace: 번호 직접 지정 또는 조건으로 선택 (형식은 하위 서브커맨드, 생략 불가)
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree
+uv run pinpoint/analyze/analyze.py trace --rpc orders --status 200 --pick latest json
+uv run pinpoint/analyze/analyze.py trace --rpc orders --pick slowest tree   # elapsed 최대
+uv run pinpoint/analyze/analyze.py trace --rpc orders --pick first tree     # 최초 1건
 
-# show 출력방식: --format tree(사람용, 기본) / json / yaml (json·yaml은 항상 전체)
-uv run pinpoint/analyze/analyze.py show --tx 42 --format json --out /tmp/tx42.json
-uv run pinpoint/analyze/analyze.py show --tx 42 --format yaml | head -n 20
-uv run pinpoint/analyze/analyze.py show --tx 42 --format json --compact | jq '.records | length'
+# trace 형식: tree(사람용) / json / yaml (json·yaml은 항상 전체, 자름 없음)
+uv run pinpoint/analyze/analyze.py trace --tx 42 json > /tmp/tx42.json
+uv run pinpoint/analyze/analyze.py trace --tx 42 yaml | head -n 20
+uv run pinpoint/analyze/analyze.py trace --tx 42 json | jq '.records | length'
 
-# show 출력조건 (tree 전용): 함수명·SQL 표시 방식
-uv run pinpoint/analyze/analyze.py show --tx 42 --sql full    # :: SQL 전문 표시
-uv run pinpoint/analyze/analyze.py show --tx 42 --name full   # 풀패키지(class.method)로
-uv run pinpoint/analyze/analyze.py show --tx 42 --sql hide    # :: SQL 숨기기
+# trace tree 출력조건: 함수명·SQL 표시 방식
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree --sql full    # :: SQL 전문 표시
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree --name full   # 풀패키지(class.method)로
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree --sql hide    # :: SQL 숨기기
 ```
 
-축: 원본위치(`--data-dir`) / 출력위치(`--out`, 항상 JSON 저장) /
-조건식(무엇을 고르나: `--tx/--rpc/--status/--pick`, 없으면 전체·수평 AND,
-`--pick`은 show 전용) / 출력방식(어떻게 보여주나: `--format tree|json|yaml`,
-기본 tree, json·yaml은 항상 full) / 출력조건(tree 전용: `--name short|full`,
-`--sql show|hide|full`)·직렬화(`--compact`, JSON이 나갈 때만). scope 어긋남은
-exit 2.
+축: 전역 원본위치(`--data-dir`, 액션 앞에) / 조건식(list: `--rpc/--status`,
+trace: `--tx/--rpc/--status/--pick`. 없으면 전체·수평 AND) /
+형식(trace 하위 서브커맨드, 택1·생략 불가: `tree|json|yaml`,
+json·yaml은 항상 full) / tree 출력조건(`--name short|full`, `--sql show|hide|full`).
+형식이 구조라서 scope 어긋남이 생기지 않는다.
 
-이전 옵션 → 현재 (같은 출력, 바이트 동일): `--tree`→삭제(기본값),
-`--json/--yaml`→`--format json/yaml`, `--full-name`→`--name full`,
-`--no-sql`→`--sql hide`, `--full`→`--sql full`.
+이전 옵션 → 현재: `show`→`trace`, `X`→하위 서브커맨드 `X`,
+`--tree`→`trace ... tree`, `--json/--yaml`→`trace ... json/yaml`,
+`--full-name`→`--name full`, `--no-sql`→`--sql hide`, `--full`→`--sql full`,
+`--compact`/`--json compact`→삭제(json은 항상 compact 한 줄).
+별명: `list=ls`, `trace=tr`.
 
 ## 상황별 예시
 
@@ -70,7 +76,7 @@ exit 2.
 
 ```bash
 uv run pinpoint/analyze/analyze.py list --sort elapsed --limit 5
-uv run pinpoint/analyze/analyze.py show --rpc orders --pick slowest
+uv run pinpoint/analyze/analyze.py trace --rpc orders --pick slowest tree
 ```
 
 트리에서 `elapsedMs`+퍼센트가 큰 가지가 병목이다.
@@ -80,17 +86,17 @@ DB·외부연동이 의심되면 트리의 `:: SQL`(`--sql full`로 전문)을 �
 
 ```bash
 uv run pinpoint/analyze/analyze.py list --status 500
-uv run pinpoint/analyze/analyze.py show --rpc orders --status 500 --pick latest
+uv run pinpoint/analyze/analyze.py trace --rpc orders --status 500 --pick latest json
 ```
 
 트리에서 예외 노드 뒤에 `!! 메시지`가 붙어 위치를 알 수 있고,
-기계적으로 뽑을 땐 `show --tx 42 --format json --compact | jq '[.records[] | select(.exception)]'`.
+기계적으로 뽑을 땐 `trace --tx 42 json | jq '[.records[] | select(.exception)]'`.
 
 DB 쿼리만 리뷰할 때:
 
 ```bash
-uv run pinpoint/analyze/analyze.py show --tx 42 | grep "::"
-uv run pinpoint/analyze/analyze.py show --tx 42 --sql full | grep "::"   # 긴 SQL 전문 보기
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree | grep "::"
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree --sql full | grep "::"   # 긴 SQL 전문 보기
 ```
 
 트리 줄에 `:: SQL`로 호출 순서대로 붙어 나오며, 120자로 잘리니 전문은 `--sql full`로 본다.
@@ -98,7 +104,7 @@ uv run pinpoint/analyze/analyze.py show --tx 42 --sql full | grep "::"   # 긴 S
 캐시 동작 확인할 때:
 
 ```bash
-uv run pinpoint/analyze/analyze.py show --tx 42 | grep -i -E "redis|lettuce|cache"
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree | grep -i -E "redis|lettuce|cache"
 ```
 
 `serviceTypeName`이 `REDIS_LETTUCE` 등으로 표시되므로 트리에서 grep하면
@@ -107,9 +113,9 @@ uv run pinpoint/analyze/analyze.py show --tx 42 | grep -i -E "redis|lettuce|cach
 배포 전후 비교할 때 (회귀 확인):
 
 ```bash
-uv run pinpoint/analyze/analyze.py show --rpc orders --pick slowest --format json --out /tmp/before.json
+uv run pinpoint/analyze/analyze.py trace --rpc orders --pick slowest json > /tmp/before.json
 # ... 수정·재배포·재수집 후 ...
-uv run pinpoint/analyze/analyze.py show --rpc orders --pick slowest --format json --out /tmp/after.json
+uv run pinpoint/analyze/analyze.py trace --rpc orders --pick slowest json > /tmp/after.json
 diff <(jq '.records | length' /tmp/before.json) <(jq '.records | length' /tmp/after.json)
 ```
 
@@ -118,21 +124,20 @@ JSON으로 저장해두면 `jq`/`diff`로 구조·건수·시간을 기계 비�
 JSON을 직접 파볼 때:
 
 ```bash
-uv run pinpoint/analyze/analyze.py show --tx 42 --format json --compact | jq '.records | length'
-uv run pinpoint/analyze/analyze.py show --tx 42 --format json --compact | jq '[.records[] | select(.exception)]'
-uv run pinpoint/analyze/analyze.py show --tx 42 --format json --compact | jq '[.records[] | select(.serviceType == 2500)] | length'
+uv run pinpoint/analyze/analyze.py trace --tx 42 json | jq '.records | length'
+uv run pinpoint/analyze/analyze.py trace --tx 42 json | jq '[.records[] | select(.exception)]'
+uv run pinpoint/analyze/analyze.py trace --tx 42 json | jq '[.records[] | select(.serviceType == 2500)] | length'
 ```
 
-`--compact`은 한 줄 JSON이라 파이프라인에 바로 넣기 좋다.
+JSON을 직접 파볼 땐 `| jq`로 바로 받는다 (json은 항상 compact 한 줄).
 
-저장과 보기를 함께 할 때:
+저장과 보기를 함께 할 때 (`tee`):
 
 ```bash
-uv run pinpoint/analyze/analyze.py show --tx 42 --out /tmp/tx42.json
+uv run pinpoint/analyze/analyze.py trace --tx 42 tree | tee /tmp/tx42.txt
 ```
 
-`--out`은 항상 JSON을 저장하고, 화면에는 tree 보기를 출력한다.
-나중에 `jq`로 뜯어볼 원본과 당장 읽을 화면을 한 번에 얻는 조합이다.
+저장은 셸 리다이렉션(`>`, `tee`)으로 한다. 별도 저장 옵션은 없다.
 
 ## 출력 JSON
 

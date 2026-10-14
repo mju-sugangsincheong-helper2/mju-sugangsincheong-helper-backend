@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '4.1.0'
+	id 'org.springframework.boot' version '4.1.1'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -50,15 +50,22 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
-// Pinpoint Agent 설정
+// Pinpoint Agent 설정 — agent jar가 있을 때만 적용
 tasks.named('bootRun') {
-	jvmArgs(
-		"-javaagent:${projectDir}/pinpoint/agent/pinpoint-agent-3.1.1/pinpoint-bootstrap-3.1.1.jar",
-		"-Dpinpoint.agentId=dev-local-1",
-		"-Dpinpoint.applicationName=mju-sugangsincheong-helper-dev",
-		"-Dprofiler.sampling.type=PERCENT",
-		"-Dprofiler.sampling.percent.sampling-rate=100"
-	)
+	if (file("${projectDir}/pinpoint/agent/pinpoint-agent-3.1.1/pinpoint-bootstrap-3.1.1.jar").exists()) {
+		jvmArgs(
+			"-javaagent:${projectDir}/pinpoint/agent/pinpoint-agent-3.1.1/pinpoint-bootstrap-3.1.1.jar",
+			"-Dpinpoint.agentId=dev-local-1",
+			"-Dpinpoint.applicationName=mju-sugangsincheong-helper-dev",
+			"-Dpinpoint.profiler.profiles.active=local",
+			"-Dprofiler.spring.beans.1.scope=post-processor",
+			"-Dprofiler.spring.beans.1.base-packages=com.mjusugangsincheonghelper",
+			"-Dprofiler.spring.beans.mark.error=true",
+			"-Dprofiler.server.excludeurl=/v3/**,/actuator/**",
+			"-Dprofiler.sampling.type=PERCENT",
+			"-Dprofiler.sampling.percent.sampling-rate=100"
+		)
+	}
 }
 
 // 실행 가능한 jar 는 bootJar 산출물만 사용한다 (plain jar 미생성 → docker 이미지 COPY 단순화)
