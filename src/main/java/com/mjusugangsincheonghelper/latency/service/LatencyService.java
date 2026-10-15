@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.latency.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;

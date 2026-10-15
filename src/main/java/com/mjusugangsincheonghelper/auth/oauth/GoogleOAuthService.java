@@ -58,7 +58,7 @@ public class GoogleOAuthService {
 	@Value("${app.oauth2.google.redirect-uri}")
 	private String redirectUri;
 
-	private final Map<String, PublicKey> keyCache = new ConcurrentHashMap<>();
+	private Map<String, PublicKey> keyCache = new ConcurrentHashMap<>();
 	private volatile long keyCacheExpiresAt = 0;
 
 	@Transactional
