@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.notification.consumer.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,6 +21,7 @@ public class NotificationEventMessage {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "NotificationEventMessageNotificationPayload")
 	public static class NotificationPayload {
 		private String title;
 		private String body;

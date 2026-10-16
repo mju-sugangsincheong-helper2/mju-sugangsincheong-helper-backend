@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -19,6 +20,7 @@ public class RecentIntentsResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "RecentIntentsResponseIntentFeedItem")
 	public static class IntentFeedItem {
 		private Long intentId;
 		private String giveCourseNo;

@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.global.config;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,7 +34,14 @@ public class RedisConfig implements CachingConfigurer {
 	public RedisSerializer<Object> redisSerializer() {
 		return GenericJacksonJsonRedisSerializer.builder()
 				.enableUnsafeDefaultTyping()
-				.customize(builder -> builder.findAndAddModules())
+				.customize(builder -> {
+					builder.findAndAddModules();
+					// 규칙: MVC mapper와 동일하게 field 기준 단일화 (Jackson 3 API)
+					builder.changeDefaultVisibility(vc -> vc
+							.withGetterVisibility(JsonAutoDetect.Visibility.NONE)
+							.withIsGetterVisibility(JsonAutoDetect.Visibility.NONE)
+							.withFieldVisibility(JsonAutoDetect.Visibility.ANY));
+				})
 				// Jackson 3 기반 SDR 4.x는 루트 값(특히 List)에 타입 정보를 남기지 않아 재역직렬화가 깨진다.
 				// 루트를 Object로 선언해 쓰면 타입 id가 항상 기록되어 빈/비어있지 않은 List도 캐시된다.
 				.writer((mapper, value) -> mapper.writerFor(Object.class).writeValueAsBytes(value))

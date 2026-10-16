@@ -1,13 +1,20 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * 게임 분석 응답. 5블록: 판(record) + 순위(global/department) + 구간별 성적(detail) + 피드백.
+ * 붙는 통계·순위는 전부 판 주인 기준. 요청자로 따지는 건 isOwner뿐.
+ * 게스트 조회에서는 departmentRank·feedbacks·grade·departmentPopulation이 null이다.
+ */
 @Getter
 @Builder
 @NoArgsConstructor
@@ -23,10 +30,13 @@ public class AnalysisResponse implements Serializable {
 
 	@JsonProperty("isMember")
 	private boolean isMember;
+
 	private int totalCourses;
-	private int totalTime;
-	private RankingSummary ranking;
-	private List<BasicEvent> basic;
+	private RecordInfo record;
+	private RankInfo globalRank;
+	private DeptRankInfo departmentRank;
+	private List<TimelineEvent> globalTimeline;
+	private List<TimelineEvent> departmentTimeline;
 	private List<DetailEvent> detail;
 	private FeedbacksResponse feedbacks;
 
@@ -34,24 +44,28 @@ public class AnalysisResponse implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class RankingSummary implements Serializable {
+	@Schema(name = "AnalysisResponseRecordInfo")
+	public static class RecordInfo implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
-		private RankDetail global;
-		private RankDetail department;
+		private int tTotal;
+		private int tEnterMain;
+		private boolean completed;
+		private Instant createdAt;
 	}
 
 	@Getter
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class RankDetail implements Serializable {
+	@Schema(name = "AnalysisResponseRankInfo")
+	public static class RankInfo implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
 		private int rank;
-		private int totalParticipants;
+		private long totalPersons;
 		private double percentile;
 	}
 
@@ -59,7 +73,23 @@ public class AnalysisResponse implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	public static class BasicEvent implements Serializable {
+	@Schema(name = "AnalysisResponseDeptRankInfo")
+	public static class DeptRankInfo implements Serializable {
+
+		private static final long serialVersionUID = 1L;
+
+		private String department;
+		private int rank;
+		private long totalPersons;
+		private double percentile;
+	}
+
+	@Getter
+	@Builder
+	@NoArgsConstructor
+	@AllArgsConstructor
+	@Schema(name = "AnalysisResponseTimelineEvent")
+	public static class TimelineEvent implements Serializable {
 
 		private static final long serialVersionUID = 1L;
 
@@ -67,12 +97,14 @@ public class AnalysisResponse implements Serializable {
 		private String type;
 		private String label;
 		private int durationMs;
+		private PopulationStats population;
 	}
 
 	@Getter
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "AnalysisResponseDetailEvent")
 	public static class DetailEvent implements Serializable {
 
 		private static final long serialVersionUID = 1L;
@@ -91,6 +123,7 @@ public class AnalysisResponse implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "AnalysisResponsePopulationStats")
 	public static class PopulationStats implements Serializable {
 
 		private static final long serialVersionUID = 1L;
@@ -105,6 +138,7 @@ public class AnalysisResponse implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "AnalysisResponseFeedbacksResponse")
 	public static class FeedbacksResponse implements Serializable {
 
 		private static final long serialVersionUID = 1L;
@@ -117,6 +151,7 @@ public class AnalysisResponse implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "AnalysisResponseFeedbackItem")
 	public static class FeedbackItem implements Serializable {
 
 		private static final long serialVersionUID = 1L;

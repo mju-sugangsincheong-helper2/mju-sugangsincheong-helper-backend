@@ -1,6 +1,7 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -24,6 +25,7 @@ public class MessageResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "MessageResponseParticipantItem")
 	public static class ParticipantItem {
 		private Long memberId;
 		private String name;
@@ -43,6 +45,7 @@ public class MessageResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "MessageResponseMessageItem")
 	public static class MessageItem {
 		private Long messageId;
 		private Long senderId;

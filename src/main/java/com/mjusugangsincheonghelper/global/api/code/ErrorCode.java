@@ -61,6 +61,8 @@ public enum ErrorCode {
 	SINGLEGAME_INVALID_DETAILS_COUNT(HttpStatus.BAD_REQUEST, "SINGLEGAME_003", "Details count does not match total courses or game completion status."),
 	/** 반응 시간이 유효 범위를 벗어남 (400) */
 	SINGLEGAME_INVALID_REACTION_TIME(HttpStatus.BAD_REQUEST, "SINGLEGAME_004", "Reaction time is out of valid range."),
+	/** rank API에서 학과 없는 요청자가 DEPARTMENT 조회 (400): 학과 순위는 학과 있는 요청자만 */
+	SINGLEGAME_INVALID_RANK_DEPARTMENT(HttpStatus.BAD_REQUEST, "SINGLEGAME_005", "Rank API: department rankings require a requester department."),
 
 	// ========================== 수업 교환 (EXCHANGE) ==========================
 	/** 교환 의도를 찾을 수 없음 (404) */

@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '4.1.0'
+	id 'org.springframework.boot' version '4.1.1'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -64,7 +64,8 @@ tasks.named('bootRun') {
         file("build/jfr").mkdirs()
     }
     jvmArgs = [
-        "-XX:StartFlightRecording=filename=build/jfr/build-${System.currentTimeMillis()}.jfr,settings=profile,dumponexit=true",
+        "-XX:StartFlightRecording=filename=build/jfr/build-${System.currentTimeMillis()}.jfr,settings=profile,settings=profile,dumponexit=true",
+		
         // 진단용: Spring+Hibernate+PG 깊은 스택도 컨트롤러까지 짤리지 않게 기록 (기본 64)
         "-XX:FlightRecorderOptions=stackdepth=256"
     ]

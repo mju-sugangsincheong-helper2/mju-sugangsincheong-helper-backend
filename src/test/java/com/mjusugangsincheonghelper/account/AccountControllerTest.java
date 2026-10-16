@@ -96,7 +96,7 @@ class AccountControllerTest {
 					.andExpect(jsonPath("$.data.memberId").value(1))
 					.andExpect(jsonPath("$.data.name").value("홍길동"))
 					.andExpect(jsonPath("$.data.role").value("USER"))
-					.andExpect(jsonPath("$.data.privacyPolicyAgreed").value(true));
+					.andExpect(jsonPath("$.data.isPrivacyPolicyAgreed").value(true));
 		}
 
 		@Test

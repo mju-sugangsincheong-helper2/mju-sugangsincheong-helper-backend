@@ -175,7 +175,7 @@ class ExchangeControllerTest {
 							.with(csrf()))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.intentId").value(1))
-					.andExpect(jsonPath("$.data.deleted").value(true));
+					.andExpect(jsonPath("$.data.isDeleted").value(true));
 		}
 
 		@Test

@@ -144,11 +144,16 @@ class SingleGameIntegrationTest {
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.gameId").value(gameId))
 					.andExpect(jsonPath("$.data.totalCourses").value(6))
-					.andExpect(jsonPath("$.data.feedbacks").exists())
-					.andExpect(jsonPath("$.data.basic").isArray())
-					.andExpect(jsonPath("$.data.basic").isNotEmpty())
+					.andExpect(jsonPath("$.data.record.tTotal").exists())
+					.andExpect(jsonPath("$.data.globalRank.rank").value(1))
+					.andExpect(jsonPath("$.data.departmentRank.department").value("컴퓨터공학과"))
+					.andExpect(jsonPath("$.data.globalTimeline").isArray())
+					.andExpect(jsonPath("$.data.globalTimeline").isNotEmpty())
+					.andExpect(jsonPath("$.data.departmentTimeline").isArray())
+					.andExpect(jsonPath("$.data.departmentTimeline").isNotEmpty())
 					.andExpect(jsonPath("$.data.detail").isArray())
-					.andExpect(jsonPath("$.data.detail").isNotEmpty());
+					.andExpect(jsonPath("$.data.detail").isNotEmpty())
+					.andExpect(jsonPath("$.data.feedbacks").exists());
 		}
 	}
 
@@ -226,7 +231,8 @@ class SingleGameIntegrationTest {
 					.andExpect(jsonPath("$.data").isArray())
 					.andExpect(jsonPath("$.data[0].totalCourses").value(6))
 					.andExpect(jsonPath("$.data[0].completed").value(true))
-					.andExpect(jsonPath("$.data[0].ranking.global.rank").exists());
+					.andExpect(jsonPath("$.data[0].tTotal").exists())
+					.andExpect(jsonPath("$.data[0].ranking").doesNotExist());
 		}
 	}
 
@@ -752,44 +758,24 @@ class SingleGameIntegrationTest {
 	}
 
 	@Nested
-	@DisplayName("내 기록 percentile은")
-	class Describe_myRecordPercentile {
+	@DisplayName("내 기록 목록은")
+	class Describe_myRecords {
 
 		@Test
-		@DisplayName("소수점 첫째 자리까지 정확하게 계산된다")
-		void it_calculates_percentile_to_one_decimal_place() throws Exception {
-			for (int i = 0; i < 9; i++) {
-				Member m = memberRepository.save(Member.builder()
-						.role(Member.Role.MEMBER).name("유저" + i).department("컴퓨터공학과").build());
-				singleGameRepository.save(SingleGameEntity.builder()
-						.memberId(m.getId()).tTotal(1000 + i * 100).tEnterMain(100)
-						.isCompleted(true).totalCourses(6).build());
-			}
-
+		@DisplayName("순위 없이 기본 기록만 반환한다")
+		void it_returns_records_without_ranking() throws Exception {
 			singleGameRepository.save(SingleGameEntity.builder()
 					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
 					.isCompleted(true).totalCourses(6).build());
 
 			mockMvc.perform(get("/api/v1/singlegame/my")
-							.param("page", "0")
-							.param("size", "10"))
+						.param("page", "0")
+						.param("size", "10"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data").isArray())
-					.andExpect(jsonPath("$.data[0].ranking.global.percentile").isNumber());
-		}
-
-		@Test
-		@DisplayName("학과별 percentile도 계산된다")
-		void it_calculates_department_percentile() throws Exception {
-			singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
-					.isCompleted(true).totalCourses(6).build());
-
-			mockMvc.perform(get("/api/v1/singlegame/my")
-							.param("page", "0")
-							.param("size", "10"))
-					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.data[0].ranking.department.percentile").isNumber());
+					.andExpect(jsonPath("$.data[0].tTotal").value(5000))
+					.andExpect(jsonPath("$.data[0].ranking").doesNotExist())
+					.andExpect(jsonPath("$.data[0].tEnterMain").doesNotExist());
 		}
 	}
 

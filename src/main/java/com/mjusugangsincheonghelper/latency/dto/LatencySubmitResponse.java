@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.latency.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,6 +17,7 @@ public class LatencySubmitResponse {
 	@Getter
 	@Builder
 	@AllArgsConstructor
+	@Schema(name = "LatencySubmitResponseRecordInfo")
 	public static class RecordInfo {
 		private Long id;
 		private Instant createdAt;

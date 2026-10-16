@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.latency.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,6 +21,7 @@ public class LatencyDistributionResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "LatencyDistributionResponseDistributionData")
 	public static class DistributionData {
 		private List<HistogramBucket> histogram;
 		private SummaryData summary;
@@ -33,6 +35,7 @@ public class LatencyDistributionResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "LatencyDistributionResponseHistogramBucket")
 	public static class HistogramBucket {
 		private Integer bucketStart;
 		private Integer bucketEnd;
@@ -44,6 +47,7 @@ public class LatencyDistributionResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "LatencyDistributionResponseSummaryData")
 	public static class SummaryData {
 		private Double averageMs;
 		private Double p50Ms;

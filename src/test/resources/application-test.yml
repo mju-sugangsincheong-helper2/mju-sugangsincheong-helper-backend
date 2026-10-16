@@ -1,4 +1,11 @@
 spring:
+  jackson:
+    # 규칙: JSON 인식은 field 기준 단일화. Lombok getter 무시. (dev/prod와 동일 유지)
+    visibility:
+      field: any
+      getter: none
+      is-getter: none
+
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb_test

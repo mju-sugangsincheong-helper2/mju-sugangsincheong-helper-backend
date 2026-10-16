@@ -6,6 +6,7 @@ import com.mjusugangsincheonghelper.database.entity.ExchangeRoomEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomIntentEntity;
 import com.mjusugangsincheonghelper.database.entity.ExchangeRoomMessageEntity;
 import com.mjusugangsincheonghelper.database.entity.Member;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.List;
@@ -39,6 +40,7 @@ public class RoomMetaCacheDto implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "RoomMetaCacheDtoMessageSummary")
 	public static class MessageSummary implements Serializable {
 
 		private static final long serialVersionUID = 1L;
@@ -54,6 +56,7 @@ public class RoomMetaCacheDto implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "RoomMetaCacheDtoParticipant")
 	public static class Participant implements Serializable {
 
 		private static final long serialVersionUID = 1L;

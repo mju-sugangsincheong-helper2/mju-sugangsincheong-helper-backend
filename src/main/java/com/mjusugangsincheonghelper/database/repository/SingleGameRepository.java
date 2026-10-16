@@ -2,7 +2,6 @@ package com.mjusugangsincheonghelper.database.repository;
 
 import com.mjusugangsincheonghelper.database.entity.SingleGameEntity;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,8 +33,10 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 			FROM ranked
 			WHERE rn = 1
 			ORDER BY t_total ASC, created_at ASC
+			LIMIT :limit
 			""", nativeQuery = true)
-	List<Object[]> findRankingRaw(@Param("totalCourses") int totalCourses);
+	List<Object[]> findRankingRaw(@Param("totalCourses") int totalCourses,
+	                                @Param("limit") int limit);
 
 	@Query(value = """
 			WITH ranked AS (
@@ -52,9 +53,11 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 			FROM ranked
 			WHERE rn = 1
 			ORDER BY t_total ASC, created_at ASC
+			LIMIT :limit
 			""", nativeQuery = true)
 	List<Object[]> findDeptRankingRaw(@Param("totalCourses") int totalCourses,
-	                                  @Param("department") String department);
+	                                  @Param("department") String department,
+	                                  @Param("limit") int limit);
 
 	@Query(value = """
 			SELECT d.game_id, d.sequence,
@@ -69,32 +72,66 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	List<Object[]> findAllDetailsByTotalCourses(@Param("totalCourses") int totalCourses);
 
 	@Query(value = """
-			SELECT sg.id FROM single_game sg
+			SELECT COUNT(DISTINCT sg.member_id) FROM single_game sg
 			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			ORDER BY sg.t_total ASC, sg.created_at ASC
 			""", nativeQuery = true)
-	List<Long> findRankedGameIds(@Param("totalCourses") int totalCourses);
+	long countDistinctPersons(@Param("totalCourses") int totalCourses);
 
 	@Query(value = """
-			SELECT sg.id FROM single_game sg
-			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			  AND sg.t_total <= :tTotal
-			""", nativeQuery = true)
-	List<Long> findGameIdsWithBetterOrEqualTTotal(@Param("totalCourses") int totalCourses,
-	                                              @Param("tTotal") int tTotal);
-
-	long countByTotalCoursesAndIsCompletedTrue(int totalCourses);
-
-	@Query(value = """
-			SELECT sg.id, m.name AS member_name, d.t_click_course
-			FROM single_game sg
+			SELECT COUNT(DISTINCT sg.member_id) FROM single_game sg
 			JOIN member m ON sg.member_id = m.id
-			JOIN single_game_detail d ON d.game_id = sg.id
 			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			  AND d.sequence = 1
-			ORDER BY d.t_click_course ASC, sg.created_at ASC
+			  AND m.department = :department
 			""", nativeQuery = true)
-	List<Object[]> findFirstClickRaw(@Param("totalCourses") int totalCourses);
+	long countDistinctDeptPersons(@Param("totalCourses") int totalCourses,
+	                                @Param("department") String department);
+
+	@Query(value = """
+			SELECT COUNT(*) FROM single_game sg
+			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			  AND sg.t_enter_main <= :tEnterMain
+			""", nativeQuery = true)
+	long countEnterMainBetterOrEqual(@Param("totalCourses") int totalCourses,
+	                                   @Param("tEnterMain") int tEnterMain);
+
+	/**
+	 * 랭킹은 사람 기준(00 §5): 인당 대표 1판(최고 기록, 동점은 가장 이른 판).
+	 * 내 대표판 1행을 가져온다. 없으면 null.
+	 */
+	@Query(value = """
+			SELECT sg.id, sg.t_total, sg.t_enter_main FROM single_game sg
+			WHERE sg.member_id = :memberId
+			  AND sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			ORDER BY sg.t_total ASC, sg.created_at ASC
+			LIMIT 1
+			""", nativeQuery = true)
+	List<Object[]> findMyBestGame(@Param("memberId") Long memberId,
+	                                @Param("totalCourses") int totalCourses);
+
+	@Query(value = """
+			SELECT COUNT(*) FROM (
+			    SELECT sg.member_id FROM single_game sg
+			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			    GROUP BY sg.member_id
+			    HAVING MIN(sg.t_total) < :best
+			) t
+			""", nativeQuery = true)
+	long countBetterPersons(@Param("totalCourses") int totalCourses,
+	                          @Param("best") int best);
+
+	@Query(value = """
+			SELECT COUNT(*) FROM (
+			    SELECT sg.member_id FROM single_game sg
+			    JOIN member m ON m.id = sg.member_id
+			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			      AND m.department = :department
+			    GROUP BY sg.member_id
+			    HAVING MIN(sg.t_total) < :best
+			) t
+			""", nativeQuery = true)
+	long countBetterDeptPersons(@Param("totalCourses") int totalCourses,
+	                              @Param("department") String department,
+	                              @Param("best") int best);
 
 	@Query(value = """
 			SELECT total_courses, sequence,
@@ -108,26 +145,15 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 			""", nativeQuery = true)
 	List<Object[]> findSequencePercentileStats(@Param("totalCourses") int totalCourses);
 
-	@Query(value = """
-			SELECT sg.id FROM single_game sg
-			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			  AND sg.t_enter_main <= :tEnterMain
-			""", nativeQuery = true)
-	List<Long> findGameIdsWithBetterOrEqualEnterMain(@Param("totalCourses") int totalCourses,
-	                                                 @Param("tEnterMain") int tEnterMain);
 
-	Optional<SingleGameEntity> findTopByMemberIdAndTotalCoursesAndIsCompletedTrueOrderByCreatedAtDesc(
-			Long memberId, int totalCourses);
 
 	@Query(value = """
-			SELECT sg.id FROM single_game sg
-			JOIN member m ON sg.member_id = m.id
+			SELECT COUNT(*) FROM single_game sg
 			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			  AND m.department = :department
-			ORDER BY sg.t_total ASC, sg.created_at ASC
 			""", nativeQuery = true)
-	List<Long> findDeptRankedGameIds(@Param("totalCourses") int totalCourses,
-	                                 @Param("department") String department);
+	long countCompletedGames(@Param("totalCourses") int totalCourses);
+
+
 
 	@Query(value = """
 			SELECT DISTINCT m.department

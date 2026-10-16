@@ -148,7 +148,7 @@ class ExchangeIntegrationTest {
 					.andExpect(status().isCreated())
 					.andExpect(jsonPath("$.data.giveCourseNo").value("10001"))
 					.andExpect(jsonPath("$.data.wantCourseNo").value("10002"))
-					.andExpect(jsonPath("$.data.deleted").value(false));
+					.andExpect(jsonPath("$.data.isDeleted").value(false));
 
 			// Verify DB
 			String term = systemConfigService.getCurrentTerm();

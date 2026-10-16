@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.multigame.result.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -19,6 +20,7 @@ public class MultigameRankingResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "MultigameRankingResponseParticipationEntry")
 	public static class ParticipationEntry {
 		private String department;
 		private int participantCount;
@@ -28,6 +30,7 @@ public class MultigameRankingResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "MultigameRankingResponsePerformanceEntry")
 	public static class PerformanceEntry {
 		private String department;
 		private double top70AvgSuccessRate;
@@ -38,6 +41,7 @@ public class MultigameRankingResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "MultigameRankingResponseMyDepartment")
 	public static class MyDepartment {
 		private String department;
 		private int participationRank;

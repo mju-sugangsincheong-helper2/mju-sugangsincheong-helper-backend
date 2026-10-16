@@ -2,6 +2,14 @@ spring:
   application:
     name: mjusugangsincheonghelper
 
+  jackson:
+    # 규칙: JSON 인식은 field 기준 단일화. Lombok getter 무시.
+    # boolean isX → isX, tTotal → tTotal. DTO에 per-class Jackson 어노테이션 불필요.
+    visibility:
+      field: any
+      getter: none
+      is-getter: none
+
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb_dev

@@ -2,6 +2,13 @@ spring:
   application:
     name: mjusugangsincheonghelper
 
+  jackson:
+    # 규칙: JSON 인식은 field 기준 단일화. Lombok getter 무시. (dev/test와 동일 유지)
+    visibility:
+      field: any
+      getter: none
+      is-getter: none
+
   datasource:
     driver-class-name: org.postgresql.Driver
     url: ${DB_URL}  # .env → docker-compose 환경변수 → 여기서 치환

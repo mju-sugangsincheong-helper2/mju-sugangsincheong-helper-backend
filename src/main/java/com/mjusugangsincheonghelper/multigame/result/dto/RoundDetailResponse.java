@@ -2,6 +2,7 @@ package com.mjusugangsincheonghelper.multigame.result.dto;
 
 import com.mjusugangsincheonghelper.database.entity.MultigameRoundEntity;
 import com.mjusugangsincheonghelper.database.entity.MultigameRoundLogEntity;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -57,6 +58,7 @@ public class RoundDetailResponse {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
+	@Schema(name = "RoundDetailResponseTimelineEntry")
 	public static class TimelineEntry {
 		private int participantNo;
 		private int subjectId;

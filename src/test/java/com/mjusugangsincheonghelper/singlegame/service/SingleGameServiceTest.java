@@ -7,6 +7,7 @@ import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameDetailRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
+import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.singlegame.config.SingleGameProperties;
 import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
@@ -555,7 +556,7 @@ class SingleGameServiceTest {
 		@DisplayName("GLOBAL 범위로 랭킹을 반환한다")
 		void it_returns_global_rankings() {
 			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
-			given(singleGameRepository.findRankingRaw(6)).willReturn(List.<Object[]>of(row));
+			given(singleGameRepository.findRankingRaw(6, 20)).willReturn(List.<Object[]>of(row));
 
 			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
 
@@ -575,7 +576,7 @@ class SingleGameServiceTest {
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
 
 			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
-			given(singleGameRepository.findDeptRankingRaw(6, "컴퓨터공학과")).willReturn(List.<Object[]>of(row));
+			given(singleGameRepository.findDeptRankingRaw(6, "컴퓨터공학과", 20)).willReturn(List.<Object[]>of(row));
 
 			RankingResponse response = singleGameService.getRankings(6, "DEPARTMENT", null, 1L);
 
@@ -594,7 +595,7 @@ class SingleGameServiceTest {
 			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
 
 			Object[] row = {1L, 1L, "홍길동", "전자공학과", 6, 5000, 2000, System.currentTimeMillis()};
-			given(singleGameRepository.findDeptRankingRaw(6, "전자공학과")).willReturn(List.<Object[]>of(row));
+			given(singleGameRepository.findDeptRankingRaw(6, "전자공학과", 20)).willReturn(List.<Object[]>of(row));
 
 			RankingResponse response = singleGameService.getRankings(6, "DEPARTMENT", "전자공학과", 1L);
 
@@ -603,57 +604,115 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("totalCourses가 3 이상이면 서브 랭킹도 포함한다")
-		void it_includes_sub_rankings_when_total_courses_ge_3() {
-			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
-			given(singleGameRepository.findRankingRaw(6)).willReturn(List.<Object[]>of(row));
-
-			Object[] firstClick = {1L, "홍길동", 800};
-			given(singleGameRepository.findFirstClickRaw(6)).willReturn(List.<Object[]>of(firstClick));
-
-			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
-
-			assertThat(response.getSubRankings()).isNotNull();
-			assertThat(response.getSubRankings().getEnterMainTop3()).hasSize(1);
-			assertThat(response.getSubRankings().getFirstClickTop3()).hasSize(1);
-		}
-
-		@Test
-		@DisplayName("서브 랭킹의 rank는 1,2,3으로 할당된다")
-		void it_assigns_correct_ranks_in_sub_rankings() {
+		@DisplayName("동점자는 같은 순위를 받고 다음 순위는 건너뛴다")
+		void it_assigns_tied_ranks() {
 			long now = System.currentTimeMillis();
 			Object[] row1 = {1L, 1L, "1등", "학과A", 6, 3000, 100, now};
 			Object[] row2 = {2L, 2L, "2등", "학과B", 6, 4000, 200, now};
-			Object[] row3 = {3L, 3L, "3등", "학과C", 6, 5000, 300, now};
-			given(singleGameRepository.findRankingRaw(6)).willReturn(List.<Object[]>of(row1, row2, row3));
-
-			Object[] fc1 = {1L, "1등", 200};
-			Object[] fc2 = {2L, "2등", 300};
-			Object[] fc3 = {3L, "3등", 400};
-			given(singleGameRepository.findFirstClickRaw(6)).willReturn(List.<Object[]>of(fc1, fc2, fc3));
+			Object[] row3 = {3L, 3L, "3등", "학과C", 6, 4000, 300, now};
+			Object[] row4 = {4L, 4L, "4등", "학과D", 6, 5000, 400, now};
+			given(singleGameRepository.findRankingRaw(6, 20))
+					.willReturn(List.<Object[]>of(row1, row2, row3, row4));
 
 			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
 
-			assertThat(response.getSubRankings().getEnterMainTop3()).hasSize(3);
-			assertThat(response.getSubRankings().getEnterMainTop3().get(0).getRank()).isEqualTo(1);
-			assertThat(response.getSubRankings().getEnterMainTop3().get(1).getRank()).isEqualTo(2);
-			assertThat(response.getSubRankings().getEnterMainTop3().get(2).getRank()).isEqualTo(3);
-
-			assertThat(response.getSubRankings().getFirstClickTop3()).hasSize(3);
-			assertThat(response.getSubRankings().getFirstClickTop3().get(0).getRank()).isEqualTo(1);
-			assertThat(response.getSubRankings().getFirstClickTop3().get(1).getRank()).isEqualTo(2);
-			assertThat(response.getSubRankings().getFirstClickTop3().get(2).getRank()).isEqualTo(3);
+			assertThat(response.getRankings()).hasSize(4);
+			assertThat(response.getRankings().get(0).getRank()).isEqualTo(1);
+			assertThat(response.getRankings().get(1).getRank()).isEqualTo(2);
+			assertThat(response.getRankings().get(2).getRank()).isEqualTo(2);
+			assertThat(response.getRankings().get(3).getRank()).isEqualTo(4);
 		}
 
 		@Test
-		@DisplayName("랭킹 목록은 상위 20개만 반환한다")
-		void it_limits_rankings_to_top_20() {
+		@DisplayName("GLOBAL 범위에서 내 대표판 기준 myRank를 반환한다")
+		void it_returns_global_my_rank() {
+			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
+			given(singleGameRepository.findRankingRaw(6, 20)).willReturn(List.<Object[]>of(row));
+			Object[] best = {10L, 3000, 150};
+			given(singleGameRepository.findMyBestGame(1L, 6)).willReturn(List.<Object[]>of(best));
+			given(singleGameRepository.countBetterPersons(6, 3000)).willReturn(2L);
+
+			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, 1L);
+
+			assertThat(response.getMyRank()).isNotNull();
+			assertThat(response.getMyRank().getRank()).isEqualTo(3);
+			assertThat(response.getMyRank().getGameId()).isEqualTo(10L);
+			assertThat(response.getMyRank().getTTotal()).isEqualTo(3000);
+		}
+
+		@Test
+		@DisplayName("DEPARTMENT 범위에서 해당 학과 내 myRank를 반환한다")
+		void it_returns_department_my_rank() {
+			Member member = Member.builder()
+					.role(Member.Role.MEMBER)
+					.name("홍길동")
+					.department("컴퓨터공학과")
+					.build();
+			given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
+			given(singleGameRepository.findDeptRankingRaw(6, "컴퓨터공학과", 20))
+					.willReturn(List.<Object[]>of(row));
+			Object[] best = {10L, 3000, 150};
+			given(singleGameRepository.findMyBestGame(1L, 6)).willReturn(List.<Object[]>of(best));
+			given(singleGameRepository.countBetterDeptPersons(6, "컴퓨터공학과", 3000)).willReturn(1L);
+
+			RankingResponse response = singleGameService.getRankings(6, "DEPARTMENT", null, 1L);
+
+			assertThat(response.getMyRank()).isNotNull();
+			assertThat(response.getMyRank().getRank()).isEqualTo(2);
+		}
+
+		@Test
+		@DisplayName("학과 없는 요청자가 학과를 지정하면 400 에러를 던진다")
+		void it_throws_when_guest_specifies_department() {
+			Member guest = Member.builder()
+					.role(Member.Role.GUEST)
+					.name("게스트")
+					.build();
+			given(memberRepository.findById(1L)).willReturn(Optional.of(guest));
+
+			assertThatThrownBy(() -> singleGameService.getRankings(6, "DEPARTMENT", "경영학과", 1L))
+					.isInstanceOf(BaseException.class)
+					.extracting(e -> ((BaseException) e).getErrorCode())
+					.isEqualTo(ErrorCode.SINGLEGAME_INVALID_RANK_DEPARTMENT);
+		}
+
+		@Test
+		@DisplayName("학과 없는 요청자가 학과를 생략해도 400 에러를 던진다")
+		void it_throws_when_guest_requests_department_scope() {
+			Member guest = Member.builder()
+					.role(Member.Role.GUEST)
+					.name("게스트")
+					.build();
+			given(memberRepository.findById(1L)).willReturn(Optional.of(guest));
+
+			assertThatThrownBy(() -> singleGameService.getRankings(6, "DEPARTMENT", null, 1L))
+					.isInstanceOf(BaseException.class)
+					.extracting(e -> ((BaseException) e).getErrorCode())
+					.isEqualTo(ErrorCode.SINGLEGAME_INVALID_RANK_DEPARTMENT);
+		}
+
+		@Test
+		@DisplayName("완료판이 없으면 myRank는 null이다")
+		void it_returns_null_my_rank_when_no_games() {
+			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 6, 5000, 2000, System.currentTimeMillis()};
+			given(singleGameRepository.findRankingRaw(6, 20)).willReturn(List.<Object[]>of(row));
+			given(singleGameRepository.findMyBestGame(1L, 6)).willReturn(List.of());
+
+			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, 1L);
+
+			assertThat(response.getMyRank()).isNull();
+		}
+
+		@Test
+		@DisplayName("DB에서 받은 상위 20개를 그대로 매핑한다")
+		void it_maps_top_20_from_db() {
 			long now = System.currentTimeMillis();
 			List<Object[]> rows = new java.util.ArrayList<>();
-			for (int i = 1; i <= 25; i++) {
+			for (int i = 1; i <= 20; i++) {
 				rows.add(new Object[]{(long) i, (long) i, "유저" + i, "학과", 6, 1000 + i * 100, 100, now});
 			}
-			given(singleGameRepository.findRankingRaw(6)).willReturn(rows);
+			given(singleGameRepository.findRankingRaw(6, 20)).willReturn(rows);
 
 			RankingResponse response = singleGameService.getRankings(6, "GLOBAL", null, null);
 
@@ -663,14 +722,14 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("totalCourses가 3 미만이면 서브 랭킹은 null이다")
-		void it_excludes_sub_rankings_when_total_courses_lt_3() {
+		@DisplayName("totalCourses가 3 미만이어도 랭킹을 반환한다")
+		void it_returns_rankings_when_total_courses_lt_3() {
 			Object[] row = {1L, 1L, "홍길동", "컴퓨터공학과", 2, 5000, 2000, System.currentTimeMillis()};
-			given(singleGameRepository.findRankingRaw(2)).willReturn(List.<Object[]>of(row));
+			given(singleGameRepository.findRankingRaw(2, 20)).willReturn(List.<Object[]>of(row));
 
 			RankingResponse response = singleGameService.getRankings(2, "GLOBAL", null, null);
 
-			assertThat(response.getSubRankings()).isNull();
+			assertThat(response.getRankings()).hasSize(1);
 		}
 	}
 
@@ -718,17 +777,13 @@ class SingleGameServiceTest {
 
 			given(singleGameRepository.findByMemberIdOrderByCreatedAtDesc(eq(1L), any(Pageable.class)))
 					.willReturn(new PageImpl<>(List.of(game)));
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(50L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000))
-					.willReturn(List.of(1L, 2L, 3L));
-			given(memberRepository.findById(1L)).willReturn(Optional.empty());
 
 			Page<MyRecordResponse> records = singleGameService.getMyRecords(1L, 0, 10);
 
 			assertThat(records.getContent()).hasSize(1);
+			assertThat(records.getContent().get(0).getGameId()).isEqualTo(100L);
 			assertThat(records.getContent().get(0).getTotalCourses()).isEqualTo(6);
 			assertThat(records.getContent().get(0).getTTotal()).isEqualTo(5000);
-			assertThat(records.getContent().get(0).getRanking().getGlobal().getRank()).isEqualTo(3);
 		}
 	}
 
@@ -801,22 +856,90 @@ class SingleGameServiceTest {
 					.gameId(1L).sequence(1).tClickCourse(3000).tClickYes(1000).tClickOk(500)
 					.build();
 
+			Member owner = Member.builder()
+					.role(Member.Role.MEMBER)
+					.name("홍길동")
+					.department("컴퓨터공학과")
+					.build();
+
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(owner));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L))
 					.willReturn(List.of(detail));
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 12000))
-					.willReturn(List.of(1L, 2L, 3L, 4L, 5L));
 			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000))
-					.willReturn(List.of(1L, 2L, 3L));
+			given(singleGameStatsService.getDeptStats(6, "컴퓨터공학과")).willReturn(emptyStatsBundle());
+			given(singleGameRepository.countBetterPersons(6, 12000)).willReturn(4L);
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(100L);
+			given(singleGameRepository.countBetterDeptPersons(6, "컴퓨터공학과", 12000)).willReturn(1L);
+			given(singleGameRepository.countDistinctDeptPersons(6, "컴퓨터공학과")).willReturn(20L);
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(3L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(100L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
 			assertThat(response.getGameId()).isEqualTo(1L);
+			assertThat(response.isOwner()).isTrue();
+			assertThat(response.isMember()).isTrue();
+			assertThat(response.getRecord().getTTotal()).isEqualTo(12000);
+			assertThat(response.getRecord().getTEnterMain()).isEqualTo(2000);
+			assertThat(response.getGlobalRank().getRank()).isEqualTo(5);
+			assertThat(response.getGlobalRank().getTotalPersons()).isEqualTo(100L);
+			assertThat(response.getDepartmentRank().getDepartment()).isEqualTo("컴퓨터공학과");
+			assertThat(response.getDepartmentRank().getRank()).isEqualTo(2);
+			assertThat(response.getGlobalTimeline()).hasSize(4);
+			assertThat(response.getDepartmentTimeline()).hasSize(4);
+			assertThat(response.getDetail()).hasSize(4);
 			assertThat(response.getFeedbacks()).isNotNull();
 			assertThat(response.getFeedbacks().getPrimary().getCode()).isNotNull();
+		}
+
+		@Test
+		@DisplayName("게스트 조회에서는 학과·피드백·등급이 null이다")
+		void it_strips_restricted_fields_for_guest() {
+			SingleGameEntity game = SingleGameEntity.builder()
+					.memberId(2L).tTotal(12000).tEnterMain(2000)
+					.isCompleted(true).totalCourses(6)
+					.build();
+
+			SingleGameDetailEntity detail = SingleGameDetailEntity.builder()
+					.gameId(1L).sequence(1).tClickCourse(3000).tClickYes(1000).tClickOk(500)
+					.build();
+
+			Member owner = Member.builder()
+					.role(Member.Role.MEMBER)
+					.name("홍길동")
+					.department("컴퓨터공학과")
+					.build();
+			Member guest = Member.builder()
+					.role(Member.Role.GUEST)
+					.name("게스트")
+					.build();
+
+			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(2L)).willReturn(Optional.of(owner));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(guest));
+			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L))
+					.willReturn(List.of(detail));
+			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
+			given(singleGameStatsService.getDeptStats(6, "컴퓨터공학과")).willReturn(emptyStatsBundle());
+			given(singleGameRepository.countBetterPersons(6, 12000)).willReturn(0L);
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(1L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+
+			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
+
+			assertThat(response.isOwner()).isFalse();
+			assertThat(response.isMember()).isTrue();
+			assertThat(response.getRecord().getTTotal()).isEqualTo(12000);
+			assertThat(response.getGlobalRank().getRank()).isEqualTo(1);
+			assertThat(response.getDepartmentRank()).isNull();
+			assertThat(response.getDepartmentTimeline()).isNull();
+			assertThat(response.getFeedbacks()).isNull();
+			assertThat(response.getGlobalTimeline()).hasSize(4);
 			assertThat(response.getDetail()).hasSize(4);
+			assertThat(response.getDetail().get(0).getGrade()).isNull();
+			assertThat(response.getDetail().get(0).getDepartmentPopulation()).isNull();
 		}
 
 		@Test
@@ -846,9 +969,11 @@ class SingleGameServiceTest {
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(100L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000)).willReturn(List.of(1L));
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(100L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(100L);
+			given(singleGameRepository.countBetterPersons(6, 5000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 100L; gId++) {
@@ -858,7 +983,7 @@ class SingleGameServiceTest {
 				allDetails.add(new Object[]{gId, 1, clickCC, clickY, clickOk});
 			}
 			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 200)).willReturn(List.of(1L));
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 200)).willReturn(1L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -880,9 +1005,11 @@ class SingleGameServiceTest {
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 50000)).willReturn(List.of(1L));
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameRepository.countBetterPersons(6, 50000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -892,7 +1019,7 @@ class SingleGameServiceTest {
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
 			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(1L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -913,9 +1040,11 @@ class SingleGameServiceTest {
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 20000)).willReturn(List.of(1L));
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameRepository.countBetterPersons(6, 20000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -925,7 +1054,7 @@ class SingleGameServiceTest {
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
 			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L));
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(8L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -946,9 +1075,11 @@ class SingleGameServiceTest {
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 600)).willReturn(List.of(1L));
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameRepository.countBetterPersons(6, 600)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -958,7 +1089,7 @@ class SingleGameServiceTest {
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
 			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 100)).willReturn(List.of(1L));
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 100)).willReturn(1L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -980,9 +1111,11 @@ class SingleGameServiceTest {
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(10L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 3000)).willReturn(List.of(1L));
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameRepository.countBetterPersons(6, 3000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -994,7 +1127,7 @@ class SingleGameServiceTest {
 				}
 			}
 			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 1000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 1000)).willReturn(5L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1020,9 +1153,11 @@ class SingleGameServiceTest {
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(7)).willReturn(10L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(7, 6900)).willReturn(List.of(1L));
+			given(singleGameRepository.countDistinctPersons(7)).willReturn(10L);
+			given(singleGameRepository.countCompletedGames(7)).willReturn(10L);
+			given(singleGameRepository.countBetterPersons(7, 6900)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
 			for (long gId = 1L; gId <= 10L; gId++) {
@@ -1034,7 +1169,7 @@ class SingleGameServiceTest {
 				}
 			}
 			given(singleGameStatsService.getGlobalStats(7)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(7, 1000)).willReturn(List.of(1L, 2L, 3L, 4L, 5L));
+			given(singleGameRepository.countEnterMainBetterOrEqual(7, 1000)).willReturn(5L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1057,15 +1192,17 @@ class SingleGameServiceTest {
 			);
 
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
+			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countByTotalCoursesAndIsCompletedTrue(6)).willReturn(3200L);
-			given(singleGameRepository.findGameIdsWithBetterOrEqualTTotal(6, 5000)).willReturn(new java.util.ArrayList<>(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L, 13L, 14L, 15L, 16L, 17L, 18L, 19L, 20L, 21L, 22L, 23L, 24L, 25L, 26L, 27L, 28L, 29L, 30L, 31L, 32L, 33L, 34L, 35L, 36L, 37L, 38L, 39L, 40L, 41L, 42L, 43L, 44L, 45L, 46L, 47L, 48L, 49L, 50L, 51L, 52L, 53L, 54L, 55L, 56L, 57L, 58L, 59L, 60L, 61L, 62L, 63L, 64L, 65L, 66L, 67L, 68L, 69L, 70L, 71L, 72L, 73L, 74L, 75L, 76L, 77L, 78L, 79L, 80L, 81L, 82L, 83L, 84L, 85L, 86L, 87L, 88L, 89L, 90L, 91L, 92L, 93L, 94L, 95L, 96L, 97L, 98L, 99L, 100L, 101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L, 110L, 111L, 112L, 113L, 114L, 115L, 116L, 117L, 118L, 119L, 120L, 121L, 122L, 123L, 124L, 125L, 126L, 127L, 128L, 129L, 130L, 131L, 132L, 133L, 134L, 135L, 136L, 137L, 138L, 139L, 140L, 141L, 142L)));
+			given(singleGameRepository.countDistinctPersons(6)).willReturn(3200L);
+			given(singleGameRepository.countCompletedGames(6)).willReturn(3200L);
+			given(singleGameRepository.countBetterPersons(6, 5000)).willReturn(141L);
 			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
-			given(singleGameRepository.findGameIdsWithBetterOrEqualEnterMain(6, 2000)).willReturn(List.of(1L));
+			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(1L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
-			double percentile = response.getRanking().getGlobal().getPercentile();
+			double percentile = response.getGlobalRank().getPercentile();
 			String percentileStr = String.valueOf(percentile);
 			if (percentileStr.contains(".")) {
 				int decimalPlaces = percentileStr.length() - percentileStr.indexOf(".") - 1;
