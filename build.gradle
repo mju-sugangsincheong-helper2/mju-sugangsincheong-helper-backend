@@ -60,13 +60,9 @@ tasks.withType(JavaCompile) {
 }
 
 tasks.named('bootRun') {
-	doFirst {
-        file("build/jfr").mkdirs()
-    }
     jvmArgs = [
-        "-XX:StartFlightRecording=filename=build/jfr/build-${System.currentTimeMillis()}.jfr,settings=profile,settings=profile,dumponexit=true",
-		
         // 진단용: Spring+Hibernate+PG 깊은 스택도 컨트롤러까지 짤리지 않게 기록 (기본 64)
+        // 기록 자체는 jcmd JFR.start로 켬 (진단 스크립트가 제어). autostart 없음.
         "-XX:FlightRecorderOptions=stackdepth=256"
     ]
 }

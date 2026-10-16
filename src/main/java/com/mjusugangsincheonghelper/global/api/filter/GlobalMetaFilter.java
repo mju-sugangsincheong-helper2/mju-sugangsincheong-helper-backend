@@ -12,11 +12,13 @@ import java.time.Instant;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Slf4j
 @Component
+@Order(100)
 public class GlobalMetaFilter extends OncePerRequestFilter {
 
 	private final ClientInfoExtractor clientInfoExtractor;
