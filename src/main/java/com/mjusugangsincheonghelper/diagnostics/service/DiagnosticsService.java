@@ -107,7 +107,7 @@ public class DiagnosticsService {
 	 * 계측 구간에는 캐시 evict를 포함하지 않는다.</p>
 	 *
 	 * <p>해당 totalCourses의 완료 게임 중 아무거나 1개를 대표로 골라 측정한다.
-	 * viewer(memberId)는 판 주인으로 둔다(isOwner=true, 학과 통계 경로 포함).</p>
+	 * viewer(memberId)는 판 주인으로 둔다(owner=true, 학과 통계 경로 포함).</p>
 	 */
 	public QueryTimingResponse timeAnalysisApi(int totalCourses) {
 		long resolvedGameId = resolveAnalysisGameId(totalCourses);

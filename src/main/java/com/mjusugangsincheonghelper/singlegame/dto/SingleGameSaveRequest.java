@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -21,8 +20,7 @@ public class SingleGameSaveRequest {
 	@Max(8)
 	private int totalCourses;
 
-	@JsonProperty("isCompleted")
-	private boolean isCompleted;
+	private boolean completed;
 
 	private int tEnterMain;
 

@@ -47,7 +47,7 @@ export function saveGame(token, options = {}) {
 
   const payload = JSON.stringify({
     totalCourses,
-    isCompleted: true,
+    completed: true,
     tEnterMain,
     details,
   });

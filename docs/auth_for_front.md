@@ -783,7 +783,7 @@ GET /api/v1/accounts/me
     "name": "홍길동",
     "position": "학생",
     "department": "컴퓨터공학과",
-    "isPrivacyPolicyAgreed": true,
+    "privacyPolicyAgreed": true,
     "createdAt": "2024-01-01T00:00:00Z"
   }
 }
@@ -792,7 +792,7 @@ GET /api/v1/accounts/me
 **프론트 처리**
 1. 앱 시작 시 또는 상태 복원 시 호출
 2. `role` 확인 → UI 분기
-3. `isPrivacyPolicyAgreed` 확인 → false면 동의 페이지로
+3. `privacyPolicyAgreed` 확인 → false면 동의 페이지로
 
 ---
 
@@ -877,7 +877,7 @@ POST /api/v1/auth/test-accounts  {role: "MEMBER"}
 │                                                                     │
 │  상태 관리                                                          │
 │  ├── 현재 사용자 role (GUEST/MEMBER/ADMIN)                         │
-│  ├── 개인정보 동의 여부 (isPrivacyPolicyAgreed)                    │
+│  ├── 개인정보 동의 여부 (privacyPolicyAgreed)                    │
 │  └── 로그인 상태 (쿠키 존재 여부로 판단)                          │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘

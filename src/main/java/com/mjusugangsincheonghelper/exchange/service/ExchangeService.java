@@ -132,7 +132,7 @@ public class ExchangeService {
 
 		return IntentDeleteResponse.builder()
 				.intentId(intentId)
-				.isDeleted(true)
+				.deleted(true)
 				.deletedAt(intent.getDeletedAt())
 				.build();
 	}
@@ -186,8 +186,8 @@ public class ExchangeService {
 								.intentId(participant.getIntentId())
 								.giveCourseNo(participant.getGiveCourseNo())
 								.wantCourseNo(participant.getWantCourseNo())
-								.isDeleted(participant.isDeleted())
-								.isOn(participant.isOn())
+								.deleted(participant.isDeleted())
+								.on(participant.isOn())
 								.build())
 						.toList();
 
@@ -196,7 +196,7 @@ public class ExchangeService {
 						.term(term)
 						.cycleHash(roomMeta.getCycleHash())
 						.status(roomMeta.getStatus())
-						.isOn(isOn)
+						.on(isOn)
 						.unreadCount(unread)
 						.lastReadMessageId(lastReadMessageId)
 						.lastMessage(summaryItem)
@@ -209,7 +209,7 @@ public class ExchangeService {
 					.intentId(intent.getIntentId())
 					.giveCourseNo(intent.getGiveCourseNo())
 					.wantCourseNo(intent.getWantCourseNo())
-					.isDeleted(intent.isDeleted())
+					.deleted(intent.isDeleted())
 					.createdAt(intent.getCreatedAt())
 					.rooms(roomItems)
 					.build());
@@ -323,8 +323,8 @@ public class ExchangeService {
 						.intentId(participant.getIntentId())
 						.giveCourseNo(participant.getGiveCourseNo())
 						.wantCourseNo(participant.getWantCourseNo())
-						.isDeleted(participant.isDeleted())
-						.isOn(participant.isOn())
+						.deleted(participant.isDeleted())
+						.on(participant.isOn())
 						.build())
 				.toList() : List.of();
 
@@ -402,7 +402,7 @@ public class ExchangeService {
 
 		return RoomToggleResponse.builder()
 				.roomId(roomId)
-				.isOn(request.isOn())
+				.on(request.isOn())
 				.build();
 	}
 

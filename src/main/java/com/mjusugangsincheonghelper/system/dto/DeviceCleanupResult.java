@@ -1,5 +1,6 @@
 package com.mjusugangsincheonghelper.system.dto;
 
+
 /**
  * 만료된 기기 세션(Firebase Cloud Messaging 토큰) 정리 결과.
  * @param cleared 삭제된 기기(만료 세션) 개수

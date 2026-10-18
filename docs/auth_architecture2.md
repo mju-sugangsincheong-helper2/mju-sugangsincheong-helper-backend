@@ -188,7 +188,7 @@ com.mjusugangsincheonghelper/
 │   │   ├── AccountService.java               #   - 프로필 조회, 로그인 기기 목록 조회 및 회원 탈퇴 서비스
 │   │   └── AccountAgreementService.java      #   - 동의 감사 기록 + isAgreed 조회
 │   └── dto/
-│       ├── AccountMeResponse.java            #   - 내 정보 응답 (isPrivacyPolicyAgreed 포함)
+│       ├── AccountMeResponse.java            #   - 내 정보 응답 (privacyPolicyAgreed 포함)
 │       ├── AccountDeviceResponse.java        #   - 로그인된 기기 목록 응답 (Firebase Cloud Messaging 알림 여부, 현재 접속 기기 여부 포함)
 │       └── PrivacyAgreementResponse.java     #   - 동의 응답
 │

@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.Instant;
@@ -12,7 +11,7 @@ import lombok.NoArgsConstructor;
 
 /**
  * 게임 분석 응답. 5블록: 판(record) + 순위(global/department) + 구간별 성적(detail) + 피드백.
- * 붙는 통계·순위는 전부 판 주인 기준. 요청자로 따지는 건 isOwner뿐.
+ * 붙는 통계·순위는 전부 판 주인 기준. 요청자로 따지는 건 owner뿐.
  * 게스트 조회에서는 departmentRank·feedbacks·grade·departmentPopulation이 null이다.
  */
 @Getter
@@ -25,11 +24,9 @@ public class AnalysisResponse implements Serializable {
 
 	private long gameId;
 
-	@JsonProperty("isOwner")
-	private boolean isOwner;
+	private boolean owner;
 
-	@JsonProperty("isMember")
-	private boolean isMember;
+	private boolean member;
 
 	private int totalCourses;
 	private RecordInfo record;

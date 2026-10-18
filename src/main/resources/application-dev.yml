@@ -3,8 +3,9 @@ spring:
     name: mjusugangsincheonghelper
 
   jackson:
-    # 규칙: JSON 인식은 field 기준 단일화. Lombok getter 무시.
-    # boolean isX → isX, tTotal → tTotal. DTO에 per-class Jackson 어노테이션 불필요.
+    # 규칙: JSON 키 = field 이름 그대로. 전역 visibility로만 결정, per-field @JsonProperty 금지.
+    # - field:any/getter:none/is-getter:none: Lombok getter 작명 부작용 차단 (isDeleted→deleted 등). (dev/prod 동일)
+    # - per-field 금지는 JacksonContractTest가 강제. 예외(키 리네임 등) 필요 시 테스트에 사유 남기고 허용.
     visibility:
       field: any
       getter: none
@@ -12,38 +13,49 @@ spring:
 
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb_dev
-    username: mjusugangsincheonghelperuser
-    password: mjusugangsincheonghelperpassword
+    url: jdbc:postgresql://localhost:5432/mjusugangsincheonghelperdb_dev  # prod는 ${DB_URL} (.env 주입)
+    username: mjusugangsincheonghelperuser  # prod는 ${DB_USERNAME}
+    password: mjusugangsincheonghelperpassword  # prod는 ${DB_PASSWORD}
 
   sql:
     init:
-      mode: always
-      schema-locations: classpath:schema-view.sql  # 뷰만 생성, 테이블은 ddl-auto가 관리
+      # schema-dev.sql은 db-setup 컨테이너가 psql로 적용 (prod의 schema-prod.sql과 동일 경로). Spring은 실행 안 함
+      mode: never
 
   jpa:
-    defer-datasource-initialization: true  # SQL 초기화 스크립트 실행을 JPA 초기화 이후로 지연
     hibernate:
-      ddl-auto: update  # 엔티티 변경을 스키마에 자동 반영 (prod는 validate)
+      ddl-auto: validate  # 스키마 자동 수정 금지, db-setup 결과와 일치하는지만 검증 (prod와 동일)
     properties:
       hibernate:
-        generate_statistics: true  # 세션/쿼리 통계 로깅 (성능 튜닝용)
+        generate_statistics: true  # 세션/쿼리 통계 로깅 (성능 튜닝용, prod는 미사용)
         log_slow_query: 1000  # 1초 이상 쿼리 로그
     open-in-view: false  # OSIV 비활성화: 뷰 렌더링까지 커넥션 유지 안 함
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: localhost  # prod는 ${REDIS_HOST}
+      port: 6379  # prod는 ${REDIS_PORT:6379}
       repositories:
         enabled: false  # Spring Data 리포지토리 미사용, RedisTemplate 직접 사용
+
+  # threads:
+  #   virtual:
+  #     enabled: true
+  # (prod와 동일) IBM Semeru(OpenJ9) JDK 21+는 가상 스레드(JEP 444) 정식 지원.
+  # 고부하 시 메모리 이득이 있으나, 저부하(대부분의 상황)에서는 이득 미미.
+  # 아직 가상 스레드에 대한 확신이 없어 비활성화 유지.
+
+server:
+  tomcat:
+    threads:
+      min-spare: 10  # Tomcat 기본값 유지 (prod는 유휴 연결 절감 위해 5)
 
 logging:
   level:
     root: INFO
-    com.mjusugangsincheonghelper: DEBUG
-    org.hibernate.SQL: INFO
-    org.springdoc: WARN
+    com.mjusugangsincheonghelper: DEBUG  # prod는 INFO
+    org.hibernate.SQL: INFO  # SQL 로그 (prod는 주석 처리)
+    org.springdoc: WARN  # 문서 노이즈 억제 (prod는 springdoc 비활성이라 주석 처리)
   file:
     name: logs/${app.instance-id}-application.log
 
@@ -63,9 +75,15 @@ management:
     env:
       enabled: true
 
+springdoc:
+  # dev는 API 문서 공개 (prod는 api-docs/swagger-ui 모두 enabled: false)
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
 
 app:
-  instance-id: ${INSTANCE_ID:app}
+  instance-id: ${INSTANCE_ID:app}  # 로컬은 기본값 app 사용 (prod는 compose가 backend로 주입)
   performance:
     slow-ms: 1000  # 이 시간 초과 시 WARN 로그
     very-slow-ms: 5000  # 이 시간 초과 시 ERROR 로그
@@ -80,12 +98,12 @@ app:
       - /api/*/auth/oauth/start
       - /api/*/auth/token
       - /api/*/auth/config/google
-      - /api/*/auth/test-**
-      - /api/*/example/**
-      - /swagger-ui/**
-      - /v3/api-docs/**
-      - /*.html
-      - /*.js
+      - /api/*/auth/test-**  # dev 전용 (테스트 계정 로그인)
+      - /api/*/example/**  # dev 전용 (예제 API)
+      - /swagger-ui/**  # dev 전용 (API 문서)
+      - /v3/api-docs/**  # dev 전용 (API 문서)
+      - /*.html  # dev 전용 (로컬 테스트 페이지)
+      - /*.js  # dev 전용 (로컬 테스트 페이지)
       - /actuator/**
     public-get-urls:
       # GET 요청 한정 인증 없이 허용 (조회성 공개 API)
@@ -100,16 +118,16 @@ app:
     public-delete-urls: []
 
   cors:
-    allowed-origins: "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000"
+    allowed-origins: "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000"  # prod는 ${CORS_ALLOWED_ORIGINS}
 
   auth:
-    token-mode: header, cookie  # dev는 둘 다 허용 + 응답 본문에 토큰 포함 (디버깅 편의)
-    cookie-secure: false  # 로컬 HTTP에서도 쿠키 동작
-    token-in-response: true  # 로그인 응답 body에 토큰 포함
+    token-mode: header, cookie  # dev는 둘 다 허용 (prod는 cookie만)
+    cookie-secure: false  # 로컬 HTTP에서도 쿠키 동작 (prod는 true)
+    token-in-response: true  # 로그인 응답 body에 토큰 포함 (디버깅 편의, prod는 미포함)
     cookie-max-age:
       access: 1h
       refresh: 7d
-    test-accounts:
+    test-accounts:  # dev 전용 (prod는 없음)
       # 인증 없이 특정 역할로 로그인 (name 형식: TEST_이름/직책/부서)
       - name: "TEST_ADMIN/TEST_POSITION/TEST_DEPARTMENT"
         role: ADMIN
@@ -119,16 +137,16 @@ app:
         role: GUEST
 
   jwt:
-    secret: dev-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-prod
+    secret: dev-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm-change-in-prod  # prod는 ${JWT_SECRET}
     access-token-expiry-ms: 3600000       # 1시간
     refresh-token-expiry-ms: 604800000    # 7일
     merge-ticket-expiry-ms: 300000        # 5분 (계정 병합 티켓)
 
   oauth2:
     google:
-      client-id: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID}
-      client-secret: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET}
-      redirect-uri: http://localhost:5173/login
+      client-id: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID}  # prod는 뒤에 : 있음 (없어도 기동)
+      client-secret: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET}  # prod는 뒤에 : 있음 (없어도 기동)
+      redirect-uri: http://localhost:5173/login  # prod는 ${..._REDIRECT_URI} (기본 실도메인)
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
     state-ttl: 300s  # OAuth state 파라미터 유효기간 (CSRF 방어)

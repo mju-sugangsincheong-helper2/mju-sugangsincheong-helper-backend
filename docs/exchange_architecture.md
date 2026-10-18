@@ -95,7 +95,7 @@ sequenceDiagram
 
 * **Intent 등록:** DB 저장 (`is_deleted = FALSE`) -> PGMQ 큐 발행 (`CycleDetectionMessage`) -> 연관 캐시 Evict
 * **비동기 큐 수신 & 그래프 사이클 탐색 (백그라운드):** Worker가 PGMQ 메시지 수신(인지) -> 활성 Intent 스캔 (`is_deleted = FALSE`) & DFS 사이클 탐색 -> 사이클 발견 시 `PESSIMISTIC_WRITE` 락 획득 -> `EXCHANGE_ROOM` 생성 (`status = 'ACTIVE'`) -> `EXCHANGE_ROOM_INTENT` 매핑 적재 (`is_deleted = FALSE`, `is_on = TRUE`) -> `EXCHANGE_ROOM_READ_STATUS` 초기화 -> `EXCHANGE_ROOM_MESSAGE` 웰컴 SYSTEM 메시지 작성 (`message_type = 'SYSTEM'`) -> 참여자 전원 캐시 Evict -> PGMQ 메시지 DELETE
-* **사용자의 Main 폴링 (`GET /api/v1/exchange/main`):** 5초 주기 폴링 요청 -> Redis 캐시 조회 (MyIntents, Feed, Rooms 캐시 조립) -> 캐시 미스 시 DB 조회 후 캐시 재적재 -> 내 Intent 목록, 연관 방 목록 및 각 방의 상세 정보(방 단일 status `ACTIVE`/`PARTIAL_OFF`/`PARTIAL_DELETE`/`ALL_DELETE`, 내 토글 `isOn`, 안 읽은 메시지 수 `unreadCount`, 최근 메시지 이력, 방 구성원/참여 Intent 카드 목록 등)를 단일 API 응답으로 풍부하게 일괄 반환
+* **사용자의 Main 폴링 (`GET /api/v1/exchange/main`):** 5초 주기 폴링 요청 -> Redis 캐시 조회 (MyIntents, Feed, Rooms 캐시 조립) -> 캐시 미스 시 DB 조회 후 캐시 재적재 -> 내 Intent 목록, 연관 방 목록 및 각 방의 상세 정보(방 단일 status `ACTIVE`/`PARTIAL_OFF`/`PARTIAL_DELETE`/`ALL_DELETE`, 내 토글 `on`, 안 읽은 메시지 수 `unreadCount`, 최근 메시지 이력, 방 구성원/참여 Intent 카드 목록 등)를 단일 API 응답으로 풍부하게 일괄 반환
 * **사용자의 Room 메시지 전송:** DB 삽입 (`message_type = 'TALK'`) -> 발신자 `last_read_message_id` 즉시 갱신 -> 참여자 전원 캐시 Evict
 * **사용자의 Intent 철회:** Intent/Mapping Soft Delete (`is_deleted = TRUE`) -> `PESSIMISTIC_WRITE` 락 기반 방 `status` 재계산 및 갱신 (`PARTIAL_DELETE` / `ALL_DELETE`) -> `EXCHANGE_ROOM_MESSAGE` 이탈 안내 SYSTEM 메시지 일괄 작성 -> 참여자 전원 캐시 Evict
 * **사용자의 Room 토글(OFF/ON):** `is_on` 변경 (`TRUE` / `FALSE`) -> `PESSIMISTIC_WRITE` 락 기반 방 `status` 재계산 및 갱신 -> 필요 시 SYSTEM 메시지 작성 -> 연관 캐시 Evict
@@ -372,7 +372,7 @@ END $$;
 | :--- | :--- | :--- | :--- | :--- |
 | **CACHE 1** (공용 피드) | `exchange::{term}:feed:cache` | List | 10시간 | 실시간 전체 공용 피드로 사용되는 최근 50개의 교환 의사 DTO 리스트. |
 | **CACHE 2** (유저별 Intent) | `exchange::{term}:member:{member_id}:intents:cache` | List | 10분 | 해당 유저가 등록한 미삭제 상태의 활성 Intent DTO 리스트. |
-| **CACHE 3** (유저별 방 목록) | `exchange::{term}:member:{member_id}:rooms:cache` | List | 10분 | 해당 유저가 참여 중인 방의 상세 요약 정보 목록 (방 status, isOn 토글 상태, lastReadMessageId 위치, 안 읽은 메시지 수, 최근 메시지, 방 참여 구성원 목록 등 포함). |
+| **CACHE 3** (유저별 방 목록) | `exchange::{term}:member:{member_id}:rooms:cache` | List | 10분 | 해당 유저가 참여 중인 방의 상세 요약 정보 목록 (방 status, on 토글 상태, lastReadMessageId 위치, 안 읽은 메시지 수, 최근 메시지, 방 참여 구성원 목록 등 포함). |
 
 - 모든 캐시 객체의 날짜/시간 필드는 직렬화 일관성을 위해 ISO-8601 문자열 대신 **밀리초 단위 epoch timestamp (Long)** 형식으로 직렬화합니다.
 
@@ -517,7 +517,7 @@ private void scheduleDoubleEvict(String key) {
         1. 해당 유저의 `EXCHANGE_ROOM_INTENT` 테이블 내 `is_on` 컬럼을 입력받은 값(`TRUE` or `FALSE`)으로 업데이트합니다.
         2. `updateRoomStatusAndState`를 호출하여 `PESSIMISTIC_WRITE` 락을 걸고 방 상태를 재계산(상태 전이 규칙 A, B, C, D 적용)한 뒤 `EXCHANGE_ROOM` 테이블의 `status`를 업데이트합니다.
         3. 방 상태가 변경되는 경우(`PARTIAL_OFF`로 전이되거나 `ACTIVE`로 복귀 시) 동시성 락 안에서 방 상태 변경에 대한 SYSTEM 메시지(`message_type = 'SYSTEM'`)를 작성하여 삽입합니다. (예: `"[시스템] 일부 참여자가 대화방 알림을 OFF 하였습니다."`, `"[시스템] 모든 참여자가 대화방 알림을 ON으로 전환하였습니다."`)
-        4. 토글이 `FALSE`가 된 유저의 경우에도 메인/채팅방 목록 쿼리(polling)에서 방은 삭제되거나 숨겨지지 않고 `isOn: false` 상태로 목록에 계속 노출되어 방 상태를 확인할 수 있습니다.
+        4. 토글이 `FALSE`가 된 유저의 경우에도 메인/채팅방 목록 쿼리(polling)에서 방은 삭제되거나 숨겨지지 않고 `on: false` 상태로 목록에 계속 노출되어 방 상태를 확인할 수 있습니다.
     - **캐시 조작:**
         1. 토글을 조작한 유저 **본인**의 `exchange::{term}:member:{member_id}:rooms:cache` 이중 무효화.
 
@@ -761,7 +761,7 @@ private void scheduleDoubleEvict(String key) {
 - **Request Body:**
   ```json
   {
-    "isOn": false
+    "on": false
   }
   ```
 - **Response JSON (200 OK):**
@@ -769,7 +769,7 @@ private void scheduleDoubleEvict(String key) {
   {
     "data": {
       "roomId": 402,
-      "isOn": false
+      "on": false
     }
   }
   ```

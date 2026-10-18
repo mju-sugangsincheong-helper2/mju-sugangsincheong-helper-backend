@@ -3,7 +3,9 @@ spring:
     name: mjusugangsincheonghelper
 
   jackson:
-    # 규칙: JSON 인식은 field 기준 단일화. Lombok getter 무시. (dev/test와 동일 유지)
+    # 규칙: JSON 키 = field 이름 그대로. 전역 visibility로만 결정, per-field @JsonProperty 금지.
+    # - field:any/getter:none/is-getter:none: Lombok getter 작명 부작용 차단 (isDeleted→deleted 등). (dev/prod 동일)
+    # - per-field 금지는 JacksonContractTest가 강제. 예외(키 리네임 등) 필요 시 테스트에 사유 남기고 허용.
     visibility:
       field: any
       getter: none
@@ -11,27 +13,28 @@ spring:
 
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: ${DB_URL}  # .env → docker-compose 환경변수 → 여기서 치환
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    url: ${DB_URL}  # .env → docker-compose 환경변수 → 여기서 치환 (dev는 localhost 고정)
+    username: ${DB_USERNAME}  # dev는 mjusugangsincheonghelperuser 고정
+    password: ${DB_PASSWORD}  # dev는 mjusugangsincheonghelperpassword 고정
 
   sql:
     init:
-      # schema-prod.sql 은 db-setup 컨테이너에서 psql 로 적용 (Spring 파서가 DO $$ 블록 미지원)
+      # schema-prod.sql은 db-setup 컨테이너에서 psql로 적용 (Spring 파서가 DO $$ 블록 미지원). Spring은 실행 안 함
       mode: never
 
   jpa:
     hibernate:
-      ddl-auto: validate  # 스키마 자동 수정 금지, db-setup 결과와 일치하는지만 검증
+      ddl-auto: validate  # 스키마 자동 수정 금지, db-setup 결과와 일치하는지만 검증 (prod와 동일)
     properties:
       hibernate:
+        # generate_statistics: true  # dev 전용 (세션/쿼리 통계 로깅)
         log_slow_query: 1000  # 1초 이상 쿼리 로그
     open-in-view: false  # OSIV 비활성화: 뷰 렌더링까지 커넥션 유지 안 함
 
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST:localhost}  # dev는 localhost 고정
+      port: ${REDIS_PORT:6379}  # dev는 6379 고정
       repositories:
         enabled: false  # Spring Data 리포지토리 미사용, RedisTemplate 직접 사용
 
@@ -45,12 +48,14 @@ spring:
 server:
   tomcat:
     threads:
-      min-spare: 5  # 최소 유지 스레드 (유휴 연결 처리)
+      min-spare: 5  # 최소 유지 스레드, 유휴 연결 절감 (dev는 Tomcat 기본값 10 유지)
 
 logging:
   level:
     root: INFO
-    com.mjusugangsincheonghelper: INFO  # dev는 DEBUG, prod는 INFO
+    com.mjusugangsincheonghelper: INFO  # dev는 DEBUG
+    # org.hibernate.SQL: INFO  # dev 전용 (SQL 로그)
+    # org.springdoc: WARN  # dev 전용 (문서 노이즈 억제, prod는 springdoc 비활성)
   file:
     name: logs/${app.instance-id}-application.log  # 컨테이너 /app/logs → compose가 ./logs에 마운트
 
@@ -70,14 +75,14 @@ management:
       enabled: true
 
 springdoc:
-  # 운영에서는 API 문서 비공개
+  # prod는 API 문서 비공개 (dev는 api-docs/swagger-ui 모두 enabled: true)
   api-docs:
     enabled: false
   swagger-ui:
     enabled: false
 
 app:
-  instance-id: ${INSTANCE_ID:app}  # 로그 파일명 등 인스턴스 구분자 (compose에서 backend로 주입)
+  instance-id: ${INSTANCE_ID:app}  # 로그 파일명 등 인스턴스 구분자 (compose에서 backend로 주입, dev 로컬은 기본값 app)
   performance:
     slow-ms: 1000  # 이 시간 초과 시 WARN 로그
     very-slow-ms: 5000  # 이 시간 초과 시 ERROR 로그
@@ -92,6 +97,12 @@ app:
       - /api/*/auth/oauth/start
       - /api/*/auth/token
       - /api/*/auth/config/google
+      # - /api/*/auth/test-**  # dev 전용 (테스트 계정 로그인)
+      # - /api/*/example/**  # dev 전용 (예제 API)
+      # - /swagger-ui/**  # dev 전용 (API 문서)
+      # - /v3/api-docs/**  # dev 전용 (API 문서)
+      # - /*.html  # dev 전용 (로컬 테스트 페이지)
+      # - /*.js  # dev 전용 (로컬 테스트 페이지)
       - /actuator/**
     public-get-urls:
       # GET 요청 한정 인증 없이 허용 (조회성 공개 API)
@@ -106,26 +117,30 @@ app:
     public-delete-urls: []
 
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://xn--hq1b21kh2g.com}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://xn--hq1b21kh2g.com}  # dev는 localhost 고정
 
   auth:
     token-mode: cookie  # JWT를 HttpOnly 쿠키로 전달 (XSS 방어, dev는 header+cookie)
-    cookie-secure: true  # HTTPS에서만 쿠키 전송
+    cookie-secure: true  # HTTPS에서만 쿠키 전송 (dev는 false)
+    # token-in-response: true  # dev 전용 (로그인 응답 body에 토큰 포함, 디버깅 편의)
     cookie-max-age:
       access: 1h
       refresh: 7d
+    # test-accounts:  # dev 전용 (prod는 없음)
+    #   - name: "TEST_ADMIN/TEST_POSITION/TEST_DEPARTMENT"
+    #     role: ADMIN
 
   jwt:
-    secret: ${JWT_SECRET}  # .env에서 주입 (HS256 기준 256bit 이상 필수)
+    secret: ${JWT_SECRET}  # .env에서 주입 (HS256 기준 256bit 이상 필수, dev는 고정값)
     access-token-expiry-ms: 3600000  # 1시간
     refresh-token-expiry-ms: 604800000  # 7일
     merge-ticket-expiry-ms: 300000  # 5분 (계정 병합 티켓)
 
   oauth2:
     google:
-      client-id: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID:}
-      client-secret: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET:}
-      redirect-uri: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_REDIRECT_URI:https://xn--hq1b21kh2g.com/login}
+      client-id: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_ID:}  # dev는 뒤에 : 없음 (없으면 기동 실패)
+      client-secret: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_CLIENT_SECRET:}  # dev는 뒤에 : 없음 (없으면 기동 실패)
+      redirect-uri: ${MJU_SUGANGSINCHEONG_HELPER_GOOGLE_REDIRECT_URI:https://xn--hq1b21kh2g.com/login}  # dev는 localhost:5173/login
       authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
       token-uri: https://oauth2.googleapis.com/token
     state-ttl: 300s  # OAuth state 파라미터 유효기간 (CSRF 방어)

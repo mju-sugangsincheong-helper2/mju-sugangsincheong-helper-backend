@@ -94,7 +94,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(1000).tClickYes(500).tClickOk(300).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -127,7 +127,7 @@ class SingleGameServiceTest {
 		@DisplayName("존재하지 않는 회원이면 예외를 던진다")
 		void it_throws_when_member_not_found() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(List.of())
 					.build();
 
@@ -141,7 +141,7 @@ class SingleGameServiceTest {
 		@DisplayName("허용되지 않은 totalCourses이면 예외를 던진다")
 		void it_throws_when_total_courses_invalid() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(4).isCompleted(true).tEnterMain(2000)
+					.totalCourses(4).completed(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
 					.build();
@@ -156,7 +156,7 @@ class SingleGameServiceTest {
 		@DisplayName("totalCourses가 0이면 예외를 던진다")
 		void it_throws_when_total_courses_is_zero() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(0).isCompleted(true).tEnterMain(2000)
+					.totalCourses(0).completed(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
 					.build();
@@ -171,7 +171,7 @@ class SingleGameServiceTest {
 		@DisplayName("totalCourses가 2이면 예외를 던진다")
 		void it_throws_when_total_courses_is_two() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(2).isCompleted(true).tEnterMain(2000)
+					.totalCourses(2).completed(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
 					.build();
@@ -186,7 +186,7 @@ class SingleGameServiceTest {
 		@DisplayName("totalCourses가 5이면 예외를 던진다")
 		void it_throws_when_total_courses_is_five() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(5).isCompleted(true).tEnterMain(2000)
+					.totalCourses(5).completed(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
 					.build();
@@ -201,7 +201,7 @@ class SingleGameServiceTest {
 		@DisplayName("totalCourses가 9이면 예외를 던진다")
 		void it_throws_when_total_courses_is_nine() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(9).isCompleted(true).tEnterMain(2000)
+					.totalCourses(9).completed(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
 					.build();
@@ -216,7 +216,7 @@ class SingleGameServiceTest {
 		@DisplayName("totalCourses가 음수이면 예외를 던진다")
 		void it_throws_when_total_courses_is_negative() {
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(-5).isCompleted(true).tEnterMain(2000)
+					.totalCourses(-5).completed(true).tEnterMain(2000)
 					.details(List.of(SingleGameDetailRequest.builder()
 							.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build()))
 					.build();
@@ -234,7 +234,7 @@ class SingleGameServiceTest {
 					.sequence(1).tClickCourse(1000).tClickYes(500).tClickOk(300)
 					.build();
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(1).isCompleted(true).tEnterMain(2000)
+					.totalCourses(1).completed(true).tEnterMain(2000)
 					.details(List.of(detail))
 					.build();
 
@@ -261,7 +261,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(1000).tClickYes(500).tClickOk(300).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(7).isCompleted(true).tEnterMain(2000)
+					.totalCourses(7).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -288,7 +288,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(1000).tClickYes(500).tClickOk(300).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(8).isCompleted(true).tEnterMain(2000)
+					.totalCourses(8).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -307,14 +307,14 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=true인데 details 개수가 totalCourses와 다르면 예외를 던진다")
+		@DisplayName("completed=true인데 details 개수가 totalCourses와 다르면 예외를 던진다")
 		void it_throws_when_completed_but_details_count_mismatch() {
 			SingleGameDetailRequest detail1 = SingleGameDetailRequest.builder()
 					.sequence(1).tClickCourse(100).tClickYes(100).tClickOk(100).build();
 			SingleGameDetailRequest detail2 = SingleGameDetailRequest.builder()
 					.sequence(2).tClickCourse(100).tClickYes(100).tClickOk(100).build();
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(List.of(detail1, detail2))
 					.build();
 
@@ -325,7 +325,7 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=false인데 details 개수가 totalCourses와 같으면 예외를 던진다")
+		@DisplayName("completed=false인데 details 개수가 totalCourses와 같으면 예외를 던진다")
 		void it_throws_when_not_completed_but_details_count_equals_total() {
 			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
 			for (int i = 1; i <= 6; i++) {
@@ -333,7 +333,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(false).tEnterMain(2000)
+					.totalCourses(6).completed(false).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -344,13 +344,13 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=false이고 details 개수가 totalCourses보다 적으면 정상 저장된다")
+		@DisplayName("completed=false이고 details 개수가 totalCourses보다 적으면 정상 저장된다")
 		void it_saves_when_not_completed_and_details_less_than_total() throws Exception {
 			SingleGameDetailRequest detail = SingleGameDetailRequest.builder()
 					.sequence(1).tClickCourse(1000).tClickYes(500).tClickOk(300)
 					.build();
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(false).tEnterMain(2000)
+					.totalCourses(6).completed(false).tEnterMain(2000)
 					.details(List.of(detail))
 					.build();
 
@@ -369,7 +369,7 @@ class SingleGameServiceTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=true이고 details 개수가 totalCourses와 같으면 정상 저장된다")
+		@DisplayName("completed=true이고 details 개수가 totalCourses와 같으면 정상 저장된다")
 		void it_saves_when_completed_and_details_count_matches() throws Exception {
 			List<SingleGameDetailRequest> details = new java.util.ArrayList<>();
 			for (int i = 1; i <= 6; i++) {
@@ -377,7 +377,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -404,7 +404,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(0)
+					.totalCourses(6).completed(true).tEnterMain(0)
 					.details(details)
 					.build();
 
@@ -423,7 +423,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(65000)
+					.totalCourses(6).completed(true).tEnterMain(65000)
 					.details(details)
 					.build();
 
@@ -442,7 +442,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(0).tClickYes(100).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -461,7 +461,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(65000).tClickYes(100).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -480,7 +480,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(0).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -499,7 +499,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(65000).tClickOk(100).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -518,7 +518,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(0).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 
@@ -537,7 +537,7 @@ class SingleGameServiceTest {
 						.sequence(i).tClickCourse(100).tClickYes(100).tClickOk(65000).build());
 			}
 			SingleGameSaveRequest request = SingleGameSaveRequest.builder()
-					.totalCourses(6).isCompleted(true).tEnterMain(2000)
+					.totalCourses(6).completed(true).tEnterMain(2000)
 					.details(details)
 					.build();
 

@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
@@ -33,12 +32,8 @@ public class MessageResponse {
 		private Long intentId;
 		private String giveCourseNo;
 		private String wantCourseNo;
-
-		@JsonProperty("isDeleted")
-		private boolean isDeleted;
-
-		@JsonProperty("isOn")
-		private boolean isOn;
+		private boolean deleted;
+		private boolean on;
 	}
 
 	@Getter

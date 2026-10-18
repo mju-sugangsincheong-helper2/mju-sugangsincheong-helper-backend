@@ -17,7 +17,7 @@ public class AccountDeviceResponse {
 	private String platformProduct;
 	private String description;
 	private boolean pushNotificationEnabled;
-	private boolean isCurrentDevice;
+	private boolean currentDevice;
 	private Instant lastAccessedAt;
 	private Instant createdAt;
 
@@ -34,7 +34,7 @@ public class AccountDeviceResponse {
 				.platformProduct(device.getPlatformJsProduct())
 				.description(device.getPlatformJsDescription())
 				.pushNotificationEnabled(pushEnabled)
-				.isCurrentDevice(current)
+				.currentDevice(current)
 				.lastAccessedAt(device.getLastAccessedAt())
 				.createdAt(device.getCreatedAt())
 				.build();

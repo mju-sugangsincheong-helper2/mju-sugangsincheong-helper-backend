@@ -6,7 +6,7 @@
 
 ## 1. 도메인 유효성 검증
 - **과목 수 (`totalCourses`)**: `1`, `3`, `6`, `7`, `8`만 허용 (`0`, `2`, `4`, `5`, `9` 등 거부)
-- **완료 여부 (`isCompleted`) 정합성**: `isCompleted = true` 시 `details.size() == totalCourses`, `false` 시 `details.size() < totalCourses`
+- **완료 여부 (`completed`) 정합성**: `completed = true` 시 `details.size() == totalCourses`, `false` 시 `details.size() < totalCourses`
 - **반응 속도 범위**: `tEnterMain`, `tClickCourse`, `tClickYes`, `tClickOk` 모두 `1ms` ~ `60,000ms` 범위 내 준수
 
 ---

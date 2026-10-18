@@ -95,7 +95,7 @@ class SingleGameControllerTest {
 							.content("""
 									{
 										"totalCourses": 6,
-										"isCompleted": true,
+										"completed": true,
 										"tEnterMain": 2000,
 										"details": [
 											{
@@ -119,7 +119,7 @@ class SingleGameControllerTest {
 			String invalidJson = """
 					{
 						"totalCourses": 0,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": -1,
 						"details": []
 					}
@@ -214,10 +214,10 @@ class SingleGameControllerTest {
 			mockMvc.perform(get("/api/v1/singlegame/1/analysis"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.gameId").value(1))
-					.andExpect(jsonPath("$.data.isOwner").exists())
-					.andExpect(jsonPath("$.data.owner").doesNotExist())
-					.andExpect(jsonPath("$.data.isMember").exists())
-					.andExpect(jsonPath("$.data.member").doesNotExist())
+					.andExpect(jsonPath("$.data.owner").exists())
+					.andExpect(jsonPath("$.data.isOwner").doesNotExist())
+					.andExpect(jsonPath("$.data.member").exists())
+					.andExpect(jsonPath("$.data.isMember").doesNotExist())
 					.andExpect(jsonPath("$.data.feedbacks.primary.code").value("GOD_TIER_PHYSICAL"))
 					.andExpect(jsonPath("$.data.record.tTotal").value(12000))
 					.andExpect(jsonPath("$.meta").exists());

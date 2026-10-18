@@ -351,8 +351,8 @@ public class SingleGameService {
 
 		return AnalysisResponse.builder()
 				.gameId(gameId)
-				.isOwner(isOwner)
-				.isMember(isMember)
+				.owner(isOwner)
+				.member(isMember)
 				.totalCourses(totalCourses)
 				.record(RecordInfo.builder()
 						.tTotal(game.getTTotal())

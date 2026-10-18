@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.exchange.dto.cache;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.mjusugangsincheonghelper.database.entity.ExchangeIntentEntity;
 import java.io.Serializable;
 import java.time.Instant;
@@ -24,8 +23,7 @@ public class IntentCacheDto implements Serializable {
 	private String giveCourseNo;
 	private String wantCourseNo;
 
-	@JsonProperty("isDeleted")
-	private boolean isDeleted;
+	private boolean deleted;
 	private Instant createdAt;
 
 	public static IntentCacheDto from(ExchangeIntentEntity entity) {
@@ -33,7 +31,7 @@ public class IntentCacheDto implements Serializable {
 				.intentId(entity.getId())
 				.giveCourseNo(entity.getGiveCourseNo())
 				.wantCourseNo(entity.getWantCourseNo())
-				.isDeleted(entity.isDeleted())
+				.deleted(entity.isDeleted())
 				.createdAt(entity.getCreatedAt())
 				.build();
 	}

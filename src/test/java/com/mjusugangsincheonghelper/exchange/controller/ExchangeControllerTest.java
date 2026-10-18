@@ -12,7 +12,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateRequest;
 import com.mjusugangsincheonghelper.exchange.dto.IntentCreateResponse;
 import com.mjusugangsincheonghelper.exchange.dto.IntentDeleteResponse;
@@ -59,7 +62,13 @@ class ExchangeControllerTest {
 	@Autowired
 	private MockMvc mockMvc;
 
-	private final ObjectMapper objectMapper = new ObjectMapper();
+	// 앱과 동일한 Jackson 규칙(field 기준). application-*.yml의 spring.jackson.visibility와 동기화할 것.
+	// @WebMvcTest 슬라이스에는 ObjectMapper 빈이 없어 new로 생성하되 규칙만 맞춤.
+	private final ObjectMapper objectMapper = JsonMapper.builder()
+			.visibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY)
+			.visibility(PropertyAccessor.GETTER, JsonAutoDetect.Visibility.NONE)
+			.visibility(PropertyAccessor.IS_GETTER, JsonAutoDetect.Visibility.NONE)
+			.build();
 
 	@MockitoBean
 	private ExchangeService exchangeService;
@@ -104,7 +113,7 @@ class ExchangeControllerTest {
 					.memberId(1L)
 					.giveCourseNo("10001")
 					.wantCourseNo("10002")
-					.isDeleted(false)
+					.deleted(false)
 					.createdAt(Instant.now())
 					.build();
 
@@ -165,7 +174,7 @@ class ExchangeControllerTest {
 		void it_returns_200() throws Exception {
 			IntentDeleteResponse response = IntentDeleteResponse.builder()
 					.intentId(1L)
-					.isDeleted(true)
+					.deleted(true)
 					.deletedAt(Instant.now())
 					.build();
 
@@ -175,7 +184,7 @@ class ExchangeControllerTest {
 							.with(csrf()))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.intentId").value(1))
-					.andExpect(jsonPath("$.data.isDeleted").value(true));
+					.andExpect(jsonPath("$.data.deleted").value(true));
 		}
 
 		@Test
@@ -285,12 +294,12 @@ class ExchangeControllerTest {
 		@DisplayName("200 응답을 반환한다")
 		void it_returns_200() throws Exception {
 			RoomToggleRequest request = RoomToggleRequest.builder()
-					.isOn(false)
+					.on(false)
 					.build();
 
 			RoomToggleResponse response = RoomToggleResponse.builder()
 					.roomId(1L)
-					.isOn(false)
+					.on(false)
 					.build();
 
 			given(exchangeService.toggleRoom(any(Long.class), eq(1L), any(RoomToggleRequest.class))).willReturn(response);
@@ -301,7 +310,7 @@ class ExchangeControllerTest {
 							.content(objectMapper.writeValueAsString(request)))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.roomId").value(1))
-					.andExpect(jsonPath("$.data.isOn").value(false));
+					.andExpect(jsonPath("$.data.on").value(false));
 		}
 	}
 }

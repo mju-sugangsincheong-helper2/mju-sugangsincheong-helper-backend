@@ -1,7 +1,5 @@
 package com.mjusugangsincheonghelper.singlegame.dto;
 
-import com.fasterxml.jackson.annotation.JsonAutoDetect;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
@@ -28,7 +26,6 @@ public class RankingResponse implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY, getterVisibility = JsonAutoDetect.Visibility.NONE)
 	@Schema(name = "RankingResponseRankingEntry")
 	public static class RankingEntry implements Serializable {
 
@@ -38,9 +35,7 @@ public class RankingResponse implements Serializable {
 		private long gameId;
 		private String name;
 		private String department;
-		@JsonProperty("tTotal")
 		private int tTotal;
-		@JsonProperty("tEnterMain")
 		private int tEnterMain;
 	}
 
@@ -48,7 +43,6 @@ public class RankingResponse implements Serializable {
 	@Builder
 	@NoArgsConstructor
 	@AllArgsConstructor
-	@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY, getterVisibility = JsonAutoDetect.Visibility.NONE)
 	@Schema(name = "RankingResponseMyRankInfo")
 	public static class MyRankInfo implements Serializable {
 
@@ -56,9 +50,7 @@ public class RankingResponse implements Serializable {
 
 		private int rank;
 		private long gameId;
-		@JsonProperty("tTotal")
 		private int tTotal;
-		@JsonProperty("tEnterMain")
 		private int tEnterMain;
 	}
 }

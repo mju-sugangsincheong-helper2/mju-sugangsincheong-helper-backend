@@ -36,7 +36,8 @@ public class RedisConfig implements CachingConfigurer {
 				.enableUnsafeDefaultTyping()
 				.customize(builder -> {
 					builder.findAndAddModules();
-					// 규칙: MVC mapper와 동일하게 field 기준 단일화 (Jackson 3 API)
+					// 규칙: MVC mapper와 동일하게 field 기준 단일화 (Jackson 3 API).
+					// wire DTO는 per-field @JsonProperty 없이 전역 설정만으로 직렬화한다.
 					builder.changeDefaultVisibility(vc -> vc
 							.withGetterVisibility(JsonAutoDetect.Visibility.NONE)
 							.withIsGetterVisibility(JsonAutoDetect.Visibility.NONE)

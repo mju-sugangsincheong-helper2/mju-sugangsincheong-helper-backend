@@ -1,6 +1,5 @@
 package com.mjusugangsincheonghelper.exchange.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
@@ -27,9 +26,7 @@ public class MainResponse {
 		private Long intentId;
 		private String giveCourseNo;
 		private String wantCourseNo;
-
-		@JsonProperty("isDeleted")
-		private boolean isDeleted;
+		private boolean deleted;
 
 		private Instant createdAt;
 		private List<RoomItem> rooms;
@@ -45,9 +42,7 @@ public class MainResponse {
 		private String term;
 		private String cycleHash;
 		private String status;
-
-		@JsonProperty("isOn")
-		private boolean isOn;
+		private boolean on;
 
 		private int unreadCount;
 		private Long lastReadMessageId;
@@ -79,12 +74,8 @@ public class MainResponse {
 		private Long intentId;
 		private String giveCourseNo;
 		private String wantCourseNo;
-
-		@JsonProperty("isDeleted")
-		private boolean isDeleted;
-
-		@JsonProperty("isOn")
-		private boolean isOn;
+		private boolean deleted;
+		private boolean on;
 	}
 
 	@Getter

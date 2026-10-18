@@ -71,8 +71,9 @@ services:
   #   1. 앱 전용 Role 생성 (없으면)
   #   2. dev DB 생성 + pgmq 확장 활성화
   #   3. test DB 생성 + pgmq 확장 활성화
-  #   4. Role의 search_path 설정
-  # 재실행해도 안전 (존재 여부 체크 후 생성)
+  #   4. schema-dev.sql 적용 (dev/test DB, psql 직접 실행 — prod db-setup과 동일 경로)
+  #   5. Role의 search_path 설정
+  # 재실행해도 안전 (존재 여부 체크 + IF NOT EXISTS / OR REPLACE)
   db-setup:
     image: postgres:17
     container_name: *DB_SETUP_CONTAINER
@@ -89,6 +90,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ./src/main/resources/schema-dev.sql:/schema-dev.sql:ro
     command: |
       bash -c "
         set -e
@@ -117,7 +120,11 @@ services:
           psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c \"ALTER DATABASE $$TEST_DB_NAME SET search_path TO public;\"
         fi
 
-        # 4. Role의 search_path 설정
+        # 4. schema-dev.sql 적용 (테이블+파티션+뷰, 멱등)
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -v ON_ERROR_STOP=1 -f /schema-dev.sql
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -v ON_ERROR_STOP=1 -f /schema-dev.sql
+
+        # 5. Role의 search_path 설정
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public;\"
         echo 'Database setup complete!'
       "

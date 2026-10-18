@@ -1,6 +1,7 @@
 spring:
   jackson:
-    # 규칙: JSON 인식은 field 기준 단일화. Lombok getter 무시. (dev/prod와 동일 유지)
+    # 규칙: JSON 키 = field 이름 그대로. 전역 visibility로만 결정, per-field @JsonProperty 금지. (dev/prod와 동일 유지)
+    # - per-field 금지는 JacksonContractTest가 강제. 예외(키 리네임 등) 필요 시 테스트에 사유 남기고 허용.
     visibility:
       field: any
       getter: none
@@ -15,12 +16,13 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:schema-view.sql
+      schema-locations: classpath:schema-dev.sql  # dev와 동일 DDL, JPA는 생성 안 함
 
   jpa:
-    defer-datasource-initialization: true
+    # DDL은 schema-dev.sql이 담당하므로 JPA 부트스트랩보다 먼저 스크립트 실행 (defer 불필요)
+    defer-datasource-initialization: false
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate  # DDL은 schema-dev.sql이 담당, JPA는 검증+쿼리만 (dev/prod와 동일)
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect

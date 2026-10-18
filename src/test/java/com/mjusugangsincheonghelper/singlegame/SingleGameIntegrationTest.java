@@ -114,7 +114,7 @@ class SingleGameIntegrationTest {
 			String saveRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 245,
 						"details": [
 							{"sequence": 1, "tClickCourse": 450, "tClickYes": 180, "tClickOk": 200},
@@ -167,7 +167,7 @@ class SingleGameIntegrationTest {
 			String saveRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -206,7 +206,7 @@ class SingleGameIntegrationTest {
 			String saveRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -266,7 +266,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 4,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180}
@@ -287,7 +287,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": []
 					}
@@ -308,12 +308,12 @@ class SingleGameIntegrationTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=true인데 details 개수가 totalCourses와 다르면 400 응답을 반환한다")
+		@DisplayName("completed=true인데 details 개수가 totalCourses와 다르면 400 응답을 반환한다")
 		void it_returns_400_when_completed_but_details_count_mismatch() throws Exception {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -330,12 +330,12 @@ class SingleGameIntegrationTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=false인데 details 개수가 totalCourses와 같으면 400 응답을 반환한다")
+		@DisplayName("completed=false인데 details 개수가 totalCourses와 같으면 400 응답을 반환한다")
 		void it_returns_400_when_not_completed_but_details_count_equals_total() throws Exception {
 			String invalidRequest = """
 					{
 						"totalCourses": 3,
-						"isCompleted": false,
+						"completed": false,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -353,12 +353,12 @@ class SingleGameIntegrationTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=false이고 details 개수가 totalCourses보다 적으면 정상 저장된다")
+		@DisplayName("completed=false이고 details 개수가 totalCourses보다 적으면 정상 저장된다")
 		void it_saves_when_not_completed_and_details_less_than_total() throws Exception {
 			String validRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": false,
+						"completed": false,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -375,12 +375,12 @@ class SingleGameIntegrationTest {
 		}
 
 		@Test
-		@DisplayName("isCompleted=true이고 details 개수가 totalCourses와 같으면 정상 저장된다")
+		@DisplayName("completed=true이고 details 개수가 totalCourses와 같으면 정상 저장된다")
 		void it_saves_when_completed_and_details_count_matches() throws Exception {
 			String validRequest = """
 					{
 						"totalCourses": 3,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -403,7 +403,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 65000,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -428,7 +428,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 65000, "tClickYes": 150, "tClickOk": 180},
@@ -453,7 +453,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 65000, "tClickOk": 180},
@@ -478,7 +478,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 65000},
@@ -503,7 +503,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 0,
 						"details": [
 							{"sequence": 1, "tClickCourse": 400, "tClickYes": 150, "tClickOk": 180},
@@ -528,7 +528,7 @@ class SingleGameIntegrationTest {
 			String invalidRequest = """
 					{
 						"totalCourses": 6,
-						"isCompleted": true,
+						"completed": true,
 						"tEnterMain": 200,
 						"details": [
 							{"sequence": 1, "tClickCourse": 0, "tClickYes": 150, "tClickOk": 180},

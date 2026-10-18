@@ -234,7 +234,7 @@ POST /api/{version}/singlegame
 ```json
 {
   "totalCourses": 6,
-  "isCompleted": true,
+  "completed": true,
   "tEnterMain": 1500,
   "details": [
     {
@@ -250,7 +250,7 @@ POST /api/{version}/singlegame
 
 **유효성 검증 규칙:**
 - `totalCourses`는 `[1, 3, 6, 7, 8]` 중 하나여야 함
-- 완료된 게임(`isCompleted=true`)인 경우 `details` 개수는 `totalCourses`와 동일해야 함
+- 완료된 게임(completed=true)인 경우 `details` 개수는 `totalCourses`와 동일해야 함
 - 미완료 게임인 경우 `details` 개수는 `totalCourses`보다 적어야 함
 - **이벤트별 반응 시간은 각각 별도의 min/max 범위를 적용**한다. (전체 시간을 하나의 범위로 제한하지 않음)
   - `tEnterMain`: `app.singlegame.timing.t-enter-main` (기본 min: 1 ~ max: 60000)
@@ -433,8 +433,8 @@ GET /api/{version}/singlegame/{gameId}/analysis
 ```json
 {
   "gameId": 1234,
-  "isOwner": true,
-  "isMember": true,
+  "owner": true,
+  "member": true,
   "totalCourses": 6,
   "totalTime": 8500,
   "ranking": {
@@ -495,8 +495,8 @@ GET /api/{version}/singlegame/{gameId}/analysis
 ```
 
 **필드 설명:**
-- `isOwner`: 요청한 사람이 이 게임의 소유자인지 여부
-- `isMember`: 게임 소유주가 인증 회원인지 여부. `false`면 게스트의 게임
+- `owner`: 요청한 사람이 이 게임의 소유자인지 여부
+- `member`: 게임 소유주가 인증 회원인지 여부. `false`면 게스트의 게임
 
 **`basic` 배열 규칙:**
 - `sequence = 0`: ENTRY (메인방 진입, 전체 1개)

@@ -86,7 +86,7 @@ class AccountControllerTest {
 					.memberId(1L)
 					.name("홍길동")
 					.role("USER")
-					.isPrivacyPolicyAgreed(true)
+					.privacyPolicyAgreed(true)
 					.build();
 			given(accountService.getMe(1L)).willReturn(response);
 
@@ -96,7 +96,7 @@ class AccountControllerTest {
 					.andExpect(jsonPath("$.data.memberId").value(1))
 					.andExpect(jsonPath("$.data.name").value("홍길동"))
 					.andExpect(jsonPath("$.data.role").value("USER"))
-					.andExpect(jsonPath("$.data.isPrivacyPolicyAgreed").value(true));
+					.andExpect(jsonPath("$.data.privacyPolicyAgreed").value(true));
 		}
 
 		@Test

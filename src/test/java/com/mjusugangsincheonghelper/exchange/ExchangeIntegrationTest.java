@@ -148,7 +148,7 @@ class ExchangeIntegrationTest {
 					.andExpect(status().isCreated())
 					.andExpect(jsonPath("$.data.giveCourseNo").value("10001"))
 					.andExpect(jsonPath("$.data.wantCourseNo").value("10002"))
-					.andExpect(jsonPath("$.data.isDeleted").value(false));
+					.andExpect(jsonPath("$.data.deleted").value(false));
 
 			// Verify DB
 			String term = systemConfigService.getCurrentTerm();
@@ -623,7 +623,7 @@ class ExchangeIntegrationTest {
 			SecurityContextHolder.getContext().setAuthentication(
 					new UsernamePasswordAuthenticationToken(memberA.getId(), null,
 							List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_MEMBER"))));
-			exchangeService.toggleRoom(memberA.getId(), room.getId(), RoomToggleRequest.builder().isOn(false).build());
+			exchangeService.toggleRoom(memberA.getId(), room.getId(), RoomToggleRequest.builder().on(false).build());
 
 			// Then 1: PARTIAL_OFF 및 A의 메인 폴링 시 unreadCount=0, lastMessage=null
 			ExchangeRoomEntity afterOff = roomRepository.findById(
@@ -638,7 +638,7 @@ class ExchangeIntegrationTest {
 			assertThat(roomItemOff.getLastMessage()).isNull();
 
 			// When 2: A가 방 ON 복귀
-			exchangeService.toggleRoom(memberA.getId(), room.getId(), RoomToggleRequest.builder().isOn(true).build());
+			exchangeService.toggleRoom(memberA.getId(), room.getId(), RoomToggleRequest.builder().on(true).build());
 
 			// Then 2: ACTIVE 및 A의 메인 폴링 시 unreadCount >= 1, lastMessage 복원
 			ExchangeRoomEntity afterOn = roomRepository.findById(

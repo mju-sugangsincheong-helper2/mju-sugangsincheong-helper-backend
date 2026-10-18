@@ -823,7 +823,7 @@ class ExchangeServiceTest {
 			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
-			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
+			RoomToggleRequest request = RoomToggleRequest.builder().on(false).build();
 
 			given(systemConfigService.getCurrentTerm()).willReturn(term);
 			given(roomIntentRepository.findByTermAndRoomIdAndMemberId(term, roomId, memberId)).willReturn(List.of());
@@ -844,7 +844,7 @@ class ExchangeServiceTest {
 			String term = "202620";
 			Long memberId = 1L;
 			Long roomId = 100L;
-			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
+			RoomToggleRequest request = RoomToggleRequest.builder().on(false).build();
 
 			ExchangeRoomIntentEntity roomIntent = 
 					ExchangeRoomIntentEntity.builder()
@@ -884,7 +884,7 @@ class ExchangeServiceTest {
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long roomId = 100L;
-			RoomToggleRequest request = RoomToggleRequest.builder().isOn(false).build();
+			RoomToggleRequest request = RoomToggleRequest.builder().on(false).build();
 
 			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(roomId).memberId(memberIdA).intentId(50L).build();
@@ -914,7 +914,7 @@ class ExchangeServiceTest {
 			Long memberIdA = 1L;
 			Long memberIdB = 2L;
 			Long roomId = 100L;
-			RoomToggleRequest request = RoomToggleRequest.builder().isOn(true).build();
+			RoomToggleRequest request = RoomToggleRequest.builder().on(true).build();
 
 			ExchangeRoomIntentEntity riA = ExchangeRoomIntentEntity.builder()
 					.term(term).roomId(roomId).memberId(memberIdA).intentId(50L).build();

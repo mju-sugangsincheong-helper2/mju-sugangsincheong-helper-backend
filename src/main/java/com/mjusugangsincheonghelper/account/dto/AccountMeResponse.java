@@ -16,7 +16,7 @@ public class AccountMeResponse {
 	private final String name;
 	private final String position;
 	private final String department;
-	private final boolean isPrivacyPolicyAgreed;
+	private final boolean privacyPolicyAgreed;
 	private final Instant createdAt;
 
 	public static AccountMeResponse from(Member member, boolean privacyPolicyAgreed) {
@@ -26,7 +26,7 @@ public class AccountMeResponse {
 				.name(member.getName())
 				.position(member.getPosition())
 				.department(member.getDepartment())
-				.isPrivacyPolicyAgreed(privacyPolicyAgreed)
+				.privacyPolicyAgreed(privacyPolicyAgreed)
 				.createdAt(member.getCreatedAt())
 				.build();
 	}

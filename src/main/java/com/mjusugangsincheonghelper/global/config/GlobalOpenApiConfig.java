@@ -1,9 +1,15 @@
 package com.mjusugangsincheonghelper.global.config;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mjusugangsincheonghelper.global.api.docs.ErrorResponsesOperationCustomizer;
 import com.mjusugangsincheonghelper.global.api.envelope.ErrorResponseEnvelope;
 import com.mjusugangsincheonghelper.global.api.exception.ErrorDetail;
+import io.swagger.v3.core.converter.ModelConverter;
 import io.swagger.v3.core.converter.ModelConverters;
+import io.swagger.v3.core.jackson.ModelResolver;
+import io.swagger.v3.core.util.Json;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.media.Schema;
@@ -18,6 +24,26 @@ import org.springframework.context.annotation.Profile;
 
 @Configuration
 public class GlobalOpenApiConfig {
+
+	/**
+	 * 스웨거 스키마를 런타임 Jackson과 동일한 field 기준으로 만든다.
+	 *
+	 * <p>swagger-core 기본 resolver는 getter 기준으로 이름을 뽑아서
+	 * {@code getTClickCourse} → {@code tclickCourse} 처럼 틀어진다
+	 * (앞 두 글자가 대문자인 게터의 mangling 규칙 때문).
+	 * 런타임은 {@code spring.jackson.visibility}로 field 기준이라
+	 * 문서 예시를 복사하면 400이 나는 엇박이 생긴다.
+	 * {@link ModelConverter} 빈은 springdoc의 ModelConverterRegistrar가
+	 * {@link ModelConverters} 최우선 순위로 등록하므로 별도 설정 없이 적용된다.
+	 */
+	@Bean
+	public ModelResolver fieldBasedModelResolver() {
+		ObjectMapper mapper = Json.mapper().copy()
+				.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY)
+				.setVisibility(PropertyAccessor.GETTER, JsonAutoDetect.Visibility.NONE)
+				.setVisibility(PropertyAccessor.IS_GETTER, JsonAutoDetect.Visibility.NONE);
+		return new ModelResolver(mapper);
+	}
 
 	@Bean
 	public OperationCustomizer errorResponsesOperationCustomizer() {
