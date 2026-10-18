@@ -2,8 +2,8 @@
 # requires-python = ">=3.9"
 # dependencies = ["matplotlib"]
 # ///
-"""exp01 plot.py — 사례 전용 그림. 이번 기준: 태그별 elapsed 평균 + min/max 오차막대.
-다음 실험엔 기준ごと 갈아끼움. 데이터 출처: tools/jfr-analyze.py의 rollup_tags.csv.
+"""exp01 plot.py — [EDITABLE] 전부. 이번 기준: 태그별 elapsed 평균 + min/max 오차막대.
+다음 실험엔 기준ごと 갈아끼움. 데이터 출처: analyze.py의 rollup_tags.csv.
 """
 import csv
 from pathlib import Path

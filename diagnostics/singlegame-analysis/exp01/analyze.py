@@ -2,13 +2,18 @@
 # requires-python = ">=3.9"
 # dependencies = ["ijson"]
 # ///
-"""tools/jfr-analyze.py — 일반 JFR 분석 메커니즘. 수정 금지. 계약은 같은 exp의 tools/CONTRACT.md.
+"""exp01 analyze.py — URL 기준 콜스택 분석. run.sh에서 호출. 직접 실행도 가능.
+
+구역 규칙:
+  [EDITABLE] 판단 기준 (MARGIN, 요약 규칙, 집계 단위). 이번 실험에 맞게 고침.
+  [FROZEN v1] 측정 메커니즘 (창 귀속·trie·출력 컬럼). 서버 JfrWindowFilter와 약속.
+             바꾸면 calltree/rollup 하위 호환이 깨짐.
 
 http.server.request 이벤트를 창(window)으로 삼아 Controller 앵커 trie를 쌓는다.
-집계 단위: --group-by tag(기본, 동일 태그 합산) | window(창별 분리).
-수치 판단·그림은 사례 측(plot.py)이 한다. 여기는 사실만 낸다.
+집계: 동일 태그 합산 고정 (window별 분리가 필요하면 [EDITABLE] GROUP_BY를 풀 것).
+수치 판단·그림은 plot.py가 한다. 여기는 사실만 낸다.
 
-입력: trace.json (http.server.request 포함)
+입력: raw/trace.json (http.server.request 포함)
 출력: report/calltree-<tag>.txt       합산 trie 행렬 + summary
       report/rollup_windows.csv        1행=1창(1회 측정, 사실)
       report/rollup_tags.csv           1행=1태그(합산, mean/min/max는 기술값)
@@ -36,9 +41,22 @@ COLS = [
     "jdk.FileWrite",
     "jdk.JavaExceptionThrow",
 ]
+# ================================================================
+# [EDITABLE] 이번 판단 기준 — threshold·집계 단위. 맘대로 고침.
+# ================================================================
+MARGIN = 0.05  # 창 귀속 여유 ([start-MARGIN, end+MARGIN]). 이번 실험은 0.05 고정.
+# 집계 단위: "tag" 고정 (동일 태그 합산). 창별 분리가 필요하면 아래 FROZEN의
+# window 분기 주석을 풀 것. 기본은 tag.
+GROUP_BY = "tag"
+
+# ================================================================
+# [FROZEN v1] 측정 메커니즘 — 아래 상수는 수정 금지
+#  - WINDOW_TYPE: 창 조인키. 바꾸면 JfrWindowFilter·run.sh JFR_EVENTS와 함께 사망.
+#  - COLS/COUNT_ONLY: 출력 행렬·CSV 컬럼. 바꾸면 rollup 하위 호환 깨짐.
+#  - INCLUDE_UNTAGGED: 빈 태그 창 제외 고정. 켜면 백그라운드 노이즈가 섞임.
+# ================================================================
 COUNT_ONLY = {"jdk.ExecutionSample", "jdk.NativeMethodSample", "jdk.JavaExceptionThrow"}
 WINDOW_TYPE = "http.server.request"
-MARGIN = 0.05
 INCLUDE_UNTAGGED = False
 
 
@@ -110,7 +128,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True)
     ap.add_argument("--report-dir", required=True)
-    ap.add_argument("--group-by", choices=["tag", "window"], default="tag")
     args = ap.parse_args()
     JJSON = Path(args.input)
     REPORT = Path(args.report_dir)
@@ -156,15 +173,18 @@ def main():
     windows.sort(key=lambda w: w["start"])
     WIN_THREADS = {w["thread"] for w in windows}
 
-    # 그룹 키: tag(합산) | window(창별)
-    if args.group_by == "tag":
+    # 그룹 키: tag 합산 고정 ([EDITABLE] GROUP_BY). window 분기가 필요하면
+    # 아래 else 주석을 풀 것. 기본은 tag.
+    # [FROZEN] win_group 매핑 방식은 출력 파일명(calltree-<group>)과 직결되므로
+    # 분기를 바꿀 땐 report 하위 호환을 함께 볼 것.
+    if GROUP_BY == "tag":
         gkeys, glabel = [], {}
         for idx, w in enumerate(windows):
             if w["tag"] not in glabel:
                 glabel[w["tag"]] = len(gkeys)
                 gkeys.append(w["tag"])
         win_group = [glabel[w["tag"]] for w in windows]
-    else:
+    else:  # GROUP_BY == "window" (예비용)
         gkeys = [f"{w['tag']}#{i}" for i, w in enumerate(windows)]
         win_group = list(range(len(windows)))
     ngroups = len(gkeys)

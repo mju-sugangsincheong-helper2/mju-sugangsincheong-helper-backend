@@ -7,7 +7,7 @@
 ## 동작
 
 ```
-run.sh → jcmd JFR.start → curl -H "X-JFR-TAG: <태그>" → jcmd dump → jfr-analyze → plot
+run.sh → jcmd JFR.start → curl -H "X-JFR-TAG: <태그>" → jcmd dump → analyze.py → plot.py
 ```
 
 1. **기록은 서버가**: `JfrWindowFilter`가 요청을 `http.server.request` 이벤트
@@ -18,10 +18,10 @@ run.sh → jcmd JFR.start → curl -H "X-JFR-TAG: <태그>" → jcmd dump → jf
 ## 요약 규칙
 
 `[(부모와 숫자 다름) AND (점유율>0%)]` + 조상. 한 줄 비-도메인 래퍼는 접음(`[+N]`).
-상세는 행렬에 그대로. 기준 바꾸면 `run.sh` CONFIG만.
+상세는 행렬에 그대로.
 
 ## 파일
 
-- `run.sh` — 사례 전부 (CONFIG + 시나리오). 여기만 고침.
-- `plot.py` — 이번 기준 그림. 다음 실험엔 갈아끼움.
-- `tools/` — 일반. 수정 금지. 계약은 `tools/CONTRACT.md`.
+- `run.sh` — 값+시나리오 로직은 `[EDITABLE]`, 태그헤더·JFR이벤트·jcmd 3줄은 `[FROZEN]`. 위→아래 직선.
+- `analyze.py` — 판단 기준(`MARGIN`, `GROUP_BY`)은 `[EDITABLE]`, 창 귀속·trie·출력 컬럼은 `[FROZEN]`.
+- `plot.py` — `[EDITABLE]` 전부. 이번 그림 기준. 다음 실험엔 갈아끼움.
