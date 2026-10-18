@@ -60,18 +60,6 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	                                  @Param("limit") int limit);
 
 	@Query(value = """
-			SELECT d.game_id, d.sequence,
-			       d.t_click_course, d.t_click_yes, d.t_click_ok
-			FROM single_game_detail d
-			WHERE d.game_id IN (
-			    SELECT sg.id FROM single_game sg
-			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			)
-			ORDER BY d.game_id, d.sequence
-			""", nativeQuery = true)
-	List<Object[]> findAllDetailsByTotalCourses(@Param("totalCourses") int totalCourses);
-
-	@Query(value = """
 			SELECT COUNT(DISTINCT sg.member_id) FROM single_game sg
 			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
 			""", nativeQuery = true)
@@ -85,14 +73,6 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 			""", nativeQuery = true)
 	long countDistinctDeptPersons(@Param("totalCourses") int totalCourses,
 	                                @Param("department") String department);
-
-	@Query(value = """
-			SELECT COUNT(*) FROM single_game sg
-			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			  AND sg.t_enter_main <= :tEnterMain
-			""", nativeQuery = true)
-	long countEnterMainBetterOrEqual(@Param("totalCourses") int totalCourses,
-	                                   @Param("tEnterMain") int tEnterMain);
 
 	/**
 	 * 랭킹은 사람 기준(00 §5): 인당 대표 1판(최고 기록, 동점은 가장 이른 판).
@@ -133,25 +113,35 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	                              @Param("department") String department,
 	                              @Param("best") int best);
 
+	/**
+	 * 전체 구간 분포표(C3 원천). 뷰를 통하지 않는 raw 쿼리.
+	 * 행: [sequence, cc×4, cy×4, cok×4, total×4] (p10/p30/p50/p70 순).
+	 */
 	@Query(value = """
-			SELECT total_courses, sequence,
-			       p10_click_course, p30_click_course, p50_click_course, p70_click_course,
-			       p10_click_yes, p30_click_yes, p50_click_yes, p70_click_yes,
-			       p10_click_ok, p30_click_ok, p50_click_ok, p70_click_ok,
-			       p10_total, p30_total, p50_total, p70_total
-			FROM v_sequence_percentile_stats
-			WHERE total_courses = :totalCourses
-			ORDER BY sequence ASC
-			""", nativeQuery = true)
-	List<Object[]> findSequencePercentileStats(@Param("totalCourses") int totalCourses);
-
-
-
-	@Query(value = """
-			SELECT COUNT(*) FROM single_game sg
+			SELECT d.sequence,
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok)
+			FROM single_game_detail d
+			JOIN single_game sg ON sg.id = d.game_id
 			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			GROUP BY d.sequence
+			ORDER BY d.sequence ASC
 			""", nativeQuery = true)
-	long countCompletedGames(@Param("totalCourses") int totalCourses);
+	List<Object[]> findGlobalSequenceBands(@Param("totalCourses") int totalCourses);
 
 
 
@@ -190,79 +180,83 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	List<Object[]> findDeptEnterMainPercentileStats(@Param("totalCourses") int totalCourses,
 	                                          @Param("department") String department);
 
+	/**
+	 * 학과 구간 분포표(C4 원천). 전체판과 동형이며 학과 필터만 추가된다.
+	 * 행: [sequence, cc×4, cy×4, cok×4, total×4] (p10/p30/p50/p70 순).
+	 */
 	@Query(value = """
-			WITH ranked AS (
-			    SELECT d.game_id, d.sequence,
-			           d.t_click_course, d.t_click_yes, d.t_click_ok,
-			           d.t_click_course + d.t_click_yes + d.t_click_ok AS total,
-			           ROW_NUMBER() OVER (PARTITION BY d.sequence ORDER BY d.t_click_course) AS rn_cc,
-			           COUNT(*) OVER (PARTITION BY d.sequence) AS cnt_cc,
-			           ROW_NUMBER() OVER (PARTITION BY d.sequence ORDER BY d.t_click_yes) AS rn_cy,
-			           COUNT(*) OVER (PARTITION BY d.sequence) AS cnt_cy,
-			           ROW_NUMBER() OVER (PARTITION BY d.sequence ORDER BY d.t_click_ok) AS rn_cok,
-			           COUNT(*) OVER (PARTITION BY d.sequence) AS cnt_cok,
-			           ROW_NUMBER() OVER (PARTITION BY d.sequence ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok) AS rn_total,
-			           COUNT(*) OVER (PARTITION BY d.sequence) AS cnt_total
+			SELECT d.sequence,
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok)
+			FROM single_game_detail d
+			JOIN single_game sg ON sg.id = d.game_id
+			JOIN member m ON m.id = sg.member_id
+			WHERE sg.total_courses = :totalCourses
+			  AND sg.is_completed = TRUE
+			  AND m.department = :department
+			GROUP BY d.sequence
+			ORDER BY d.sequence ASC
+			""", nativeQuery = true)
+	List<Object[]> findDeptSequenceBands(@Param("totalCourses") int totalCourses,
+	                                      @Param("department") String department);
+
+	/**
+	 * 피드백 분포표(C5 원천). 전수 로우를 전송하지 않고 판별 축약값의 분위수만 1행으로 반환한다.
+	 * 행: [n, aim×4, burst×4, first×4, pace×4] (p10/p30/p50/p70 순).
+	 * pace는 N>=3판만 모집단에 포함된다(NULL은 PERCENTILE_CONT가 무시).
+	 * first는 sequence 순서상 첫 구간의 total이다.
+	 */
+	@Query(value = """
+			WITH per_seq AS (
+			    SELECT d.game_id,
+			           d.t_click_course AS cc,
+			           (d.t_click_yes + d.t_click_ok) AS burst,
+			           (d.t_click_course + d.t_click_yes + d.t_click_ok) AS total,
+			           ROW_NUMBER() OVER (PARTITION BY d.game_id ORDER BY d.sequence ASC) AS rn
 			    FROM single_game_detail d
 			    JOIN single_game sg ON sg.id = d.game_id
-			    JOIN member m ON sg.member_id = m.id
-			    WHERE sg.total_courses = :totalCourses
-			      AND sg.is_completed = TRUE
-			      AND m.department = :department
+			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
+			),
+			per_game AS (
+			    SELECT AVG(cc) AS avg_cc,
+			           AVG(burst) AS avg_burst,
+			           MAX(CASE WHEN rn = 1 THEN total END) AS t1_total,
+			           CASE WHEN COUNT(*) >= 3 THEN STDDEV_POP(total) END AS pace_std
+			    FROM per_seq
+			    GROUP BY game_id
 			)
-			SELECT sequence,
-			       MAX(CASE WHEN metric = 'cc' AND p = 0.10 THEN val END) AS cc_p10,
-			       MAX(CASE WHEN metric = 'cc' AND p = 0.30 THEN val END) AS cc_p30,
-			       MAX(CASE WHEN metric = 'cc' AND p = 0.50 THEN val END) AS cc_p50,
-			       MAX(CASE WHEN metric = 'cc' AND p = 0.70 THEN val END) AS cc_p70,
-			       MAX(CASE WHEN metric = 'cy' AND p = 0.10 THEN val END) AS cy_p10,
-			       MAX(CASE WHEN metric = 'cy' AND p = 0.30 THEN val END) AS cy_p30,
-			       MAX(CASE WHEN metric = 'cy' AND p = 0.50 THEN val END) AS cy_p50,
-			       MAX(CASE WHEN metric = 'cy' AND p = 0.70 THEN val END) AS cy_p70,
-			       MAX(CASE WHEN metric = 'cok' AND p = 0.10 THEN val END) AS cok_p10,
-			       MAX(CASE WHEN metric = 'cok' AND p = 0.30 THEN val END) AS cok_p30,
-			       MAX(CASE WHEN metric = 'cok' AND p = 0.50 THEN val END) AS cok_p50,
-			       MAX(CASE WHEN metric = 'cok' AND p = 0.70 THEN val END) AS cok_p70,
-			       MAX(CASE WHEN metric = 'total' AND p = 0.10 THEN val END) AS total_p10,
-			       MAX(CASE WHEN metric = 'total' AND p = 0.30 THEN val END) AS total_p30,
-			       MAX(CASE WHEN metric = 'total' AND p = 0.50 THEN val END) AS total_p50,
-			       MAX(CASE WHEN metric = 'total' AND p = 0.70 THEN val END) AS total_p70
-			FROM (
-			    SELECT sequence, 'cc' AS metric, 0.10 AS p, t_click_course AS val FROM ranked WHERE rn_cc = CEIL(cnt_cc * 0.10)
-			    UNION ALL
-			    SELECT sequence, 'cc', 0.30, t_click_course FROM ranked WHERE rn_cc = CEIL(cnt_cc * 0.30)
-			    UNION ALL
-			    SELECT sequence, 'cc', 0.50, t_click_course FROM ranked WHERE rn_cc = CEIL(cnt_cc * 0.50)
-			    UNION ALL
-			    SELECT sequence, 'cc', 0.70, t_click_course FROM ranked WHERE rn_cc = CEIL(cnt_cc * 0.70)
-			    UNION ALL
-			    SELECT sequence, 'cy', 0.10, t_click_yes FROM ranked WHERE rn_cy = CEIL(cnt_cy * 0.10)
-			    UNION ALL
-			    SELECT sequence, 'cy', 0.30, t_click_yes FROM ranked WHERE rn_cy = CEIL(cnt_cy * 0.30)
-			    UNION ALL
-			    SELECT sequence, 'cy', 0.50, t_click_yes FROM ranked WHERE rn_cy = CEIL(cnt_cy * 0.50)
-			    UNION ALL
-			    SELECT sequence, 'cy', 0.70, t_click_yes FROM ranked WHERE rn_cy = CEIL(cnt_cy * 0.70)
-			    UNION ALL
-			    SELECT sequence, 'cok', 0.10, t_click_ok FROM ranked WHERE rn_cok = CEIL(cnt_cok * 0.10)
-			    UNION ALL
-			    SELECT sequence, 'cok', 0.30, t_click_ok FROM ranked WHERE rn_cok = CEIL(cnt_cok * 0.30)
-			    UNION ALL
-			    SELECT sequence, 'cok', 0.50, t_click_ok FROM ranked WHERE rn_cok = CEIL(cnt_cok * 0.50)
-			    UNION ALL
-			    SELECT sequence, 'cok', 0.70, t_click_ok FROM ranked WHERE rn_cok = CEIL(cnt_cok * 0.70)
-			    UNION ALL
-			    SELECT sequence, 'total', 0.10, total FROM ranked WHERE rn_total = CEIL(cnt_total * 0.10)
-			    UNION ALL
-			    SELECT sequence, 'total', 0.30, total FROM ranked WHERE rn_total = CEIL(cnt_total * 0.30)
-			    UNION ALL
-			    SELECT sequence, 'total', 0.50, total FROM ranked WHERE rn_total = CEIL(cnt_total * 0.50)
-			    UNION ALL
-			    SELECT sequence, 'total', 0.70, total FROM ranked WHERE rn_total = CEIL(cnt_total * 0.70)
-			) combined
-			GROUP BY sequence
-			ORDER BY sequence ASC
+			SELECT COUNT(*) AS n,
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY avg_cc),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY avg_cc),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY avg_cc),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY avg_cc),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY avg_burst),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY avg_burst),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY avg_burst),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY avg_burst),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY t1_total),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY t1_total),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY t1_total),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY t1_total),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY pace_std),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY pace_std),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY pace_std),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY pace_std)
+			FROM per_game
 			""", nativeQuery = true)
-	List<Object[]> findDeptSequencePercentileStats(@Param("totalCourses") int totalCourses,
-	                                               @Param("department") String department);
+	List<Object[]> findFeedbackBands(@Param("totalCourses") int totalCourses);
 }

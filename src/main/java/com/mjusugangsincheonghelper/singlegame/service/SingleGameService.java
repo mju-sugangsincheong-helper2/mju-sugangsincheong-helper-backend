@@ -8,7 +8,6 @@ import com.mjusugangsincheonghelper.database.repository.SingleGameDetailReposito
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.api.code.ErrorCode;
 import com.mjusugangsincheonghelper.global.api.exception.BaseException;
-import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import com.mjusugangsincheonghelper.singlegame.config.SingleGameProperties;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse.DeptRankInfo;
@@ -21,17 +20,14 @@ import com.mjusugangsincheonghelper.singlegame.dto.DepartmentsResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.MyRankInfo;
-import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.RankingEntry;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
-import com.mjusugangsincheonghelper.singlegame.dto.cache.StatsBundle;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.FeedbackBands;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.PopulationTable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -44,8 +40,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class SingleGameService {
 
-	private static final int RANKING_LIMIT = 20;
-
 	private final SingleGameRepository singleGameRepository;
 	private final SingleGameDetailRepository singleGameDetailRepository;
 	private final MemberRepository memberRepository;
@@ -53,7 +47,7 @@ public class SingleGameService {
 	private final SingleGameProperties properties;
 	private final SingleGameDataMergeService singleGameDataMergeService;
 	private final SingleGameStatsService singleGameStatsService;
-	private final CacheManager cacheManager;
+	private final SingleGameRankingCacheService rankingCacheService;
 
 	public SingleGameService(
 			SingleGameRepository singleGameRepository,
@@ -63,7 +57,7 @@ public class SingleGameService {
 			SingleGameProperties properties,
 			SingleGameDataMergeService singleGameDataMergeService,
 			SingleGameStatsService singleGameStatsService,
-			CacheManager cacheManager) {
+			SingleGameRankingCacheService rankingCacheService) {
 		this.singleGameRepository = singleGameRepository;
 		this.singleGameDetailRepository = singleGameDetailRepository;
 		this.memberRepository = memberRepository;
@@ -71,7 +65,7 @@ public class SingleGameService {
 		this.properties = properties;
 		this.singleGameDataMergeService = singleGameDataMergeService;
 		this.singleGameStatsService = singleGameStatsService;
-		this.cacheManager = cacheManager;
+		this.rankingCacheService = rankingCacheService;
 	}
 
 	private static final List<Integer> ALLOWED_TOTAL_COURSES = List.of(1, 3, 6, 7, 8);
@@ -161,7 +155,7 @@ public class SingleGameService {
 	/**
 	 * 랭킹 조회.
 	 *
-	 * <p>P1 fix: 공유 캐시에는 공용 랭킹 목록만 저장하고, myRank는 요청마다 별도 계산한다.
+	 * <p>공유 캐시에는 공용 랭킹 목록만 저장하고, myRank는 요청마다 별도 계산한다.
 	 * scope/department 정규화는 캐시 키 계산 전에 수행한다.</p>
 	 */
 	public RankingResponse getRankings(int totalCourses, String scope, String department, Long memberId) {
@@ -169,19 +163,19 @@ public class SingleGameService {
 		Member member = (memberId != null) ? memberRepository.findById(memberId).orElse(null) : null;
 		String myDept = member != null ? member.getDepartment() : null;
 
-		String resolvedScope = scope;
-		String resolvedDept = department;
-		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
+		String resolvedScope = SingleGameRankingCacheService.normalizeScope(scope);
+		String resolvedDept;
+		if ("DEPARTMENT".equals(resolvedScope)) {
 			if (myDept == null || myDept.isBlank()) {
 				throw new BaseException(ErrorCode.SINGLEGAME_INVALID_RANK_DEPARTMENT);
 			}
-			if (resolvedDept == null || resolvedDept.isBlank()) {
-				resolvedDept = myDept;
-			}
+			resolvedDept = (department == null || department.isBlank()) ? myDept : department.strip();
+		} else {
+			resolvedDept = SingleGameRankingCacheService.normalizeDepartment(resolvedScope, null);
 		}
 
 		// 2. 공용 랭킹 스냅샷 (캐시 공유, myRank 없음)
-		RankingResponse base = getRankingsSnapshot(totalCourses, resolvedScope, resolvedDept);
+		RankingResponse base = rankingCacheService.getRankingsSnapshot(totalCourses, resolvedScope, resolvedDept);
 
 		// 3. 개인 myRank (요청마다 계산, 캐시 비타기, scope 기준)
 		MyRankInfo myRank = computeMyRank(totalCourses, resolvedScope, resolvedDept, memberId);
@@ -193,69 +187,6 @@ public class SingleGameService {
 				.department(base.getDepartment())
 				.rankings(base.getRankings())
 				.myRank(myRank)
-				.build();
-	}
-
-	/**
-	 * 공용 랭킹 스냅샷을 캐시에서 가져오거나 계산한다.
-	 * CacheManager 직접 사용으로 self-invocation 문제 없이 cache-aside 패턴 적용.
-	 */
-	private RankingResponse getRankingsSnapshot(int totalCourses, String scope, String department) {
-		Cache cache = cacheManager.getCache(CacheProperties.SINGLEGAME_RANK);
-		String cacheKey = totalCourses + ":" + scope + ":" + department + ":cache";
-		if (cache != null) {
-			RankingResponse cached = cache.get(cacheKey, RankingResponse.class);
-			if (cached != null) {
-				return cached;
-			}
-		}
-		RankingResponse computed = computeRankingsSnapshot(totalCourses, scope, department);
-		if (cache != null) {
-			cache.put(cacheKey, computed);
-		}
-		return computed;
-	}
-
-	/**
-	 * DB에서 랭킹 스냅샷을 계산한다. myRank는 포함하지 않는다.
-	 * raw는 인당 대표 1판 ORDER BY t_total이므로, 동점자는 앞선 사람 수 + 1(같은 블록 첫 번호)을 준다 (00 §7).
-	 */
-	private RankingResponse computeRankingsSnapshot(int totalCourses, String scope, String department) {
-		List<Object[]> raw;
-		if ("DEPARTMENT".equalsIgnoreCase(scope)) {
-			String dept = (department != null && !department.isBlank()) ? department : "";
-			raw = singleGameRepository.findDeptRankingRaw(totalCourses, dept, RANKING_LIMIT);
-		} else {
-			raw = singleGameRepository.findRankingRaw(totalCourses, RANKING_LIMIT);
-		}
-
-		List<RankingEntry> rankings = new ArrayList<>();
-		for (int i = 0; i < raw.size(); i++) {
-			Object[] row = raw.get(i);
-			int tTotal = toInt(row[5]);
-			int rank = i + 1;
-			for (int j = i - 1; j >= 0; j--) {
-				if (toInt(raw.get(j)[5]) == tTotal) {
-					rank = j + 1;
-				} else {
-					break;
-				}
-			}
-			rankings.add(RankingEntry.builder()
-					.rank(rank)
-					.gameId(toLong(row[0]))
-					.name(maskName((String) row[2]))
-					.department((String) row[3])
-					.tTotal(tTotal)
-					.tEnterMain(toInt(row[6]))
-					.build());
-		}
-
-		return RankingResponse.builder()
-				.totalCourses(totalCourses)
-				.scope(scope)
-				.department("DEPARTMENT".equalsIgnoreCase(scope) ? department : null)
-				.rankings(rankings)
 				.build();
 	}
 
@@ -324,29 +255,29 @@ public class SingleGameService {
 		boolean fullAccess = viewer != null && viewer.getRole() != Member.Role.GUEST;
 		boolean isMember = gameOwner != null && gameOwner.getRole() != Member.Role.GUEST;
 
-		// 통계는 캐시된 StatsBundle에서
-		StatsBundle globalStats = singleGameStatsService.getGlobalStats(totalCourses);
+		// 모집단 통계는 캐시에서. S3·S1은 항상, S4·S2·S5는 회원 조회일 때만.
+		PopulationTable globalPop = singleGameStatsService.getPopulation(totalCourses);
+		long totalPersons = singleGameStatsService.getHeadCount(totalCourses);
+		double entryP = interpolateBand(game.getTEnterMain(), globalPop.getEnterMain());
 
-		StatsBundle deptStats = null;
-		if (ownerDept != null) {
-			deptStats = singleGameStatsService.getDeptStats(totalCourses, ownerDept);
-		}
+		int better = (int) singleGameRepository.countBetterPersons(totalCourses, game.getTTotal()) + 1;
+		RankInfo globalRank = buildGlobalRank(better, totalPersons);
 
-		RankInfo globalRank = buildGlobalRank(totalCourses, game.getTTotal());
 		DeptRankInfo deptRank = null;
+		PopulationTable deptPop = null;
 		if (fullAccess && ownerDept != null) {
-			deptRank = buildDeptRank(totalCourses, ownerDept, game.getTTotal());
+			deptPop = singleGameStatsService.getDeptPopulation(totalCourses, ownerDept);
+			long deptTotal = singleGameStatsService.getDeptHeadCount(totalCourses, ownerDept);
+			int deptBetter = (int) singleGameRepository.countBetterDeptPersons(totalCourses, ownerDept,
+					game.getTTotal()) + 1;
+			deptRank = buildDeptRank(ownerDept, deptBetter, deptTotal);
 		}
 
-		List<DetailEvent> detail = buildDetailEvents(game, details,
-				globalStats.getSeqPercentileStats(),
-				globalStats.getEnterMainPercentileStats(),
-				deptStats != null ? deptStats.getSeqPercentileStats() : null,
-				deptStats != null ? deptStats.getEnterMainPercentileStats() : null,
-				fullAccess);
+		List<DetailEvent> detail = buildDetailEvents(game, details, globalPop, deptPop, entryP, fullAccess);
 
 		var feedbacks = fullAccess
-				? buildFeedbacks(game, details, globalStats.getAggregates())
+				? buildFeedbacks(game, details, globalPop.getEnterMain(),
+						singleGameStatsService.getFeedbackBands(totalCourses), entryP)
 				: null;
 
 		return AnalysisResponse.builder()
@@ -363,7 +294,7 @@ public class SingleGameService {
 				.globalRank(globalRank)
 				.departmentRank(deptRank)
 				.globalTimeline(buildGlobalTimeline(detail))
-				.departmentTimeline(fullAccess && deptStats != null ? buildDeptTimeline(detail) : null)
+				.departmentTimeline(fullAccess && deptPop != null ? buildDeptTimeline(detail) : null)
 				.detail(detail)
 				.feedbacks(feedbacks)
 				.build();
@@ -372,9 +303,7 @@ public class SingleGameService {
 	/**
 	 * 이 판의 전체 순위. 사람 기준(00 §5): 나보다 최고 기록이 좋은 사람 수 + 1 (00 §7).
 	 */
-	private RankInfo buildGlobalRank(int totalCourses, int tTotal) {
-		int rank = (int) singleGameRepository.countBetterPersons(totalCourses, tTotal) + 1;
-		long totalPersons = singleGameRepository.countDistinctPersons(totalCourses);
+	private RankInfo buildGlobalRank(int rank, long totalPersons) {
 		double percentile = totalPersons > 0 ? (double) (rank - 1) / totalPersons * 100 : 0;
 		return RankInfo.builder()
 				.rank(rank)
@@ -386,9 +315,7 @@ public class SingleGameService {
 	/**
 	 * 이 판의 학과 순위. 판 주인 학과 기준(00 §6), 동점 정책은 전체와 동일(00 §7).
 	 */
-	private DeptRankInfo buildDeptRank(int totalCourses, String ownerDept, int tTotal) {
-		int rank = (int) singleGameRepository.countBetterDeptPersons(totalCourses, ownerDept, tTotal) + 1;
-		long totalPersons = singleGameRepository.countDistinctDeptPersons(totalCourses, ownerDept);
+	private DeptRankInfo buildDeptRank(String ownerDept, int rank, long totalPersons) {
 		double percentile = totalPersons > 0 ? (double) (rank - 1) / totalPersons * 100 : 0;
 		return DeptRankInfo.builder()
 				.department(ownerDept)
@@ -426,31 +353,13 @@ public class SingleGameService {
 	}
 
 	private List<DetailEvent> buildDetailEvents(SingleGameEntity game, List<SingleGameDetailEntity> details,
-			Map<Integer, double[]> globalSeqStats, double[] globalEntryStats,
-			Map<Integer, double[]> deptSeqStats, double[] deptEntryStats, boolean fullAccess) {
+			PopulationTable globalPop, PopulationTable deptPopOrNull, double entryP, boolean fullAccess) {
 		List<DetailEvent> events = new ArrayList<>();
 
-		double entryP = computeEnterMainPercentile(game.getTotalCourses(), game.getTEnterMain());
-
-		PopulationStats entryGlobalPop = null;
-		if (globalEntryStats != null) {
-			entryGlobalPop = PopulationStats.builder()
-					.p10((int) globalEntryStats[0])
-					.p30((int) globalEntryStats[1])
-					.p50((int) globalEntryStats[2])
-					.p70((int) globalEntryStats[3])
-					.build();
-		}
-
-		PopulationStats entryDeptPop = null;
-		if (deptEntryStats != null) {
-			entryDeptPop = PopulationStats.builder()
-					.p10((int) deptEntryStats[0])
-					.p30((int) deptEntryStats[1])
-					.p50((int) deptEntryStats[2])
-					.p70((int) deptEntryStats[3])
-					.build();
-		}
+		PopulationStats entryGlobalPop = toPopulationOrNull(globalPop.getEnterMain());
+		PopulationStats entryDeptPop = deptPopOrNull != null
+				? toPopulationOrNull(deptPopOrNull.getEnterMain())
+				: null;
 
 		events.add(DetailEvent.builder()
 				.sequence(0)
@@ -465,8 +374,8 @@ public class SingleGameService {
 
 		for (SingleGameDetailEntity d : details) {
 			int seq = d.getSequence();
-			double[] gStats = globalSeqStats.getOrDefault(seq, new double[20]);
-			double[] dStats = deptSeqStats != null ? deptSeqStats.getOrDefault(seq, new double[16]) : null;
+			int[] gStats = seqBandsOrZero(globalPop, seq);
+			int[] dStats = deptPopOrNull != null ? seqBandsOrZero(deptPopOrNull, seq) : null;
 
 			events.add(buildDetailEvent(seq, "AIM", seq + "순위 과목 조준", d.getTClickCourse(),
 					gStats, 0, 1, 2, 3, dStats, 0, 1, 2, 3, fullAccess));
@@ -479,13 +388,29 @@ public class SingleGameService {
 		return events;
 	}
 
+	private int[] seqBandsOrZero(PopulationTable table, int seq) {
+		if (table == null || table.getSeqBands() == null) {
+			return new int[16];
+		}
+		return table.getSeqBands().getOrDefault(seq, new int[16]);
+	}
+
+	private PopulationStats toPopulationOrNull(int[] band) {
+		if (band == null || band.length < 4) {
+			return null;
+		}
+		return PopulationStats.builder()
+				.p10(band[0]).p30(band[1]).p50(band[2]).p70(band[3])
+				.build();
+	}
+
 	private DetailEvent buildDetailEvent(int seq, String type, String label, int durationMs,
-			double[] gStats, int gP10, int gP30, int gP50, int gP70,
-			double[] dStats, int dP10, int dP30, int dP50, int dP70, boolean fullAccess) {
-		int gp10 = (int) gStats[gP10];
-		int gp30 = (int) gStats[gP30];
-		int gp50 = (int) gStats[gP50];
-		int gp70 = (int) gStats[gP70];
+			int[] gStats, int gP10, int gP30, int gP50, int gP70,
+			int[] dStats, int dP10, int dP30, int dP50, int dP70, boolean fullAccess) {
+		int gp10 = gStats[gP10];
+		int gp30 = gStats[gP30];
+		int gp50 = gStats[gP50];
+		int gp70 = gStats[gP70];
 		double percentile = interpolatePercentile(durationMs, gp10, gp30, gp50, gp70);
 
 		PopulationStats globalPop = PopulationStats.builder()
@@ -514,12 +439,11 @@ public class SingleGameService {
 				.build();
 	}
 
-	private double computeEnterMainPercentile(int totalCourses, int tEnterMain) {
-		long betterOrEqual = singleGameRepository
-				.countEnterMainBetterOrEqual(totalCourses, tEnterMain);
-		long total = singleGameRepository.countCompletedGames(totalCourses);
-		if (total == 0) return 0;
-		return Math.max(0, (double) (betterOrEqual - 1) / total * 100);
+	private double interpolateBand(int value, int[] band) {
+		if (band == null || band.length < 4) {
+			return 0;
+		}
+		return interpolatePercentile(value, band[0], band[1], band[2], band[3]);
 	}
 
 	private double interpolatePercentile(int value, int p10, int p30, int p50, int p70) {
@@ -532,7 +456,10 @@ public class SingleGameService {
 	}
 
 	private AnalysisResponse.FeedbacksResponse buildFeedbacks(SingleGameEntity game,
-			List<SingleGameDetailEntity> details, List<double[]> allAggregates) {
+			List<SingleGameDetailEntity> details, int[] enterMainBand, FeedbackBands bands, double entryP) {
+		if (bands == null) {
+			bands = FeedbackBands.empty();
+		}
 		int N = details.size();
 		double myAvgCC = details.stream().mapToInt(SingleGameDetailEntity::getTClickCourse).average().orElse(0);
 		double myAvgCY = details.stream().mapToInt(SingleGameDetailEntity::getTClickYes).average().orElse(0);
@@ -542,20 +469,17 @@ public class SingleGameService {
 				.map(d -> d.getTClickCourse() + d.getTClickYes() + d.getTClickOk()).toList();
 		double myAvgTotal = totals.stream().mapToInt(Integer::intValue).average().orElse(0);
 
-		double aimP = computePercentileFromAggregates(allAggregates, myAvgCC, 0, false);
-		double burstP = computePercentileFromAggregates(allAggregates, myAvgBurst, 3, false);
-		double eP = computeEnterMainPercentile(game.getTotalCourses(), game.getTEnterMain());
-		double startP = computePercentileFromAggregates(allAggregates,
-				N > 0 ? (double) totals.get(0) : 0, 4, false);
+		double aimP = interpolateBand((int) Math.round(myAvgCC), bands.getAim());
+		double burstP = interpolateBand((int) Math.round(myAvgBurst), bands.getBurst());
+		double eP = entryP;
+		double startP = N > 0 ? interpolateBand(totals.get(0), bands.getFirst()) : 0;
 		double paceP = 0;
 		double paceStddev = 0;
 		if (N >= 3) {
 			double mean = myAvgTotal;
 			double variance = totals.stream().mapToDouble(t -> Math.pow(t - mean, 2)).sum() / N;
 			paceStddev = Math.sqrt(variance);
-			List<Double> allPaceDevs = allAggregates.stream()
-					.filter(a -> a[5] > 0).map(a -> a[5]).toList();
-			paceP = computePercentileDouble(allPaceDevs, paceStddev);
+			paceP = interpolateBand((int) Math.round(paceStddev), bands.getPace());
 		}
 
 		return feedbackEngine.determineFeedbacks(aimP, burstP, eP, startP, paceP, N, totals, myAvgTotal, paceStddev);
@@ -573,23 +497,6 @@ public class SingleGameService {
 
 
 
-	private double computePercentileFromAggregates(List<double[]> aggregates, double myValue, int idx,
-			boolean isEnterMain) {
-		if (aggregates.isEmpty()) return 0;
-		if (isEnterMain) {
-			long betterOrEqual = aggregates.stream().filter(a -> a[idx] <= myValue).count();
-			return Math.max(0, (double) (betterOrEqual - 1) / aggregates.size() * 100);
-		}
-		long lessOrEqual = aggregates.stream().filter(a -> a[idx] <= myValue).count();
-		return Math.max(0, (double) (lessOrEqual - 1) / aggregates.size() * 100);
-	}
-
-	private double computePercentileDouble(List<Double> allValues, double myValue) {
-		if (allValues.isEmpty()) return 0;
-		long lessOrEqual = allValues.stream().filter(v -> v <= myValue).count();
-		return Math.max(0, (double) (lessOrEqual - 1) / allValues.size() * 100);
-	}
-
 	private String computeGrade(double percentile) {
 		if (percentile <= 5) return "S";
 		if (percentile <= 30) return "A";
@@ -602,13 +509,6 @@ public class SingleGameService {
 		return value < timing.getMinMs() || value > timing.getMaxMs();
 	}
 
-
-	private String maskName(String name) {
-		if (name == null || name.isEmpty()) return name;
-		int len = name.length();
-		if (len == 1) return "*";
-		return "*".repeat(len - 1) + name.charAt(len - 1);
-	}
 
 	private long toLong(Object o) {
 		if (o instanceof Number n) return n.longValue();

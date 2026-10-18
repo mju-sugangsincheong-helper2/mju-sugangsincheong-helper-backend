@@ -264,8 +264,7 @@ POST /api/{version}/singlegame
 3. `tTotal` 자동 계산 (모든 시간 값의 합)
 4. `SingleGameEntity` 저장
 5. `SingleGameDetailEntity` 일괄 저장
-6. 트랜잭션 커밋 후 랭킹/기록 캐시 무효화
-7. 생성된 게임 ID 반환
+6. 트랜잭션 커밋 후 생성된 게임 ID 반환 (캐시 무효화 없음 — 통계 캐시는 TTL 만료로만 갱신)
 
 ---
 
@@ -592,6 +591,8 @@ GET /api/{version}/singlegame/{gameId}/analysis
 
 ## 캐싱 전략
 
+> 2026-10-18 개정: `StatsBundle`(게임별 원시 리스트 캐시) 삭제. 캐시 값은 전부 "최종 답" 크기의 int 기반 분위수표로 교체했다. `saveGame` 시 evict 없음 (TTL-only). DB 뷰 미사용, raw 쿼리만 사용.
+
 ### 데이터 흐름과 캐시 지점
 
 ```
@@ -624,27 +625,14 @@ GET /api/{version}/singlegame/{gameId}/analysis
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        getAnalysis                                   │
 ├─────────────────────────────────────────────────────────────────────┤
-│ DB (SingleGameEntity, SingleGameDetailEntity)  ← 불변              │
+│ DB Live (game 1행, details N행, members 2행, better 1~2건) ← 상수행 │
 │   ↓                                                                 │
-│ Stats (percentile, aggregates)                 ← 캐시됨            │
+│ Cache (인원수·구간표·피드백분포, 아래 5키)     ← 답 크기            │
 │   ↓                                                                 │
-│ [조합] 원본 + stats → AnalysisResponse                              │
+│ [조합] 원본 + 통계 → AnalysisResponse                               │
 │                                                                     │
-│ → 캐시: 안 함                                                       │
-│ → 이유: 원본 불변 + stats 이미 캐시 + 조합 비용 낮음              │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│                        getStats (내부)                               │
-├─────────────────────────────────────────────────────────────────────┤
-│ DB (SingleGameEntity 전체)                                          │
-│   ↓                                                                 │
-│ [계산] percentile, averages, bestTime 등                           │
-│   ↓                                                                 │
-│ StatsBundle                                                         │
-│                                                                     │
-│ → 캐시: 4. 조합 후 데이터 형식 (StatsBundle)                       │
-│ → 이유: 전체 데이터 집계 → L5 재생성 비용 매우 높음               │
+│ → 응답 캐시: 안 함                                                  │
+│ → 이유: owner/member 가시성 스위치 → stale/유출 위험 + 조합 비용 낮음│
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -673,11 +661,17 @@ GET /api/{version}/singlegame/{gameId}/analysis
 
 ---
 
-### singlegame-stats 분석
+### singlegame-stats 분석 (2026-10-18 개정)
 
-**데이터 특성:** percentile, aggregates 통계 (전체 데이터 집계)
+**데이터 특성:** 모집단 분포표 (인원수·구간표·피드백분포). 전수 로우가 아니라 **분위수 답**만 캐시한다.
 
-**캐시 데이터 형식:** 4. 조합 후 데이터 형식 (StatsBundle)
+**캐시 데이터 형식:**
+
+| 값 | 타입 | 크기 |
+|----|------|------|
+| 인원수 (전체/학과) | `Long` 1숫자 | 상수 |
+| 구간표 (전체/학과) | `PopulationTable`: seq별 int[16] + 진입 int[4] | 수십 개 int |
+| 피드백분포 | `FeedbackBands`: 지표 4종 × int[4] + n | 17개 숫자 |
 
 **데이터 특성 평가 (L1 ~ L5):**
 
@@ -686,33 +680,80 @@ GET /api/{version}/singlegame/{gameId}/analysis
 | **L1 (즉시성)** | 낮음 | 분석 페이지에서 실시간성 낮음 |
 | **L2 (스냅샷)** | 높음 | 5분 스냅샷 허용 |
 | **L3 (정합성)** | 낮음 | 통계가 약간 낡아도 치명적이지 않음 |
-| **L4 (키공간)** | 낮음 | totalCourses(5) × (global + dept 수) = 유계 |
-| **L5 (재생성)** | **매우 높음** | 전체 데이터 집계 (percentile, averages 계산) |
+| **L4 (키공간)** | 낮음 | totalCourses(5) × (1 + 학과 수) = 유계 |
+| **L5 (재생성)** | 중간 | 미스 시 1행 집계 쿼리 최대 3방. 전수 전송·JVM 집계·거대 JSON 없음 |
 
 **전략:**
-- **TTL 기반 캐시 (5m)**: L2 스냅샷 허용 시간에 따라 5분 TTL
-- **evict 병행**: L5 재생성 비용 매우 높음 → 새 게임 저장 시 해당 totalCourses 캐시 evict
-- **흐름 적용:**
-  - `DB -> 조합 및 계산 -> 응답`: 캐시 미스 시 DB에서 전체 데이터를 가져와 집계 계산
-  - `요청 -> 계산 (Evict) -> DB`: 게임 저장 시 해당 totalCourses의 캐시 evict
+- **TTL 기반 캐시 (5m)**, evict 없음: `saveGame`·게스트 이관 모두 캐시를 건드리지 않는다. TTL 만료가 유일한 신선도 수단.
+- **`sync=true` single-flight**: 키당 재계산 1회로 직렬화. 선리프레시(warmup) 없음 — 미스는 사용자 경로에서 동기 재계산한다.
+- **키 분리**: global/dept/인원/구간/피드백을 별 키로. dept 미스가 global 재계산을 유발하지 않는다.
 
 ---
 
 ### 최종 캐시 구조
 
-| 캐시 | 형식 단계 | TTL | evict | 렌즈 근거 |
-|------|-----------|-----|-------|-----------|
-| `singlegame-rank` | 5. 응답 형식 | 5m | ❌ 없음 | L2 스냅샷, L3 정합성 낮음 |
-| `singlegame-stats` | 4. 조합 후 형식 | 5m | ✅ afterCommit | L5 재생성 매우 높음 |
+| 캐시 키 | 값 | TTL | evict | 비고 |
+|------|----|-----|-------|------|
+| `singlegame-stats:{tc}:counts:cache` | `Long` 전체 인원수 (S1) | 5m | ❌ | globalRank 분모 |
+| `singlegame-stats:{tc}:pop:cache` | `PopulationTable` 전체 구간표 (S3) | 5m | ❌ | timeline/detail/ENTRY |
+| `singlegame-stats:{tc}:fb:cache` | `FeedbackBands` 피드백분포 (S5) | 5m | ❌ | 회원 조회일 때만 사용 |
+| `singlegame-stats:{tc}:dept:{dept}:counts:cache` | `Long` 학과 인원수 (S2) | 5m | ❌ | 회원 조회일 때만 |
+| `singlegame-stats:{tc}:dept:{dept}:pop:cache` | `PopulationTable` 학과 구간표 (C4) | 5m | ❌ | 회원 조회일 때만 |
+| `singlegame-rank:{tc}:{scope}:{dept}:cache` | RankingResponse (myRank 제외) | 5m | ❌ | 기존 유지 |
 
 ### 캐시하지 않는 데이터
 
 | 데이터 | 이유 |
 |--------|------|
 | **내 기록 (my records)** | 페이징 API로 부하 제한 + L5 재생성 비용 낮음 |
-| **분석 (analysis)** | 원본 불변 + stats 이미 캐시 + 조합 비용 낮음 → 매번 조합 |
+| **분석 응답 (analysis)** | owner/member 가시성 스위치 → stale/유출 위험. stats 캐시 + 조합 비용 낮음 → 매번 조합 |
+| **게임별 원시 리스트** | 2026-10-18 삭제. 전수 캐시가 full-scan·O(N) 스캔·거대 JSON ser/deser의 원인이었음 |
 
 ---
+
+## GET analysis 읽기 경로 (2026-10-18 확정)
+
+`GET /api/{version}/singlegame/{gameId}/analysis` = gameId 1개에 대한 "잘했나?" 응답. 필요한 읽기는 10개이며, 그 이상은 응답을 만드는 데 필요 없다.
+
+**분류 기준:** 질의가 `gameId·조회자·내 기록`에 의존하면 Live(캐시 불가), `(totalCourses[, 학과])`에만 의존하면 Cache(키 공간 유계).
+
+### Live — 요청마다 읽음 (gameId 종속, 최대 4왕복)
+
+| # | 사실 | 테이블 | 비고 |
+|---|---|---|---|
+| R1 | 판 1행 | `single_game` WHERE id | record·totalCourses·member_id 전부 |
+| R2 | 내 구간 N행 | `single_game_detail` WHERE game_id | durationMs + 피드백 재료, 최대 8행 |
+| R3 | 주인·조회자 2행 | `member` WHERE id (PK 2회) | ownerDept·role·게스트 게이트 |
+| R4 | 전체 better 수 | `single_game` 집계 vs 내 tTotal | `globalRank.rank` = better+1 |
+| R5 | 학과 better 수 | R4 + `member` 학과 join | 회원 조회일 때만 |
+
+### Cache — 모집단 통계 (TTL 5m, 위 키 표)
+
+| # | 사실 | 테이블 | 쓰는 곳 |
+|---|---|---|---|
+| S1 | 전체 인원수 | `single_game` DISTINCT member_id | `globalRank.totalPersons` |
+| S2 | 학과 인원수 | S1 + `member` 학과 join | `departmentRank.totalPersons` (회원만) |
+| S3 | 전체 구간표 | `single_game_detail` + `single_game` 집계 | timeline·globalPopulation·ENTRY (항상) |
+| S4 | 학과 구간표 | S3 + `member` 학과 join, S3와 동형 | departmentTimeline·Population (회원만) |
+| S5 | 피드백 분포표 | `single_game_detail` + `single_game` 판별 집계 | feedbacks 판정 기준 (회원만) |
+
+### 쿼리 아님 (메모리 계산)
+
+`percentile`(= (rank-1)/total) · `grade` · timeline/detail 조립 · `feedbacks` 코드 선택 · 내 축약값 평균. 이들에 쿼리를 쓰면 전수 스캔이 요청 경로로 새어 들어간다.
+
+### 게스트 short-circuit
+
+`fullAccess=false`면 R5·S2·S4·S5를 실행하지 않는다 (`departmentRank`·`departmentTimeline`·`feedbacks`·`grade`·`departmentPopulation` = null). 학과 통계를 로드하고 버리지 않는다.
+
+### 의미 변경 이력
+
+- **ENTRY percentile**: live COUNT 2종 → S3 진입 밴드 보간으로 통일 (2026-10-18). detail 타 구간과 같은 방식이며, detail·feedbacks가 같은 값 1개를 공유한다.
+- **피드백 분포**: 전수 로우 JVM 집계 → `findFeedbackBands` 1행 집계. pace는 N≥3판만 모집단, 첫구간은 sequence 순서상 첫 행.
+- **뷰 미사용**: `v_sequence_percentile_stats`를 포함한 뷰 4종은 DDL에 남아 있으나 코드에서 참조하지 않는다. 구간표는 `PERCENTILE_CONT ... GROUP BY sequence` raw 쿼리.
+- **삭제된 repository 메서드**: `findAllDetailsByTotalCourses` · `findDeptSequencePercentileStats`(16-UNION) · `findSequencePercentileStats`(view) · `countEnterMainBetterOrEqual` · `countCompletedGames`.
+
+---
+
 
 ## 설정값
 

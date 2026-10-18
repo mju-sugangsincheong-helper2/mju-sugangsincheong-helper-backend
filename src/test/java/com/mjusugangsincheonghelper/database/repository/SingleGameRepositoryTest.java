@@ -143,25 +143,107 @@ class SingleGameRepositoryTest {
 	}
 
 	@Nested
-	@DisplayName("countCompletedGames 메서드는")
-	class Describe_countCompletedGames {
+	@DisplayName("findGlobalSequenceBands 메서드는")
+	class Describe_findGlobalSequenceBands {
 
 		@Test
-		@DisplayName("완료된 게임 수를 반환한다")
-		void it_counts_completed_games() {
-			singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(testMember.getId()).tTotal(5000).tEnterMain(200)
+		@DisplayName("구간별 p-table을 raw 쿼리로 반환한다")
+		void it_returns_sequence_bands() {
+			SingleGameEntity game = singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(testMember.getId()).tTotal(900).tEnterMain(100)
 					.isCompleted(true).totalCourses(6).build());
-			singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(testMember.getId()).tTotal(3000).tEnterMain(150)
+			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
+					.gameId(game.getId()).sequence(1)
+					.tClickCourse(100).tClickYes(50).tClickOk(50).build());
+			SingleGameEntity other = singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(testMember.getId()).tTotal(2700).tEnterMain(300)
 					.isCompleted(true).totalCourses(6).build());
-			singleGameRepository.save(SingleGameEntity.builder()
-					.memberId(testMember.getId()).tTotal(4000).tEnterMain(100)
-					.isCompleted(false).totalCourses(6).build());
+			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
+					.gameId(other.getId()).sequence(1)
+					.tClickCourse(300).tClickYes(150).tClickOk(150).build());
 
-			long count = singleGameRepository.countCompletedGames(6);
+			List<Object[]> rows = singleGameRepository.findGlobalSequenceBands(6);
 
-			assertThat(count).isEqualTo(2);
+			assertThat(rows).hasSize(1);
+			assertThat(((Number) rows.get(0)[0]).intValue()).isEqualTo(1);
+			assertThat(rows.get(0)).hasSize(17);
+			// cc {100, 300}: p10=120, p50=200
+			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(120.0,
+					org.assertj.core.api.Assertions.within(0.001));
+			assertThat(((Number) rows.get(0)[3]).doubleValue()).isCloseTo(200.0,
+					org.assertj.core.api.Assertions.within(0.001));
+		}
+	}
+
+	@Nested
+	@DisplayName("findDeptSequenceBands 메서드는")
+	class Describe_findDeptSequenceBands {
+
+		@Test
+		@DisplayName("해당 학과 판만으로 구간표를 만든다")
+		void it_returns_dept_sequence_bands() {
+			Member otherDept = memberRepository.save(Member.builder()
+					.role(Member.Role.MEMBER)
+					.name("타과생")
+					.department("물리학과")
+					.build());
+			SingleGameEntity mine = singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(testMember.getId()).tTotal(900).tEnterMain(100)
+					.isCompleted(true).totalCourses(6).build());
+			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
+					.gameId(mine.getId()).sequence(1)
+					.tClickCourse(100).tClickYes(50).tClickOk(50).build());
+			SingleGameEntity theirs = singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(otherDept.getId()).tTotal(9000).tEnterMain(1000)
+					.isCompleted(true).totalCourses(6).build());
+			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
+					.gameId(theirs.getId()).sequence(1)
+					.tClickCourse(1000).tClickYes(500).tClickOk(500).build());
+
+			List<Object[]> rows = singleGameRepository.findDeptSequenceBands(6, "컴퓨터공학과");
+
+			assertThat(rows).hasSize(1);
+			// 학과 판 1개뿐이므로 p10==p70==100
+			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(100.0,
+					org.assertj.core.api.Assertions.within(0.001));
+			assertThat(((Number) rows.get(0)[4]).doubleValue()).isCloseTo(100.0,
+					org.assertj.core.api.Assertions.within(0.001));
+		}
+	}
+
+	@Nested
+	@DisplayName("findFeedbackBands 메서드는")
+	class Describe_findFeedbackBands {
+
+		@Test
+		@DisplayName("판별 축약값 분위수를 1행으로 반환한다")
+		void it_returns_feedback_bands_in_single_row() {
+			SingleGameEntity a = singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(testMember.getId()).tTotal(400).tEnterMain(100)
+					.isCompleted(true).totalCourses(6).build());
+			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
+					.gameId(a.getId()).sequence(1)
+					.tClickCourse(100).tClickYes(50).tClickOk(50).build());
+			SingleGameEntity b = singleGameRepository.save(SingleGameEntity.builder()
+					.memberId(testMember.getId()).tTotal(1000).tEnterMain(200)
+					.isCompleted(true).totalCourses(6).build());
+			singleGameDetailRepository.save(SingleGameDetailEntity.builder()
+					.gameId(b.getId()).sequence(1)
+					.tClickCourse(300).tClickYes(100).tClickOk(100).build());
+
+			List<Object[]> rows = singleGameRepository.findFeedbackBands(6);
+
+			assertThat(rows).hasSize(1);
+			Object[] row = rows.get(0);
+			assertThat(row).hasSize(17);
+			assertThat(((Number) row[0]).longValue()).isEqualTo(2);
+			// avg_cc {100, 300}: p10=120, p50=200
+			assertThat(((Number) row[1]).doubleValue()).isCloseTo(120.0,
+					org.assertj.core.api.Assertions.within(0.001));
+			assertThat(((Number) row[3]).doubleValue()).isCloseTo(200.0,
+					org.assertj.core.api.Assertions.within(0.001));
+			// N<3판만 있어 pace 분포는 비어 있다
+			assertThat(row[13]).isNull();
 		}
 	}
 

@@ -69,7 +69,7 @@ public class DiagnosticsService {
 	private final PlatformTransactionManager transactionManager;
 
 	/**
-	 * analysis/db 지점 평가. 학과 분위수 단일 쿼리를 Repository 직접 호출로 잰다.
+	 * analysis/db 지점 평가. 학과 구간 분포 단일 쿼리를 Repository 직접 호출로 잰다.
 	 * SingleGameStatsService를 경유하지 않으므로 통계 캐시의 영향을 받지 않는다.
 	 * 학과당 1회 측정한다. 반복 실행이 박스권에 평평해 워밍업·반복이 유의미하지 않음을 확인했기 때문이다.
 	 */
@@ -79,7 +79,7 @@ public class DiagnosticsService {
 		}
 
 		long start = System.nanoTime();
-		List<Object[]> rows = singleGameRepository.findDeptSequencePercentileStats(totalCourses, department);
+		List<Object[]> rows = singleGameRepository.findDeptSequenceBands(totalCourses, department);
 		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 
 		log.info("Dev diagnostics timing. query=analysis/db totalCourses={} department={} ms={}",
@@ -103,7 +103,7 @@ public class DiagnosticsService {
 	 *
 	 * <p>{@code SingleGameService.getAnalysis}를 그대로 호출하므로 실제 응답이 거치는
 	 * DB 접근(원본 조회 + 전역/학과 통계 + 랭킹 + 피드백 집계)을 전부 포함한다.
-	 * 측정 직전에 해당 totalCourses의 통계 캐시(global/dept)를 evict해 cold 경로를 잰다.
+	 * 측정 직전에 해당 totalCourses의 통계 캐시(인원·구간·피드백 + 학과분)를 evict해 cold 경로를 잰다.
 	 * 계측 구간에는 캐시 evict를 포함하지 않는다.</p>
 	 *
 	 * <p>해당 totalCourses의 완료 게임 중 아무거나 1개를 대표로 골라 측정한다.
@@ -163,9 +163,12 @@ public class DiagnosticsService {
 		if (cache == null) {
 			return;
 		}
-		cache.evict(totalCourses + ":global:cache");
+		cache.evict(totalCourses + ":counts:cache");
+		cache.evict(totalCourses + ":pop:cache");
+		cache.evict(totalCourses + ":fb:cache");
 		if (department != null && !department.isBlank()) {
-			cache.evict(totalCourses + ":dept:" + department + ":cache");
+			cache.evict(totalCourses + ":dept:" + department + ":counts:cache");
+			cache.evict(totalCourses + ":dept:" + department + ":pop:cache");
 		}
 	}
 

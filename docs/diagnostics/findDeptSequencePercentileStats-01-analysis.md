@@ -1,5 +1,7 @@
 # findDeptSequencePercentileStats 분석 (01 — 쿼리 설명 + 인덱스 현황)
 
+> ⚠️ 2026-10-18 폐기: 대상 쿼리가 삭제됨. 16-UNION window 쿼리 → `findDeptSequenceBands`(raw `PERCENTILE_CONT ... GROUP BY sequence`)로 교체, 전수 전송 쿼리(`findAllDetailsByTotalCourses`)도 함께 삭제. 아래 내용은 교체 전 구현의 기록으로만 보존. 현행 설계는 docs/singlegame.md "GET analysis 읽기 경로" 참조.
+
 > 대상: `SingleGameRepository.findDeptSequencePercentileStats(totalCourses, department)`
 > 위치: `src/main/java/com/mjusugangsincheonghelper/database/repository/SingleGameRepository.java` (~L172~)
 > 상태: EXPLAIN 실행 전, 코드·DDL 기반 이론 분석. 실측은 02에서 진행.

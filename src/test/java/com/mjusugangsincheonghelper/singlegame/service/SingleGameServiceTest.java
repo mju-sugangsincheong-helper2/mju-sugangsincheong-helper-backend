@@ -16,7 +16,8 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
-import com.mjusugangsincheonghelper.singlegame.dto.cache.StatsBundle;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.FeedbackBands;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.PopulationTable;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +33,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -64,9 +65,6 @@ class SingleGameServiceTest {
 	@Mock
 	private SingleGameStatsService singleGameStatsService;
 
-	@Mock
-	private CacheManager cacheManager;
-
 	private SingleGameService singleGameService;
 
 	@Captor
@@ -77,8 +75,9 @@ class SingleGameServiceTest {
 
 	@BeforeEach
 	void setUp() {
+		SingleGameRankingCacheService rankingCacheService = new SingleGameRankingCacheService(singleGameRepository);
 		singleGameService = new SingleGameService(
-				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameFeedbackEngine(), new SingleGameProperties(), singleGameDataMergeService, singleGameStatsService, cacheManager);
+				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameFeedbackEngine(), new SingleGameProperties(), singleGameDataMergeService, singleGameStatsService, rankingCacheService);
 	}
 
 	@Nested
@@ -791,57 +790,84 @@ class SingleGameServiceTest {
 	@DisplayName("getAnalysis 메서드는")
 	class Describe_getAnalysis {
 
-		/** 테스트용 StatsBundle 생성 헬퍼: raw details로부터 aggregates를 계산 */
-		private StatsBundle statsBundleFromRawDetails(List<Object[]> allDetails) {
+		private PopulationTable emptyPopulation() {
+			return PopulationTable.builder()
+					.seqBands(Map.of())
+					.enterMain(null)
+					.build();
+		}
+
+		private PopulationTable populationWithEnterMain(int p10, int p30, int p50, int p70) {
+			return PopulationTable.builder()
+					.seqBands(Map.of())
+					.enterMain(new int[]{p10, p30, p50, p70})
+					.build();
+		}
+
+		private FeedbackBands emptyBands() {
+			return FeedbackBands.empty();
+		}
+
+		/**
+		 * 테스트용 FeedbackBands 생성 헬퍼: raw details로부터 판별 축약값을 모아
+		 * 지표별 nearest-rank p10/p30/p50/p70을 계산한다 (findFeedbackBands 대응).
+		 */
+		private FeedbackBands bandsFromRawDetails(List<Object[]> allDetails) {
 			Map<Long, List<Object[]>> detailsByGame = new java.util.HashMap<>();
 			for (Object[] row : allDetails) {
 				long gameId = (row[0] instanceof Number n) ? n.longValue() : 0L;
 				detailsByGame.computeIfAbsent(gameId, k -> new java.util.ArrayList<>()).add(row);
 			}
-			List<double[]> aggregates = new java.util.ArrayList<>();
+			List<Double> aim = new java.util.ArrayList<>();
+			List<Double> burst = new java.util.ArrayList<>();
+			List<Double> first = new java.util.ArrayList<>();
+			List<Double> pace = new java.util.ArrayList<>();
 			for (List<Object[]> gameDetails : detailsByGame.values()) {
 				gameDetails.sort(java.util.Comparator.comparingInt(r -> {
 					Object o = r[1];
 					return (o instanceof Number n) ? n.intValue() : 0;
 				}));
 				int gN = gameDetails.size();
-				double sumCC = 0, sumCY = 0, sumCOK = 0;
+				double sumCC = 0, sumBurst = 0;
 				List<Integer> gTotals = new java.util.ArrayList<>();
 				for (Object[] d : gameDetails) {
-					int cc = ((Number) d[2]).intValue(), cy = ((Number) d[3]).intValue(), cok = ((Number) d[4]).intValue();
-					sumCC += cc; sumCY += cy; sumCOK += cok;
+					int cc = ((Number) d[2]).intValue(), cy = ((Number) d[3]).intValue(),
+							cok = ((Number) d[4]).intValue();
+					sumCC += cc;
+					sumBurst += cy + cok;
 					gTotals.add(cc + cy + cok);
 				}
-				double avgCC = sumCC / gN, avgCY = sumCY / gN, avgCOK = sumCOK / gN;
-				double avgBurst = (sumCY + sumCOK) / gN;
-				int t1Total = gTotals.isEmpty() ? 0 : gTotals.get(0);
-				double paceStddev = 0, initialSprint = 0, fatigueIndex = 0;
+				aim.add(sumCC / gN);
+				burst.add(sumBurst / gN);
+				first.add((double) gTotals.get(0));
 				if (gN >= 3) {
 					double mean = gTotals.stream().mapToInt(Integer::intValue).average().orElse(0);
 					double variance = gTotals.stream().mapToDouble(t -> Math.pow(t - mean, 2)).sum() / gN;
-					paceStddev = Math.sqrt(variance);
-					double laterAvg = gTotals.subList(1, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
-					initialSprint = gTotals.get(0) - laterAvg;
-					int half = gN / 2;
-					double firstHalfAvg = gTotals.subList(0, half).stream().mapToInt(Integer::intValue).average().orElse(0);
-					double secondHalfAvg = gTotals.subList(gN - half, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
-					fatigueIndex = secondHalfAvg - firstHalfAvg;
+					pace.add(Math.sqrt(variance));
 				}
-				aggregates.add(new double[]{avgCC, avgCY, avgCOK, avgBurst, t1Total, paceStddev, initialSprint, fatigueIndex});
 			}
-			return StatsBundle.builder()
-					.seqPercentileStats(Map.of())
-					.enterMainPercentileStats(null)
-					.aggregates(aggregates)
+			return FeedbackBands.builder()
+					.aim(bandOf(aim))
+					.burst(bandOf(burst))
+					.first(bandOf(first))
+					.pace(bandOf(pace))
+					.n(detailsByGame.size())
 					.build();
 		}
 
-		private StatsBundle emptyStatsBundle() {
-			return StatsBundle.builder()
-					.seqPercentileStats(Map.of())
-					.enterMainPercentileStats(null)
-					.aggregates(List.of())
-					.build();
+		private int[] bandOf(List<Double> values) {
+			int[] band = new int[4];
+			if (values.isEmpty()) {
+				return band;
+			}
+			List<Double> sorted = new java.util.ArrayList<>(values);
+			sorted.sort(Double::compareTo);
+			int n = sorted.size();
+			band[0] = (int) Math.round(sorted.get((int) Math.ceil(0.10 * n) - 1));
+			band[1] = (int) Math.round(sorted.get((int) Math.ceil(0.30 * n) - 1));
+			band[2] = (int) Math.round(sorted.get((int) Math.ceil(0.50 * n) - 1));
+			band[3] = (int) Math.round(sorted.get((int) Math.ceil(0.70 * n) - 1));
+			return band;
 		}
 
 		@Test
@@ -866,14 +892,13 @@ class SingleGameServiceTest {
 			given(memberRepository.findById(1L)).willReturn(Optional.of(owner));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L))
 					.willReturn(List.of(detail));
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
-			given(singleGameStatsService.getDeptStats(6, "컴퓨터공학과")).willReturn(emptyStatsBundle());
+			given(singleGameStatsService.getPopulation(6)).willReturn(emptyPopulation());
+			given(singleGameStatsService.getHeadCount(6)).willReturn(100L);
+			given(singleGameStatsService.getDeptPopulation(6, "컴퓨터공학과")).willReturn(emptyPopulation());
+			given(singleGameStatsService.getDeptHeadCount(6, "컴퓨터공학과")).willReturn(20L);
+			given(singleGameStatsService.getFeedbackBands(6)).willReturn(emptyBands());
 			given(singleGameRepository.countBetterPersons(6, 12000)).willReturn(4L);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(100L);
 			given(singleGameRepository.countBetterDeptPersons(6, "컴퓨터공학과", 12000)).willReturn(1L);
-			given(singleGameRepository.countDistinctDeptPersons(6, "컴퓨터공학과")).willReturn(20L);
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(3L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(100L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -920,12 +945,9 @@ class SingleGameServiceTest {
 			given(memberRepository.findById(1L)).willReturn(Optional.of(guest));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L))
 					.willReturn(List.of(detail));
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
-			given(singleGameStatsService.getDeptStats(6, "컴퓨터공학과")).willReturn(emptyStatsBundle());
+			given(singleGameStatsService.getPopulation(6)).willReturn(emptyPopulation());
+			given(singleGameStatsService.getHeadCount(6)).willReturn(10L);
 			given(singleGameRepository.countBetterPersons(6, 12000)).willReturn(0L);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(1L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -940,6 +962,9 @@ class SingleGameServiceTest {
 			assertThat(response.getDetail()).hasSize(4);
 			assertThat(response.getDetail().get(0).getGrade()).isNull();
 			assertThat(response.getDetail().get(0).getDepartmentPopulation()).isNull();
+			verify(singleGameStatsService, never()).getDeptPopulation(eq(6), eq("컴퓨터공학과"));
+			verify(singleGameStatsService, never()).getDeptHeadCount(eq(6), eq("컴퓨터공학과"));
+			verify(singleGameStatsService, never()).getFeedbackBands(6);
 		}
 
 		@Test
@@ -971,8 +996,7 @@ class SingleGameServiceTest {
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(100L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(100L);
+			given(singleGameStatsService.getHeadCount(6)).willReturn(100L);
 			given(singleGameRepository.countBetterPersons(6, 5000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
@@ -982,8 +1006,8 @@ class SingleGameServiceTest {
 				int clickOk = (gId == 1L) ? 50 : (int) gId * 20;
 				allDetails.add(new Object[]{gId, 1, clickCC, clickY, clickOk});
 			}
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 200)).willReturn(1L);
+			given(singleGameStatsService.getPopulation(6)).willReturn(populationWithEnterMain(100, 300, 600, 1000));
+			given(singleGameStatsService.getFeedbackBands(6)).willReturn(bandsFromRawDetails(allDetails));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1007,8 +1031,7 @@ class SingleGameServiceTest {
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameStatsService.getHeadCount(6)).willReturn(10L);
 			given(singleGameRepository.countBetterPersons(6, 50000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
@@ -1018,8 +1041,8 @@ class SingleGameServiceTest {
 				int cok = (gId == 1L) ? 2000 : (int) gId * 50;
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(1L);
+			given(singleGameStatsService.getPopulation(6)).willReturn(populationWithEnterMain(100, 300, 600, 1000));
+			given(singleGameStatsService.getFeedbackBands(6)).willReturn(bandsFromRawDetails(allDetails));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1042,8 +1065,7 @@ class SingleGameServiceTest {
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameStatsService.getHeadCount(6)).willReturn(10L);
 			given(singleGameRepository.countBetterPersons(6, 20000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
@@ -1053,8 +1075,8 @@ class SingleGameServiceTest {
 				int cok = (gId == 1L) ? 50 : (int) gId * 500;
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(8L);
+			given(singleGameStatsService.getPopulation(6)).willReturn(populationWithEnterMain(100, 300, 600, 1000));
+			given(singleGameStatsService.getFeedbackBands(6)).willReturn(bandsFromRawDetails(allDetails));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1077,8 +1099,7 @@ class SingleGameServiceTest {
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameStatsService.getHeadCount(6)).willReturn(10L);
 			given(singleGameRepository.countBetterPersons(6, 600)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
@@ -1088,8 +1109,8 @@ class SingleGameServiceTest {
 				int cok = (gId == 1L) ? 50 : (int) gId * 200;
 				allDetails.add(new Object[]{gId, 1, cc, cy, cok});
 			}
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 100)).willReturn(1L);
+			given(singleGameStatsService.getPopulation(6)).willReturn(populationWithEnterMain(100, 300, 600, 1000));
+			given(singleGameStatsService.getFeedbackBands(6)).willReturn(bandsFromRawDetails(allDetails));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1113,8 +1134,7 @@ class SingleGameServiceTest {
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(10L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(10L);
+			given(singleGameStatsService.getHeadCount(6)).willReturn(10L);
 			given(singleGameRepository.countBetterPersons(6, 3000)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
@@ -1126,8 +1146,8 @@ class SingleGameServiceTest {
 					allDetails.add(new Object[]{gId, seq, cc, cy, cok});
 				}
 			}
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 1000)).willReturn(5L);
+			given(singleGameStatsService.getPopulation(6)).willReturn(populationWithEnterMain(100, 300, 600, 1000));
+			given(singleGameStatsService.getFeedbackBands(6)).willReturn(bandsFromRawDetails(allDetails));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1155,8 +1175,7 @@ class SingleGameServiceTest {
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countDistinctPersons(7)).willReturn(10L);
-			given(singleGameRepository.countCompletedGames(7)).willReturn(10L);
+			given(singleGameStatsService.getHeadCount(7)).willReturn(10L);
 			given(singleGameRepository.countBetterPersons(7, 6900)).willReturn(0L);
 
 			List<Object[]> allDetails = new java.util.ArrayList<>();
@@ -1168,8 +1187,8 @@ class SingleGameServiceTest {
 					allDetails.add(new Object[]{gId, seq, cc, cy, cok});
 				}
 			}
-			given(singleGameStatsService.getGlobalStats(7)).willReturn(statsBundleFromRawDetails(allDetails));
-			given(singleGameRepository.countEnterMainBetterOrEqual(7, 1000)).willReturn(5L);
+			given(singleGameStatsService.getPopulation(7)).willReturn(populationWithEnterMain(100, 300, 600, 1000));
+			given(singleGameStatsService.getFeedbackBands(7)).willReturn(bandsFromRawDetails(allDetails));
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 
@@ -1194,11 +1213,10 @@ class SingleGameServiceTest {
 			given(singleGameRepository.findById(1L)).willReturn(Optional.of(game));
 			given(memberRepository.findById(1L)).willReturn(Optional.of(Member.builder().role(Member.Role.MEMBER).name("홍길동").build()));
 			given(singleGameDetailRepository.findByGameIdOrderBySequenceAsc(1L)).willReturn(details);
-			given(singleGameRepository.countDistinctPersons(6)).willReturn(3200L);
-			given(singleGameRepository.countCompletedGames(6)).willReturn(3200L);
+			given(singleGameStatsService.getHeadCount(6)).willReturn(3200L);
 			given(singleGameRepository.countBetterPersons(6, 5000)).willReturn(141L);
-			given(singleGameStatsService.getGlobalStats(6)).willReturn(emptyStatsBundle());
-			given(singleGameRepository.countEnterMainBetterOrEqual(6, 2000)).willReturn(1L);
+			given(singleGameStatsService.getPopulation(6)).willReturn(emptyPopulation());
+			given(singleGameStatsService.getFeedbackBands(6)).willReturn(emptyBands());
 
 			AnalysisResponse response = singleGameService.getAnalysis(1L, 1L);
 

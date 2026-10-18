@@ -2,9 +2,8 @@ package com.mjusugangsincheonghelper.singlegame.service;
 
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.global.config.CacheProperties;
-import com.mjusugangsincheonghelper.singlegame.dto.cache.StatsBundle;
-import java.util.ArrayList;
-import java.util.Comparator;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.FeedbackBands;
+import com.mjusugangsincheonghelper.singlegame.dto.cache.PopulationTable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,11 +16,13 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 싱글게임 통계 계산 전담 서비스.
  *
- * <p>통계 데이터는 totalCourses(및 선택적 dept) 단위로 캐시된다.
- * 응답 조합은 {@link SingleGameService}에서 수행한다.</p>
+ * <p>캐시하는 값은 전부 "최종 답" 크기다: 인원수 1숫자, 구간표(수십 개 int),
+ * 피드백 밴드(16개 int + n). 게임별 원시 리스트를 캐시하지 않으므로
+ * 캐시 미스 시에도 전수 로우 전송·JVM 집계·거대 JSON 직렬화가 발생하지 않는다.</p>
  *
- * <p>렌즈 관점: L2(스냅샷 허용) + L4(키 공간 유계).
- * evict 불필요, TTL이 유일한 신선도 수단.</p>
+ * <p>키 공간은 totalCourses 종류(5개) × (1 + 학과 수)로 유계이므로
+ * TTL이 유일한 신선도 수단이다. 미스는 사용자 경로에서 동기 재계산되며
+ * {@code sync=true}로 키당 single-flight를 보장한다.</p>
  */
 @Slf4j
 @Service
@@ -32,130 +33,111 @@ public class SingleGameStatsService {
 	private final SingleGameRepository singleGameRepository;
 
 	/**
-	 * totalCourses별 전역 통계 번들을 가져온다. 캐시 미스 시 DB에서 계산.
+	 * totalCourses별 전체 인원수(S1). globalRank.totalPersons의 분모.
 	 */
-	@Cacheable(value = CacheProperties.SINGLEGAME_STATS, key = "#totalCourses + ':global:cache'", sync = true)
-	public StatsBundle getGlobalStats(int totalCourses) {
-		return StatsBundle.builder()
-				.seqPercentileStats(loadSeqPercentileStats(totalCourses))
-				.enterMainPercentileStats(loadEnterMainPercentileStats(totalCourses))
-				.aggregates(loadAllAggregates(totalCourses))
+	@Cacheable(value = CacheProperties.SINGLEGAME_STATS, key = "#totalCourses + ':counts:cache'", sync = true)
+	public long getHeadCount(int totalCourses) {
+		return singleGameRepository.countDistinctPersons(totalCourses);
+	}
+
+	/**
+	 * totalCourses+dept별 학과 인원수(S2). 회원 조회일 때만 호출된다.
+	 */
+	@Cacheable(value = CacheProperties.SINGLEGAME_STATS, key = "#totalCourses + ':dept:' + #department + ':counts:cache'", sync = true)
+	public long getDeptHeadCount(int totalCourses, String department) {
+		return singleGameRepository.countDistinctDeptPersons(totalCourses, department);
+	}
+
+	/**
+	 * totalCourses별 전체 구간 분포표(S3): 구간×지표 p-table + 진입 p-table.
+	 */
+	@Cacheable(value = CacheProperties.SINGLEGAME_STATS, key = "#totalCourses + ':pop:cache'", sync = true)
+	public PopulationTable getPopulation(int totalCourses) {
+		return PopulationTable.builder()
+				.seqBands(loadSeqBands(singleGameRepository.findGlobalSequenceBands(totalCourses)))
+				.enterMain(loadEnterMain(singleGameRepository.findEnterMainPercentileStats(totalCourses)))
 				.build();
 	}
 
 	/**
-	 * totalCourses+dept별 학과 통계 번들을 가져온다. 캐시 미스 시 DB에서 계산.
+	 * totalCourses+dept별 학과 구간 분포표(S4). 회원 조회일 때만 호출된다.
 	 */
-	@Cacheable(value = CacheProperties.SINGLEGAME_STATS, key = "#totalCourses + ':dept:' + #department + ':cache'", sync = true)
-	public StatsBundle getDeptStats(int totalCourses, String department) {
-		return StatsBundle.builder()
-				.seqPercentileStats(loadDeptSeqPercentileStats(totalCourses, department))
-				.enterMainPercentileStats(loadDeptEnterMainPercentileStats(totalCourses, department))
+	@Cacheable(value = CacheProperties.SINGLEGAME_STATS, key = "#totalCourses + ':dept:' + #department + ':pop:cache'", sync = true)
+	public PopulationTable getDeptPopulation(int totalCourses, String department) {
+		return PopulationTable.builder()
+				.seqBands(loadSeqBands(singleGameRepository.findDeptSequenceBands(totalCourses, department)))
+				.enterMain(loadEnterMain(singleGameRepository.findDeptEnterMainPercentileStats(totalCourses, department)))
 				.build();
 	}
 
-	// ============ 내부 로딩 메서드 ============
-
-	private Map<Integer, double[]> loadSeqPercentileStats(int totalCourses) {
-		Map<Integer, double[]> stats = new HashMap<>();
-		List<Object[]> viewRows = singleGameRepository.findSequencePercentileStats(totalCourses);
-		for (Object[] row : viewRows) {
-			int seq = toInt(row[1]);
-			double[] s = new double[16];
-			for (int i = 0; i < 16 && i + 2 < row.length; i++) {
-				s[i] = toDouble(row[i + 2]);
-			}
-			stats.put(seq, s);
+	/**
+	 * totalCourses별 피드백 분포표(S5). 1행 집계이므로 결과는 상수 크기다.
+	 * 회원 조회일 때만 호출된다.
+	 */
+	@Cacheable(value = CacheProperties.SINGLEGAME_STATS, key = "#totalCourses + ':fb:cache'", sync = true)
+	public FeedbackBands getFeedbackBands(int totalCourses) {
+		List<Object[]> rows = singleGameRepository.findFeedbackBands(totalCourses);
+		if (rows.isEmpty()) {
+			return FeedbackBands.empty();
 		}
-		return stats;
-	}
-
-	private double[] loadEnterMainPercentileStats(int totalCourses) {
-		List<Object[]> rows = singleGameRepository.findEnterMainPercentileStats(totalCourses);
-		if (rows.isEmpty()) return null;
 		Object[] row = rows.get(0);
-		return new double[]{toDouble(row[0]), toDouble(row[1]), toDouble(row[2]), toDouble(row[3])};
+		return FeedbackBands.builder()
+				.n(toLong(row[0]))
+				.aim(band(row, 1))
+				.burst(band(row, 5))
+				.first(band(row, 9))
+				.pace(band(row, 13))
+				.build();
 	}
 
-	private Map<Integer, double[]> loadDeptSeqPercentileStats(int totalCourses, String department) {
-		Map<Integer, double[]> stats = new HashMap<>();
-		List<Object[]> viewRows = singleGameRepository.findDeptSequencePercentileStats(totalCourses, department);
-		for (Object[] row : viewRows) {
+	// ============ 내부 매핑 (DB double → int, 응답이 int이므로 손실 없음) ============
+
+	private Map<Integer, int[]> loadSeqBands(List<Object[]> rows) {
+		Map<Integer, int[]> stats = new HashMap<>();
+		for (Object[] row : rows) {
 			int seq = toInt(row[0]);
-			double[] s = new double[16];
+			int[] s = new int[16];
 			for (int i = 0; i < 16 && i + 1 < row.length; i++) {
-				s[i] = toDouble(row[i + 1]);
+				s[i] = rounded(row[i + 1]);
 			}
 			stats.put(seq, s);
 		}
 		return stats;
 	}
 
-	private double[] loadDeptEnterMainPercentileStats(int totalCourses, String department) {
-		List<Object[]> rows = singleGameRepository.findDeptEnterMainPercentileStats(totalCourses, department);
-		if (rows.isEmpty()) return null;
-		Object[] row = rows.get(0);
-		return new double[]{toDouble(row[0]), toDouble(row[1]), toDouble(row[2]), toDouble(row[3])};
+	private int[] loadEnterMain(List<Object[]> rows) {
+		if (rows.isEmpty()) {
+			return null;
+		}
+		return band(rows.get(0), 0);
 	}
 
-	private List<double[]> loadAllAggregates(int totalCourses) {
-		List<Object[]> allDetails = singleGameRepository.findAllDetailsByTotalCourses(totalCourses);
-		Map<Long, List<Object[]>> detailsByGame = new HashMap<>();
-		for (Object[] row : allDetails) {
-			detailsByGame.computeIfAbsent(toLong(row[0]), k -> new ArrayList<>()).add(row);
+	private int[] band(Object[] row, int offset) {
+		int[] b = new int[4];
+		for (int i = 0; i < 4 && offset + i < row.length; i++) {
+			b[i] = rounded(row[offset + i]);
 		}
+		return b;
+	}
 
-		List<double[]> aggregates = new ArrayList<>();
-		for (List<Object[]> gameDetails : detailsByGame.values()) {
-			gameDetails.sort(Comparator.comparingInt(r -> toInt(r[1])));
-			int gN = gameDetails.size();
-			double sumCC = 0, sumCY = 0, sumCOK = 0;
-			List<Integer> gTotals = new ArrayList<>();
-			for (Object[] d : gameDetails) {
-				int cc = toInt(d[2]), cy = toInt(d[3]), cok = toInt(d[4]);
-				sumCC += cc;
-				sumCY += cy;
-				sumCOK += cok;
-				gTotals.add(cc + cy + cok);
-			}
-			double avgCC = sumCC / gN;
-			double avgCY = sumCY / gN;
-			double avgCOK = sumCOK / gN;
-			double avgBurst = (sumCY + sumCOK) / gN;
-			int t1Total = gTotals.isEmpty() ? 0 : gTotals.get(0);
-			double paceStddev = 0;
-			double initialSprint = 0;
-			double fatigueIndex = 0;
-			if (gN >= 3) {
-				double mean = gTotals.stream().mapToInt(Integer::intValue).average().orElse(0);
-				double variance = gTotals.stream().mapToDouble(t -> Math.pow(t - mean, 2)).sum() / gN;
-				paceStddev = Math.sqrt(variance);
-
-				double laterAvg = gTotals.subList(1, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
-				initialSprint = gTotals.get(0) - laterAvg;
-
-				int half = gN / 2;
-				double firstHalfAvg = gTotals.subList(0, half).stream().mapToInt(Integer::intValue).average().orElse(0);
-				double secondHalfAvg = gTotals.subList(gN - half, gN).stream().mapToInt(Integer::intValue).average().orElse(0);
-				fatigueIndex = secondHalfAvg - firstHalfAvg;
-			}
-			aggregates.add(new double[]{avgCC, avgCY, avgCOK, avgBurst, t1Total, paceStddev, initialSprint, fatigueIndex});
+	private int rounded(Object o) {
+		if (o instanceof Number n) {
+			return (int) Math.round(n.doubleValue());
 		}
-		return aggregates;
+		return 0;
 	}
 
 	private long toLong(Object o) {
-		if (o instanceof Number n) return n.longValue();
+		if (o instanceof Number n) {
+			return n.longValue();
+		}
 		return 0L;
 	}
 
 	private int toInt(Object o) {
-		if (o instanceof Number n) return n.intValue();
-		return 0;
-	}
-
-	private double toDouble(Object o) {
-		if (o instanceof Number n) return n.doubleValue();
+		if (o instanceof Number n) {
+			return n.intValue();
+		}
 		return 0;
 	}
 }

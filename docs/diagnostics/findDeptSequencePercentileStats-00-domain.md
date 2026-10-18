@@ -1,5 +1,7 @@
 # 분석 응답의 도메인 획정 (00)
 
+> ⚠️ 2026-10-18: 이 문서의 용어 획정(§1~§6)은 유효. 단 §7 언급 쿼리(`findDeptSequencePercentileStats` 등)는 삭제됨. 대체: `findDeptSequenceBands` (raw `PERCENTILE_CONT GROUP BY`, docs/singlegame.md "GET analysis 읽기 경로" 참조).
+
 > 이 문서는 용어 정의만 한다. 쿼리·인덱스(01), 성능 실측(02)과 분리.
 
 ---
