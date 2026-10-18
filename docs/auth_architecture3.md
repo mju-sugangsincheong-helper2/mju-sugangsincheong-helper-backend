@@ -754,11 +754,11 @@ Browser                                    Backend
 │  │ ─────────                                                           │   │
 │  │ • docker-compose-dev.yml                                            │   │
 │  │ • PostgreSQL 17 + pgmq (named volume: postgres_data)                │   │
-│  │ • ddl-auto: update → 엔티티 변경 시 자동 스키마 반영               │   │
-│  │ • schema-view.sql 실행 (뷰만)                                      │   │
+│  │ • ddl-auto: validate → 스키마 자동 수정 금지                       │   │
+│  │ • schema-dev.sql을 db-setup 컨테이너에서 psql로 적용 (전체 DDL)    │   │
 │  │ • 로컬 실행: ./run-dev.sh                                           │   │
 │  │                                                                     │   │
-│  │ 마이그레이션: 엔티티 수정만으로 자동 반영                           │   │
+│  │ 마이그레이션: schema-dev.sql 수정 후 db-setup 재실행               │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
