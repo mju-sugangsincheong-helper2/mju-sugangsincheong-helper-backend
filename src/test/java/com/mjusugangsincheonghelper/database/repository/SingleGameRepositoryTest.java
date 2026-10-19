@@ -167,12 +167,12 @@ class SingleGameRepositoryTest {
 			assertThat(rows).hasSize(1);
 			assertThat(((Number) rows.get(0)[0]).intValue()).isEqualTo(1);
 			assertThat(rows.get(0)).hasSize(29);
-			// cc {100, 300}: q05=110, q10=120, q30=160, q50=200, q70=240, q90=280, q95=290
-			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(110.0,
+			// cc {100, 300}: 버킷 {100:1, 300:1}, s=2. q05/q10/q50 모두 첫 버킷 100 → 중앙값 102.5
+			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) rows.get(0)[2]).doubleValue()).isCloseTo(120.0,
+			assertThat(((Number) rows.get(0)[2]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) rows.get(0)[4]).doubleValue()).isCloseTo(200.0,
+			assertThat(((Number) rows.get(0)[4]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
 		}
 	}
@@ -205,10 +205,10 @@ class SingleGameRepositoryTest {
 			List<Object[]> rows = singleGameRepository.findDepartmentSegmentQuantiles(6, "컴퓨터공학과");
 
 			assertThat(rows).hasSize(1);
-			// 학과 판 1개뿐이므로 q05==q95==100
-			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(100.0,
+			// 학과 판 1개뿐이므로 전부 첫 버킷 100 → 중앙값 102.5
+			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) rows.get(0)[7]).doubleValue()).isCloseTo(100.0,
+			assertThat(((Number) rows.get(0)[7]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
 		}
 	}
@@ -239,12 +239,12 @@ class SingleGameRepositoryTest {
 			Object[] row = rows.get(0);
 			assertThat(row).hasSize(29);
 			assertThat(((Number) row[0]).longValue()).isEqualTo(2);
-			// avg_cc {100, 300}: q05=110, q10=120, q50=200
-			assertThat(((Number) row[1]).doubleValue()).isCloseTo(110.0,
+			// avg_cc {100, 300}: 버킷 {100:1, 300:1}. q05/q10/q50 모두 102.5
+			assertThat(((Number) row[1]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) row[2]).doubleValue()).isCloseTo(120.0,
+			assertThat(((Number) row[2]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) row[4]).doubleValue()).isCloseTo(200.0,
+			assertThat(((Number) row[4]).doubleValue()).isCloseTo(102.5,
 					org.assertj.core.api.Assertions.within(0.001));
 			// N<3판만 있어 pace 분포는 비어 있다
 			assertThat(row[22]).isNull();
