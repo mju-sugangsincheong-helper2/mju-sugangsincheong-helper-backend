@@ -1,0 +1,7 @@
+group,n,route,query,status,elapsed_mean,elapsed_min,elapsed_max,threads,jdk.ExecutionSample#cnt,jdk.NativeMethodSample#cnt,jdk.SocketRead#cnt,jdk.SocketRead#total,jdk.SocketWrite#cnt,jdk.SocketWrite#total,jdk.JavaMonitorWait#cnt,jdk.JavaMonitorWait#total,jdk.JavaMonitorEnter#cnt,jdk.JavaMonitorEnter#total,jdk.ThreadPark#cnt,jdk.ThreadPark#total,jdk.ThreadSleep#cnt,jdk.ThreadSleep#total,jdk.FileRead#cnt,jdk.FileRead#total,jdk.FileWrite#cnt,jdk.FileWrite#total,jdk.JavaExceptionThrow#cnt
+001-5m,1,GET /api/{id}/diagnostics/singlegame/analysis/api,totalCourses=6,200,522.3,522.3,522.3,http-nio-8080-exec-1,0,0,3,438.8,0,0.0,0,0.0,0,0.0,1,17453.6,0,0.0,0,0.0,0,0.0,0
+002-10m,1,GET /api/{id}/diagnostics/singlegame/analysis/api,totalCourses=6,200,1097.4,1097.4,1097.4,http-nio-8080-exec-5,0,3,6,1020.8,0,0.0,0,0.0,0,0.0,1,19445.5,0,0.0,0,0.0,0,0.0,0
+003-15m,1,GET /api/{id}/diagnostics/singlegame/analysis/api,totalCourses=6,200,1488.4,1488.4,1488.4,http-nio-8080-exec-7,0,4,9,1455.5,0,0.0,0,0.0,0,0.0,1,21742.1,0,0.0,0,0.0,0,0.0,0
+004-20m,1,GET /api/{id}/diagnostics/singlegame/analysis/api,totalCourses=6,200,2928.7,2928.7,2928.7,http-nio-8080-exec-2,1,9,9,2886.8,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0
+005-25m,1,GET /api/{id}/diagnostics/singlegame/analysis/api,totalCourses=6,200,3660.3,3660.3,3660.3,http-nio-8080-exec-4,0,11,9,3623.4,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0
+006-30m,1,GET /api/{id}/diagnostics/singlegame/analysis/api,totalCourses=6,200,4362.7,4362.7,4362.7,http-nio-8080-exec-1,0,14,9,4323.9,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0,0.0,0

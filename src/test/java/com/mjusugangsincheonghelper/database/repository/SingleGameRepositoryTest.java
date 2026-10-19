@@ -143,8 +143,8 @@ class SingleGameRepositoryTest {
 	}
 
 	@Nested
-	@DisplayName("findGlobalSequenceBands 메서드는")
-	class Describe_findGlobalSequenceBands {
+	@DisplayName("findGlobalSegmentQuantiles 메서드는")
+	class Describe_findGlobalSegmentQuantiles {
 
 		@Test
 		@DisplayName("구간별 p-table을 raw 쿼리로 반환한다")
@@ -162,22 +162,24 @@ class SingleGameRepositoryTest {
 					.gameId(other.getId()).sequence(1)
 					.tClickCourse(300).tClickYes(150).tClickOk(150).build());
 
-			List<Object[]> rows = singleGameRepository.findGlobalSequenceBands(6);
+			List<Object[]> rows = singleGameRepository.findGlobalSegmentQuantiles(6);
 
 			assertThat(rows).hasSize(1);
 			assertThat(((Number) rows.get(0)[0]).intValue()).isEqualTo(1);
-			assertThat(rows.get(0)).hasSize(17);
-			// cc {100, 300}: p10=120, p50=200
-			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(120.0,
+			assertThat(rows.get(0)).hasSize(29);
+			// cc {100, 300}: q05=110, q10=120, q30=160, q50=200, q70=240, q90=280, q95=290
+			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(110.0,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) rows.get(0)[3]).doubleValue()).isCloseTo(200.0,
+			assertThat(((Number) rows.get(0)[2]).doubleValue()).isCloseTo(120.0,
+					org.assertj.core.api.Assertions.within(0.001));
+			assertThat(((Number) rows.get(0)[4]).doubleValue()).isCloseTo(200.0,
 					org.assertj.core.api.Assertions.within(0.001));
 		}
 	}
 
 	@Nested
-	@DisplayName("findDeptSequenceBands 메서드는")
-	class Describe_findDeptSequenceBands {
+	@DisplayName("findDepartmentSegmentQuantiles 메서드는")
+	class Describe_findDepartmentSegmentQuantiles {
 
 		@Test
 		@DisplayName("해당 학과 판만으로 구간표를 만든다")
@@ -200,20 +202,20 @@ class SingleGameRepositoryTest {
 					.gameId(theirs.getId()).sequence(1)
 					.tClickCourse(1000).tClickYes(500).tClickOk(500).build());
 
-			List<Object[]> rows = singleGameRepository.findDeptSequenceBands(6, "컴퓨터공학과");
+			List<Object[]> rows = singleGameRepository.findDepartmentSegmentQuantiles(6, "컴퓨터공학과");
 
 			assertThat(rows).hasSize(1);
-			// 학과 판 1개뿐이므로 p10==p70==100
+			// 학과 판 1개뿐이므로 q05==q95==100
 			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(100.0,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) rows.get(0)[4]).doubleValue()).isCloseTo(100.0,
+			assertThat(((Number) rows.get(0)[7]).doubleValue()).isCloseTo(100.0,
 					org.assertj.core.api.Assertions.within(0.001));
 		}
 	}
 
 	@Nested
-	@DisplayName("findFeedbackBands 메서드는")
-	class Describe_findFeedbackBands {
+	@DisplayName("findFeedbackQuantiles 메서드는")
+	class Describe_findFeedbackQuantiles {
 
 		@Test
 		@DisplayName("판별 축약값 분위수를 1행으로 반환한다")
@@ -231,19 +233,21 @@ class SingleGameRepositoryTest {
 					.gameId(b.getId()).sequence(1)
 					.tClickCourse(300).tClickYes(100).tClickOk(100).build());
 
-			List<Object[]> rows = singleGameRepository.findFeedbackBands(6);
+			List<Object[]> rows = singleGameRepository.findFeedbackQuantiles(6);
 
 			assertThat(rows).hasSize(1);
 			Object[] row = rows.get(0);
-			assertThat(row).hasSize(17);
+			assertThat(row).hasSize(29);
 			assertThat(((Number) row[0]).longValue()).isEqualTo(2);
-			// avg_cc {100, 300}: p10=120, p50=200
-			assertThat(((Number) row[1]).doubleValue()).isCloseTo(120.0,
+			// avg_cc {100, 300}: q05=110, q10=120, q50=200
+			assertThat(((Number) row[1]).doubleValue()).isCloseTo(110.0,
 					org.assertj.core.api.Assertions.within(0.001));
-			assertThat(((Number) row[3]).doubleValue()).isCloseTo(200.0,
+			assertThat(((Number) row[2]).doubleValue()).isCloseTo(120.0,
+					org.assertj.core.api.Assertions.within(0.001));
+			assertThat(((Number) row[4]).doubleValue()).isCloseTo(200.0,
 					org.assertj.core.api.Assertions.within(0.001));
 			// N<3판만 있어 pace 분포는 비어 있다
-			assertThat(row[13]).isNull();
+			assertThat(row[22]).isNull();
 		}
 	}
 

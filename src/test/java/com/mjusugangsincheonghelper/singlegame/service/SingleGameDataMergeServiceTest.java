@@ -32,4 +32,4 @@ class SingleGameDataMergeServiceTest {
 		// then
 		then(singleGameRepository).should().updateMemberId(guestId, targetId);
 	}
-}
+	}

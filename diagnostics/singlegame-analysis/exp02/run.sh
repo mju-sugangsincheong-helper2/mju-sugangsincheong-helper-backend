@@ -105,8 +105,8 @@ for target in $STEPS; do
   prev=$target
 done
 
-# curl -sS -f -X DELETE "$BASE_URL/api/$API_VERSION$SEED_PATH" \
-#   -H "Authorization: Bearer $TOKEN" > /dev/null || true
+curl -sS -f -X DELETE "$BASE_URL/api/$API_VERSION$SEED_PATH" \
+  -H "Authorization: Bearer $TOKEN" > /dev/null || true
 
 jcmd "$APP_PID" JFR.dump name="$REC_NAME" filename="$RAW/trace.jfr"
 jcmd "$APP_PID" JFR.stop name="$REC_NAME" >/dev/null 2>&1 || true

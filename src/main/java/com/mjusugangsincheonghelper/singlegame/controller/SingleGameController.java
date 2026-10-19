@@ -10,7 +10,10 @@ import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
-import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameAnalysisService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameRankingService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameRecordService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameSaveService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -19,6 +22,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +31,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "SingleGame", description = "싱글 게임 API")
@@ -37,7 +40,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/{version}/singlegame")
 public class SingleGameController {
 
-	private final SingleGameService singleGameService;
+	private final SingleGameSaveService singleGameSaveService;
+	private final SingleGameRankingService singleGameRankingService;
+	private final SingleGameRecordService singleGameRecordService;
+	private final SingleGameAnalysisService singleGameAnalysisService;
 
 	@PostMapping(version = "1+")
 	@Operation(
@@ -62,7 +68,7 @@ public class SingleGameController {
 			@Parameter(description = "게임 결과 데이터", required = true)
 			@Valid @RequestBody SingleGameSaveRequest request) {
 		Long memberId = getCurrentMemberId();
-		SingleGameSaveResponse response = singleGameService.saveGame(memberId, request);
+		SingleGameSaveResponse response = singleGameSaveService.saveGame(memberId, request);
 		return ResponseEntity.status(201).body(SingleSuccessResponseEnvelope.of(response));
 	}
 
@@ -75,7 +81,7 @@ public class SingleGameController {
 					+ "학과를 적으면 그 학과를 보고, 생략하면 요청자 본인 학과를 씁니다. "
 					+ "학과가 없는 요청자는 DEPARTMENT를 쓸 수 없습니다(400 SINGLEGAME_INVALID_RANK_DEPARTMENT). "
 					+ "응답의 department에 적용된 학과가 나갑니다(GLOBAL이면 null). "
-					+ "myRank는 요청자 본인 최고 기록의 순위로 scope을 따릅니다(완료판이 없으면 null).", 
+					+ "myRank는 요청자 본인 최고 기록의 순위로 scope을 따릅니다(완료판이 없으면 null).",
 			responses = {
 					@ApiResponse(
 							responseCode = "200",
@@ -97,7 +103,7 @@ public class SingleGameController {
 			@Parameter(description = "학과명. DEPARTMENT일 때 적으면 그 학과, 생략하면 요청자 본인 학과. 학과 없는 요청자는 DEPARTMENT 사용 불가", example = "컴퓨터공학과")
 			@RequestParam(value = "department", required = false) String department) {
 		Long memberId = getCurrentMemberId();
-		RankingResponse response = singleGameService.getRankings(totalCourses, scope, department, memberId);
+		RankingResponse response = singleGameRankingService.getRankings(totalCourses, scope, department, memberId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 
@@ -116,7 +122,7 @@ public class SingleGameController {
 			ErrorCode.GLOBAL_INTERNAL_SERVER_ERROR
 	})
 	public ResponseEntity<SingleSuccessResponseEnvelope<DepartmentsResponse>> getDepartments() {
-		DepartmentsResponse response = singleGameService.getDepartments();
+		DepartmentsResponse response = singleGameRankingService.getDepartments();
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 
@@ -141,7 +147,7 @@ public class SingleGameController {
 			@Parameter(description = "페이지 크기", example = "10")
 			@RequestParam(name = "size", defaultValue = "10") int size) {
 		Long memberId = getCurrentMemberId();
-		Page<MyRecordResponse> response = singleGameService.getMyRecords(memberId, page, size);
+		Page<MyRecordResponse> response = singleGameRecordService.getMyRecords(memberId, page, size);
 		return ResponseEntity.ok(PagedSuccessResponseEnvelope.from(response));
 	}
 
@@ -149,7 +155,7 @@ public class SingleGameController {
 	@Operation(
 			summary = "Get game analysis",
 			description = "특정 게임 판의 상세 분석 결과를 조회합니다. 남의 판도 볼 수 있으며, 붙는 통계·순위는 전부 판 주인 기준입니다. "
-					+ "gameId·isOwner(내 판 여부)·isMember(판 주인의 회원 여부)·totalCourses는 항상 나갑니다. "
+					+ "gameId·owner(내 판 여부)·member(판 주인의 회원 여부)·totalCourses는 항상 나갑니다. "
 					+ "record는 판 원본(tTotal·tEnterMain·completed·createdAt), "
 					+ "globalRank는 전체 순위(rank·totalPersons·percentile, 순위는 사람 기준), "
 					+ "departmentRank는 판 주인 학과 내 순위(department·rank·totalPersons·percentile)입니다. "
@@ -174,7 +180,7 @@ public class SingleGameController {
 			@Parameter(description = "게임 ID", example = "1234", required = true)
 			@PathVariable("gameId") Long gameId) {
 		Long memberId = getCurrentMemberId();
-		AnalysisResponse response = singleGameService.getAnalysis(gameId, memberId);
+		AnalysisResponse response = singleGameAnalysisService.analyze(gameId, memberId);
 		return ResponseEntity.ok(SingleSuccessResponseEnvelope.of(response));
 	}
 

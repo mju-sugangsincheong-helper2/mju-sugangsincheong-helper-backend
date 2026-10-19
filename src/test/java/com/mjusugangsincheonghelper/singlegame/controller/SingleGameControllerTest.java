@@ -12,7 +12,10 @@ import com.mjusugangsincheonghelper.singlegame.dto.MyRecordResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse.RankingEntry;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
-import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameAnalysisService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameRankingService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameRecordService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameSaveService;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +57,16 @@ class SingleGameControllerTest {
 	private MockMvc mockMvc;
 
 	@MockitoBean
-	private SingleGameService singleGameService;
+	private SingleGameSaveService singleGameSaveService;
+
+	@MockitoBean
+	private SingleGameRankingService singleGameRankingService;
+
+	@MockitoBean
+	private SingleGameRecordService singleGameRecordService;
+
+	@MockitoBean
+	private SingleGameAnalysisService singleGameAnalysisService;
 
 	@MockitoBean
 	private InstanceIdProvider instanceIdProvider;
@@ -88,7 +100,7 @@ class SingleGameControllerTest {
 			SingleGameSaveResponse serviceResponse = SingleGameSaveResponse.builder()
 					.gameId(100L).message("게임 결과가 성공적으로 기록되었습니다.")
 					.build();
-			given(singleGameService.saveGame(anyLong(), any())).willReturn(serviceResponse);
+			given(singleGameSaveService.saveGame(anyLong(), any())).willReturn(serviceResponse);
 
 			mockMvc.perform(post("/api/v1/singlegame")
 							.contentType(MediaType.APPLICATION_JSON)
@@ -148,7 +160,7 @@ class SingleGameControllerTest {
 									.build()
 					))
 					.build();
-			given(singleGameService.getRankings(anyInt(), anyString(), any(), anyLong()))
+			given(singleGameRankingService.getRankings(anyInt(), anyString(), any(), anyLong()))
 					.willReturn(serviceResponse);
 
 			mockMvc.perform(get("/api/v1/singlegame/rank")
@@ -173,7 +185,7 @@ class SingleGameControllerTest {
 					.gameId(1L).totalCourses(6).completed(true)
 					.tTotal(5000).createdAt(java.time.Instant.now())
 					.build();
-			given(singleGameService.getMyRecords(anyLong(), anyInt(), anyInt()))
+			given(singleGameRecordService.getMyRecords(anyLong(), anyInt(), anyInt()))
 					.willReturn(new PageImpl<>(List.of(record), PageRequest.of(0, 10), 1));
 
 			mockMvc.perform(get("/api/v1/singlegame/my")
@@ -209,7 +221,7 @@ class SingleGameControllerTest {
 									.build())
 							.build())
 					.build();
-			given(singleGameService.getAnalysis(eq(1L), anyLong())).willReturn(serviceResponse);
+			given(singleGameAnalysisService.analyze(eq(1L), anyLong())).willReturn(serviceResponse);
 
 			mockMvc.perform(get("/api/v1/singlegame/1/analysis"))
 					.andExpect(status().isOk())

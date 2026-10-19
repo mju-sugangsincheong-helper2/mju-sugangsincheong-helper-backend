@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>측정 API 명명: {@code <도메인>/<기능>/<측정지점>}.
  * 싱글게임 분석은 {@code analysis} 아래에 2개 지점을 둔다.
  * {@code db}(Repository 단일 쿼리 직접 호출, 서비스·캐시 없음)와
- * {@code api}(SingleGameService 전체 경로, 측정 직전 캐시 evict로 cold 측정).</p>
+ * {@code api}(SingleGameAnalysisService 전체 경로, 측정 직전 캐시 evict로 cold 측정).</p>
  *
  * <p>{@code @Profile("dev")}이므로 prod에서는 빈 자체가 등록되지 않아(404)
  * 실수로 운영에 노출될 수 없다.</p>
@@ -69,7 +69,7 @@ public class DiagnosticsController {
 	@GetMapping(value = "/singlegame/analysis/api", version = "1+")
 	@Operation(
 			summary = "Time analysis API path without cache (dev only)",
-			description = "API 지점 평가. SingleGameService.getAnalysis 전체 경로를 통계 캐시 evict 후 1회 측정합니다. "
+			description = "API 지점 평가. SingleGameAnalysisService.analyze 전체 경로를 통계 캐시 evict 후 1회 측정합니다. "
 					+ "캐시를 타지 않는 cold 경로이며 실제 API의 DB 접근 전체를 포함합니다. 해당 totalCourses의 완료 게임 중 아무거나 1개를 대표로 골라 측정합니다. (dev 환경 전용)",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "측정 성공")

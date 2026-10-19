@@ -175,4 +175,4 @@ class SingleGameFeedbackEngineTest {
 			assertThat(result.getSecondary().getCode()).isEqualTo("START_HESITATION");
 		}
 	}
-}
+	}

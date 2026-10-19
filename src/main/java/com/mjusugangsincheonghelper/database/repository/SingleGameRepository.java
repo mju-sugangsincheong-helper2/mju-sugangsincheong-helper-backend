@@ -114,35 +114,48 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	                              @Param("best") int best);
 
 	/**
-	 * 전체 구간 분포표(C3 원천). 뷰를 통하지 않는 raw 쿼리.
-	 * 행: [sequence, cc×4, cy×4, cok×4, total×4] (p10/p30/p50/p70 순).
-	 */
+	 * 전체 구간 분위수표(7점) — SequenceQuantileTable 원천.
+	 * 행: [sequence, AIM×7, CONFIRM×7, COMPLETE×7, TOTAL×7] (Q05/Q10/Q30/Q50/Q70/Q90/Q95 순), 총 29컬럼.
+		 */
 	@Query(value = """
 			SELECT d.sequence,
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
-			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok)
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok)
 			FROM single_game_detail d
 			JOIN single_game sg ON sg.id = d.game_id
 			WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
 			GROUP BY d.sequence
 			ORDER BY d.sequence ASC
 			""", nativeQuery = true)
-	List<Object[]> findGlobalSequenceBands(@Param("totalCourses") int totalCourses);
+	List<Object[]> findGlobalSegmentQuantiles(@Param("totalCourses") int totalCourses);
 
+	
 
 
 	@Query(value = """
@@ -156,52 +169,72 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 
 	@Query(value = """
 			SELECT
-			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY t_enter_main) AS p10,
-			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY t_enter_main) AS p30,
-			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY t_enter_main) AS p50,
-			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY t_enter_main) AS p70
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY t_enter_main),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY t_enter_main),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY t_enter_main),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY t_enter_main),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY t_enter_main),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY t_enter_main),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY t_enter_main)
 			FROM single_game
 			WHERE total_courses = :totalCourses AND is_completed = TRUE
 			""", nativeQuery = true)
-	List<Object[]> findEnterMainPercentileStats(@Param("totalCourses") int totalCourses);
+	List<Object[]> findGlobalEnterQuantiles(@Param("totalCourses") int totalCourses);
 
+	
 	@Query(value = """
 			SELECT
-			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY sg.t_enter_main) AS p10,
-			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY sg.t_enter_main) AS p30,
-			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY sg.t_enter_main) AS p50,
-			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY sg.t_enter_main) AS p70
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY sg.t_enter_main),
+			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY sg.t_enter_main),
+			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY sg.t_enter_main),
+			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY sg.t_enter_main),
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY sg.t_enter_main),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY sg.t_enter_main),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY sg.t_enter_main)
 			FROM single_game sg
 			JOIN member m ON sg.member_id = m.id
 			WHERE sg.total_courses = :totalCourses
 			  AND sg.is_completed = TRUE
 			  AND m.department = :department
 			""", nativeQuery = true)
-	List<Object[]> findDeptEnterMainPercentileStats(@Param("totalCourses") int totalCourses,
+	List<Object[]> findDepartmentEnterQuantiles(@Param("totalCourses") int totalCourses,
 	                                          @Param("department") String department);
 
+
 	/**
-	 * 학과 구간 분포표(C4 원천). 전체판과 동형이며 학과 필터만 추가된다.
-	 * 행: [sequence, cc×4, cy×4, cok×4, total×4] (p10/p30/p50/p70 순).
+	 * 학과 구간 분위수표(7점) — SequenceQuantileTable 학과판 원천.
+	 * 행: [sequence, AIM×7, CONFIRM×7, COMPLETE×7, TOTAL×7], 총 29컬럼.
 	 */
 	@Query(value = """
 			SELECT d.sequence,
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_course),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_yes),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_yes),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_ok),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_ok),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
-			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok)
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY d.t_click_course + d.t_click_yes + d.t_click_ok)
 			FROM single_game_detail d
 			JOIN single_game sg ON sg.id = d.game_id
 			JOIN member m ON m.id = sg.member_id
@@ -211,15 +244,15 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 			GROUP BY d.sequence
 			ORDER BY d.sequence ASC
 			""", nativeQuery = true)
-	List<Object[]> findDeptSequenceBands(@Param("totalCourses") int totalCourses,
+	List<Object[]> findDepartmentSegmentQuantiles(@Param("totalCourses") int totalCourses,
 	                                      @Param("department") String department);
 
+
+	
 	/**
-	 * 피드백 분포표(C5 원천). 전수 로우를 전송하지 않고 판별 축약값의 분위수만 1행으로 반환한다.
-	 * 행: [n, aim×4, burst×4, first×4, pace×4] (p10/p30/p50/p70 순).
-	 * pace는 N>=3판만 모집단에 포함된다(NULL은 PERCENTILE_CONT가 무시).
-	 * first는 sequence 순서상 첫 구간의 total이다.
-	 */
+	 * 피드백 분위수표(7점) — FeedbackQuantileTable 원천.
+	 * 행: [n, aimAvgx7, burstAvgx7, firstTotalx7, paceStdx7] (Q05/Q10/Q30/Q50/Q70/Q90/Q95 순), 총 29컬럼.
+		 */
 	@Query(value = """
 			WITH per_seq AS (
 			    SELECT d.game_id,
@@ -240,23 +273,35 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 			    GROUP BY game_id
 			)
 			SELECT COUNT(*) AS n,
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY avg_cc),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY avg_cc),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY avg_cc),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY avg_cc),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY avg_cc),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY avg_cc),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY avg_cc),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY avg_burst),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY avg_burst),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY avg_burst),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY avg_burst),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY avg_burst),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY avg_burst),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY avg_burst),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY t1_total),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY t1_total),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY t1_total),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY t1_total),
 			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY t1_total),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY t1_total),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY t1_total),
+			       PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY pace_std),
 			       PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY pace_std),
 			       PERCENTILE_CONT(0.30) WITHIN GROUP (ORDER BY pace_std),
 			       PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY pace_std),
-			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY pace_std)
+			       PERCENTILE_CONT(0.70) WITHIN GROUP (ORDER BY pace_std),
+			       PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY pace_std),
+			       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY pace_std)
 			FROM per_game
 			""", nativeQuery = true)
-	List<Object[]> findFeedbackBands(@Param("totalCourses") int totalCourses);
+	List<Object[]> findFeedbackQuantiles(@Param("totalCourses") int totalCourses);
 }

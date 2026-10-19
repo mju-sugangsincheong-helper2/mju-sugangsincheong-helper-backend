@@ -4,9 +4,9 @@ import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.SingleGameEntity;
 import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
-import com.mjusugangsincheonghelper.global.config.CacheProperties;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
-import com.mjusugangsincheonghelper.singlegame.service.SingleGameService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameAnalysisService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameStatsService;
 import com.mjusugangsincheonghelper.diagnostics.dto.QueryTimingResponse;
 import com.mjusugangsincheonghelper.diagnostics.dto.SeedResetResponse;
 import com.mjusugangsincheonghelper.diagnostics.dto.SeedResultResponse;
@@ -20,8 +20,6 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -34,7 +32,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * dev 전용 진단 측정/시드 서비스.
  *
  * <p>진입점({@code DiagnosticsController})과 마찬가지로 {@code dev} 프로파일에서만
- * 빈으로 등록된다. 측정 지점은 2개다. analysis/db(Repository 단일 쿼리 직접 호출, 서비스·캐시 없음)와 analysis/api(SingleGameService 전체 경로, 측정 직전 캐시 evict로 cold 측정).</p>
+ * 빈으로 등록된다. 측정 지점은 2개다. analysis/db(Repository 단일 쿼리 직접 호출, 서비스·캐시 없음)와 analysis/api(SingleGameAnalysisService 전체 경로, 측정 직전 캐시 evict로 cold 측정).</p>
  */
 @Slf4j
 @Service
@@ -63,8 +61,8 @@ public class DiagnosticsService {
 
 	private final SingleGameRepository singleGameRepository;
 	private final MemberRepository memberRepository;
-	private final SingleGameService singleGameService;
-	private final CacheManager cacheManager;
+	private final SingleGameAnalysisService singleGameAnalysisService;
+	private final SingleGameStatsService singleGameStatsService;
 	private final JdbcTemplate jdbcTemplate;
 	private final PlatformTransactionManager transactionManager;
 
@@ -79,7 +77,7 @@ public class DiagnosticsService {
 		}
 
 		long start = System.nanoTime();
-		List<Object[]> rows = singleGameRepository.findDeptSequenceBands(totalCourses, department);
+		List<Object[]> rows = singleGameRepository.findDepartmentSegmentQuantiles(totalCourses, department);
 		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 
 		log.info("Dev diagnostics timing. query=analysis/db totalCourses={} department={} ms={}",
@@ -101,7 +99,7 @@ public class DiagnosticsService {
 	/**
 	 * analysis/api 지점 평가. 기존 인프라와 동일한 DB 접근을 유지하되 캐시는 타지 않는다.
 	 *
-	 * <p>{@code SingleGameService.getAnalysis}를 그대로 호출하므로 실제 응답이 거치는
+	 * <p>{@code SingleGameAnalysisService.analyze}를 그대로 호출하므로 실제 응답이 거치는
 	 * DB 접근(원본 조회 + 전역/학과 통계 + 랭킹 + 피드백 집계)을 전부 포함한다.
 	 * 측정 직전에 해당 totalCourses의 통계 캐시(인원·구간·피드백 + 학과분)를 evict해 cold 경로를 잰다.
 	 * 계측 구간에는 캐시 evict를 포함하지 않는다.</p>
@@ -125,7 +123,7 @@ public class DiagnosticsService {
 		evictStatsCache(resolvedTotalCourses, dept);
 
 		long start = System.nanoTime();
-		AnalysisResponse analysis = singleGameService.getAnalysis(resolvedGameId, viewerMemberId);
+		AnalysisResponse analysis = singleGameAnalysisService.analyze(resolvedGameId, viewerMemberId);
 		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 
 		log.info("Dev diagnostics timing. query=analysis/api gameId={} totalCourses={} dept={} ms={}",
@@ -159,24 +157,14 @@ public class DiagnosticsService {
 	}
 
 	private void evictStatsCache(int totalCourses, String department) {
-		Cache cache = cacheManager.getCache(CacheProperties.SINGLEGAME_STATS);
-		if (cache == null) {
-			return;
-		}
-		cache.evict(totalCourses + ":counts:cache");
-		cache.evict(totalCourses + ":pop:cache");
-		cache.evict(totalCourses + ":fb:cache");
-		if (department != null && !department.isBlank()) {
-			cache.evict(totalCourses + ":dept:" + department + ":counts:cache");
-			cache.evict(totalCourses + ":dept:" + department + ":pop:cache");
-		}
+		singleGameStatsService.evictStatsCaches(totalCourses, department);
 	}
 
 	/**
 	 * 쿼리 속도 테스트용 싱글게임 데이터를 대량으로 쌓는다. 게임 수와 과목 수만 지정하면
 	 * 학과·멤버·분포는 자동으로 분산 생성된다.
 	 *
-	 * <p>실서비스 저장({@code SingleGameService.saveGame})을 거치지 않고 JDBC 배치로 직접 넣는다.
+	 * <p>실서비스 저장({@code SingleGameSaveService.saveGame})을 거치지 않고 JDBC 배치로 직접 넣는다.
 	 * 단건 저장 경로(검증·캐시 evict)를 N번 반복하면 대량 시드에 부적합하기 때문이다.
 	 * 데이터 정합성은 맞춘다: 완료 게임(is_completed=TRUE)만 만들고 detail 수는 totalCourses와 같으며,
 	 * t_total = t_enter_main + detail 합이다.</p>
