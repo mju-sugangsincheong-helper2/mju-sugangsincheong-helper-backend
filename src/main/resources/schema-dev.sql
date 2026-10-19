@@ -174,6 +174,25 @@ CREATE TABLE IF NOT EXISTS single_game_detail (
 );
 
 -- ============================================================
+-- 9-2. single_game_histogram (싱글게임 버킷 히스토그램 사전집계)
+-- ============================================================
+-- 완료된 게임 1판마다 구간 지표 4종 x sequence + 진입 TOTAL + 피드백 4종을
+-- 5ms 버킷 카운터로 누적한다. 조회는 수백 행 누적합으로 상수 시간에 끝난다.
+-- scope: 0=전체(구간+진입), 1=학과별(구간+진입), 2=피드백(전체).
+-- sequence: 구간표 1..N, 진입/피드백 0. metric: 1=AIM,2=CONFIRM,3=COMPLETE,4=TOTAL.
+-- bucket_ms: 5ms 버킷 하한. 0인 버킷은 행 없음(희소 저장).
+CREATE TABLE IF NOT EXISTS single_game_histogram (
+    total_courses INT         NOT NULL,
+    scope         SMALLINT    NOT NULL,
+    department    VARCHAR(50) NOT NULL DEFAULT '',
+    sequence      INT         NOT NULL,
+    metric        SMALLINT    NOT NULL,
+    bucket_ms     INT         NOT NULL,
+    cnt           BIGINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (total_courses, scope, department, sequence, metric, bucket_ms)
+);
+
+-- ============================================================
 -- 10. multigame
 -- ============================================================
 CREATE TABLE IF NOT EXISTS multigame_round (

@@ -3,6 +3,9 @@ package com.mjusugangsincheonghelper.database.repository;
 import com.mjusugangsincheonghelper.database.entity.Member;
 import com.mjusugangsincheonghelper.database.entity.SingleGameDetailEntity;
 import com.mjusugangsincheonghelper.database.entity.SingleGameEntity;
+import com.mjusugangsincheonghelper.database.repository.SingleGameHistogramRepository;
+import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameHistogramService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -32,6 +35,12 @@ class SingleGameRepositoryTest {
 	@Autowired
 	private MemberRepository memberRepository;
 
+	@Autowired
+	private SingleGameHistogramRepository histogramRepository;
+
+	@Autowired
+	private SingleGameHistogramService histogramService;
+
 	private Member testMember;
 
 	@BeforeEach
@@ -39,6 +48,7 @@ class SingleGameRepositoryTest {
 		singleGameDetailRepository.deleteAll();
 		singleGameRepository.deleteAll();
 		memberRepository.deleteAll();
+		histogramRepository.deleteAll();
 
 		testMember = memberRepository.save(Member.builder()
 				.role(Member.Role.MEMBER)
@@ -162,6 +172,8 @@ class SingleGameRepositoryTest {
 					.gameId(other.getId()).sequence(1)
 					.tClickCourse(300).tClickYes(150).tClickOk(150).build());
 
+			singleGameRepository.flush();
+			histogramService.rebuild();
 			List<Object[]> rows = singleGameRepository.findGlobalSegmentQuantiles(6);
 
 			assertThat(rows).hasSize(1);
@@ -202,6 +214,8 @@ class SingleGameRepositoryTest {
 					.gameId(theirs.getId()).sequence(1)
 					.tClickCourse(1000).tClickYes(500).tClickOk(500).build());
 
+			singleGameRepository.flush();
+			histogramService.rebuild();
 			List<Object[]> rows = singleGameRepository.findDepartmentSegmentQuantiles(6, "컴퓨터공학과");
 
 			assertThat(rows).hasSize(1);
@@ -233,6 +247,8 @@ class SingleGameRepositoryTest {
 					.gameId(b.getId()).sequence(1)
 					.tClickCourse(300).tClickYes(100).tClickOk(100).build());
 
+			singleGameRepository.flush();
+			histogramService.rebuild();
 			List<Object[]> rows = singleGameRepository.findFeedbackQuantiles(6);
 
 			assertThat(rows).hasSize(1);
@@ -248,6 +264,33 @@ class SingleGameRepositoryTest {
 					org.assertj.core.api.Assertions.within(0.001));
 			// N<3판만 있어 pace 분포는 비어 있다
 			assertThat(row[22]).isNull();
+		}
+	}
+
+	@Nested
+	@DisplayName("recordCompletion 메서드는")
+	class Describe_recordCompletion {
+
+		@Test
+		@DisplayName("증분 적재 결과가 백필 결과와 동일한 밴드를 만든다")
+		void it_matches_backfill_bands() {
+			histogramService.recordCompletion(6, "컴퓨터공학과", 100, java.util.List.of(
+					SingleGameDetailRequest.builder()
+							.sequence(1).tClickCourse(100).tClickYes(50).tClickOk(50).build()));
+			histogramService.recordCompletion(6, "컴퓨터공학과", 200, java.util.List.of(
+					SingleGameDetailRequest.builder()
+							.sequence(1).tClickCourse(300).tClickYes(100).tClickOk(100).build()));
+
+			List<Object[]> rows = singleGameRepository.findGlobalSegmentQuantiles(6);
+			assertThat(rows).hasSize(1);
+			assertThat(((Number) rows.get(0)[1]).doubleValue()).isCloseTo(102.5,
+					org.assertj.core.api.Assertions.within(0.001));
+
+			List<Object[]> fb = singleGameRepository.findFeedbackQuantiles(6);
+			assertThat(fb).hasSize(1);
+			assertThat(((Number) fb.get(0)[0]).longValue()).isEqualTo(2);
+			assertThat(((Number) fb.get(0)[1]).doubleValue()).isCloseTo(102.5,
+					org.assertj.core.api.Assertions.within(0.001));
 		}
 	}
 

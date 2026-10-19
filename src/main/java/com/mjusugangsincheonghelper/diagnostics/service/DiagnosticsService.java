@@ -6,6 +6,7 @@ import com.mjusugangsincheonghelper.database.repository.MemberRepository;
 import com.mjusugangsincheonghelper.database.repository.SingleGameRepository;
 import com.mjusugangsincheonghelper.singlegame.dto.AnalysisResponse;
 import com.mjusugangsincheonghelper.singlegame.service.SingleGameAnalysisService;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameHistogramService;
 import com.mjusugangsincheonghelper.singlegame.service.SingleGameStatsService;
 import com.mjusugangsincheonghelper.diagnostics.dto.QueryTimingResponse;
 import com.mjusugangsincheonghelper.diagnostics.dto.SeedResetResponse;
@@ -63,6 +64,7 @@ public class DiagnosticsService {
 	private final MemberRepository memberRepository;
 	private final SingleGameAnalysisService singleGameAnalysisService;
 	private final SingleGameStatsService singleGameStatsService;
+	private final SingleGameHistogramService histogramService;
 	private final JdbcTemplate jdbcTemplate;
 	private final PlatformTransactionManager transactionManager;
 
@@ -223,6 +225,8 @@ public class DiagnosticsService {
 		log.info("Dev diagnostics seed done. games={} details={} totalCourses={} members={} elapsedMs={}",
 				inserted, detailCount, totalCourses, poolSize, elapsedMs);
 
+		histogramService.rebuild();
+
 		return new SeedResultResponse(inserted, detailCount, totalCourses, SEED_DEPARTMENTS, poolSize, elapsedMs);
 	}
 
@@ -276,6 +280,8 @@ public class DiagnosticsService {
 		double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 		log.info("Dev diagnostics reset done. games={} details={} members={} elapsedMs={}",
 				deletedGames, deletedDetails, deletedMembers, elapsedMs);
+
+		histogramService.rebuild();
 
 		return new SeedResetResponse(deletedGames, deletedDetails, deletedMembers, elapsedMs);
 	}

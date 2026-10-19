@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 싱글게임 저장 전담. 검증 + tTotal 합산 + 영속화만 한다.
+ * 싱글게임 저장 전담. 검증 + tTotal 합산 + 영속화 + 히스토그램 사전집계만 한다.
  * 통계 캐시는 건드리지 않는다 (TTL 만료로만 갱신).
  */
 @Slf4j
@@ -33,6 +33,7 @@ public class SingleGameSaveService {
 	private final SingleGameDetailRepository singleGameDetailRepository;
 	private final MemberRepository memberRepository;
 	private final SingleGameProperties properties;
+	private final SingleGameHistogramService histogramService;
 
 	@Transactional
 	public SingleGameSaveResponse saveGame(Long memberId, SingleGameSaveRequest request) {
@@ -98,6 +99,14 @@ public class SingleGameSaveService {
 						.build())
 				.toList();
 		singleGameDetailRepository.saveAll(details);
+
+		if (request.isCompleted()) {
+			String department = memberRepository.findById(memberId)
+					.map(member -> member.getDepartment() == null ? "" : member.getDepartment())
+					.orElse("");
+			histogramService.recordCompletion(totalCourses, department,
+				request.getTEnterMain(), request.getDetails());
+		}
 
 		log.debug("Saved single game record. memberId={}, gameId={}, totalCourses={}, completed={}, tTotal={}",
 				memberId, gameId, totalCourses, request.isCompleted(), tTotal);

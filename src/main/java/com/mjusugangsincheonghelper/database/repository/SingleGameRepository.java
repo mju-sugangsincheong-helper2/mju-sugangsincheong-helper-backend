@@ -119,25 +119,10 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	 * 값은 5ms 버킷 중앙값(하한+2.5)이다. 전수 PERCENTILE_CONT 대비 오차 ≤4.5ms(실측 최대).
 		 */
 	@Query(value = """
-			WITH vals AS (
-			    SELECT d.sequence AS seq,
-			           (d.t_click_course / 5) * 5 AS b1,
-			           (d.t_click_yes / 5) * 5 AS b2,
-			           (d.t_click_ok / 5) * 5 AS b3,
-			           ((d.t_click_course + d.t_click_yes + d.t_click_ok) / 5) * 5 AS b4
-			    FROM single_game_detail d
-			    JOIN single_game sg ON sg.id = d.game_id
-			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			),
-			u AS (
-			    SELECT seq, m, bk
-			    FROM vals,
-			    LATERAL (VALUES (b1, 1), (b2, 2), (b3, 3), (b4, 4)) AS v(bk, m)
-			),
-			b AS (
-			    SELECT seq, m, bk, count(*) AS c
-			    FROM u
-			    GROUP BY 1, 2, 3
+			WITH b AS (
+			    SELECT sequence AS seq, metric AS m, bucket_ms AS bk, cnt AS c
+			    FROM single_game_histogram
+			    WHERE total_courses = :totalCourses AND scope = 0 AND sequence >= 1
 			),
 			cum AS (
 			    SELECT seq, m, bk,
@@ -194,10 +179,9 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 
 	@Query(value = """
 			WITH b AS (
-			    SELECT (t_enter_main / 5) * 5 AS bk, count(*) AS c
-			    FROM single_game
-			    WHERE total_courses = :totalCourses AND is_completed = TRUE
-			    GROUP BY 1
+			    SELECT bucket_ms AS bk, cnt AS c
+			    FROM single_game_histogram
+			    WHERE total_courses = :totalCourses AND scope = 0 AND sequence = 0 AND metric = 4
 			),
 			cum AS (
 			    SELECT bk,
@@ -219,13 +203,10 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	
 	@Query(value = """
 			WITH b AS (
-			    SELECT (sg.t_enter_main / 5) * 5 AS bk, count(*) AS c
-			    FROM single_game sg
-			    JOIN member m ON sg.member_id = m.id
-			    WHERE sg.total_courses = :totalCourses
-			      AND sg.is_completed = TRUE
-			      AND m.department = :department
-			    GROUP BY 1
+			    SELECT bucket_ms AS bk, cnt AS c
+			    FROM single_game_histogram
+			    WHERE total_courses = :totalCourses AND scope = 1 AND sequence = 0 AND metric = 4
+			      AND department = :department
 			),
 			cum AS (
 			    SELECT bk,
@@ -252,28 +233,11 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	 * 값은 5ms 버킷 중앙값(하한+2.5)이다. 전수 PERCENTILE_CONT 대비 오차 ≤4.5ms(실측 최대).
 	 */
 	@Query(value = """
-			WITH vals AS (
-			    SELECT d.sequence AS seq,
-			           (d.t_click_course / 5) * 5 AS b1,
-			           (d.t_click_yes / 5) * 5 AS b2,
-			           (d.t_click_ok / 5) * 5 AS b3,
-			           ((d.t_click_course + d.t_click_yes + d.t_click_ok) / 5) * 5 AS b4
-			    FROM single_game_detail d
-			    JOIN single_game sg ON sg.id = d.game_id
-			    JOIN member m ON m.id = sg.member_id
-			    WHERE sg.total_courses = :totalCourses
-			      AND sg.is_completed = TRUE
-			      AND m.department = :department
-			),
-			u AS (
-			    SELECT seq, m, bk
-			    FROM vals,
-			    LATERAL (VALUES (b1, 1), (b2, 2), (b3, 3), (b4, 4)) AS v(bk, m)
-			),
-			b AS (
-			    SELECT seq, m, bk, count(*) AS c
-			    FROM u
-			    GROUP BY 1, 2, 3
+			WITH b AS (
+			    SELECT sequence AS seq, metric AS m, bucket_ms AS bk, cnt AS c
+			    FROM single_game_histogram
+			    WHERE total_courses = :totalCourses AND scope = 1 AND sequence >= 1
+			      AND department = :department
 			),
 			cum AS (
 			    SELECT seq, m, bk,
@@ -325,53 +289,18 @@ public interface SingleGameRepository extends JpaRepository<SingleGameEntity, Lo
 	 * 값은 5ms 버킷 중앙값(하한+2.5)이다. 전수 PERCENTILE_CONT 대비 오차 ≤4.5ms(실측 최대).
 	 */
 	@Query(value = """
-			WITH agg AS (
-			    SELECT d.game_id,
-			           AVG(d.t_click_course) AS avg_cc,
-			           AVG(d.t_click_yes + d.t_click_ok) AS avg_burst,
-			           COUNT(*) AS n,
-			           STDDEV_POP(d.t_click_course + d.t_click_yes + d.t_click_ok) AS pace_std_all
-			    FROM single_game_detail d
-			    JOIN single_game sg ON sg.id = d.game_id
-			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			    GROUP BY d.game_id
-			),
-			firsts AS (
-			    SELECT d.game_id,
-			           (d.t_click_course + d.t_click_yes + d.t_click_ok) AS t1_total
-			    FROM single_game_detail d
-			    JOIN single_game sg ON sg.id = d.game_id
-			    WHERE sg.total_courses = :totalCourses AND sg.is_completed = TRUE
-			      AND d.sequence = 1
-			),
-			per_game AS MATERIALIZED (
-			    SELECT a.avg_cc,
-			           a.avg_burst,
-			           f.t1_total,
-			           CASE WHEN a.n >= 3 THEN a.pace_std_all END AS pace_std
-			    FROM agg a
-			    LEFT JOIN firsts f ON f.game_id = a.game_id
-			),
-			b AS (
-			    SELECT (avg_cc / 5) * 5 AS bk, 1 AS m
-			    FROM per_game WHERE avg_cc IS NOT NULL
-			    UNION ALL
-			    SELECT (avg_burst / 5) * 5 AS bk, 2 AS m
-			    FROM per_game WHERE avg_burst IS NOT NULL
-			    UNION ALL
-			    SELECT (t1_total / 5) * 5 AS bk, 3 AS m
-			    FROM per_game WHERE t1_total IS NOT NULL
-			    UNION ALL
-			    SELECT floor(pace_std / 5) * 5 AS bk, 4 AS m
-			    FROM per_game WHERE pace_std IS NOT NULL
+			WITH b AS (
+			    SELECT metric AS m, bucket_ms AS bk, cnt
+			    FROM single_game_histogram
+			    WHERE total_courses = :totalCourses AND scope = 2
 			),
 			cum AS (
 			    SELECT m, bk,
 			           sum(cnt) OVER (PARTITION BY m ORDER BY bk) AS run,
 			           sum(cnt) OVER (PARTITION BY m) AS s
-			    FROM (SELECT m, bk, count(*) AS cnt FROM b GROUP BY 1, 2) g
+			    FROM b
 			)
-			SELECT (SELECT count(*) FROM per_game) AS n,
+			SELECT (SELECT COALESCE(sum(cnt), 0) FROM b WHERE m = 1) AS n,
 			       min(bk + 2.5) FILTER (WHERE m = 1 AND run >= 0.05 * s),
 			       min(bk + 2.5) FILTER (WHERE m = 1 AND run >= 0.10 * s),
 			       min(bk + 2.5) FILTER (WHERE m = 1 AND run >= 0.30 * s),

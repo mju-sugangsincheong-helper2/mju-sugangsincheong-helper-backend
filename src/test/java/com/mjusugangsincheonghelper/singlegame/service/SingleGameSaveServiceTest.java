@@ -16,6 +16,7 @@ import com.mjusugangsincheonghelper.singlegame.dto.RankingResponse;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameDetailRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveRequest;
 import com.mjusugangsincheonghelper.singlegame.dto.SingleGameSaveResponse;
+import com.mjusugangsincheonghelper.singlegame.service.SingleGameHistogramService;
 import com.mjusugangsincheonghelper.singlegame.dto.cache.FeedbackQuantileTable;
 import com.mjusugangsincheonghelper.singlegame.dto.cache.QuantileBand;
 import com.mjusugangsincheonghelper.singlegame.dto.cache.SequenceQuantileTable;
@@ -60,6 +61,9 @@ class SingleGameSaveServiceTest {
 	@Mock
 	private MemberRepository memberRepository;
 
+	@Mock
+	private SingleGameHistogramService histogramService;
+
 	private SingleGameSaveService saveService;
 
 	@Captor
@@ -71,7 +75,8 @@ class SingleGameSaveServiceTest {
 	@BeforeEach
 	void setUp() {
 		saveService = new SingleGameSaveService(
-				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameProperties());
+				singleGameRepository, singleGameDetailRepository, memberRepository, new SingleGameProperties(),
+				histogramService);
 	}
 
 	@Nested
