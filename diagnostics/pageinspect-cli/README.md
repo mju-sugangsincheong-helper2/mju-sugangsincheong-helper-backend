@@ -77,6 +77,41 @@ URI를 파싱·변조하지 않고 libpq에 그대로 전달하는 것이 원칙
   libpq는 `+`를 문자 그대로 취급하므로, `+`로 바뀌면 `FATAL: unrecognized configuration
   parameter "+search_path"`가 난다 (회귀 테스트로 고정).
 
+## view (시각화)
+
+`view`는 새 검사 명령이 아니라 부모와 동일한 조회를 다르게 표현하는 하위 명령이다.
+지원하는 명령에만 있으며, 출력은 텍스트 다이어그램으로 고정 (`--format`과 무관, `-o` 저장 가능).
+
+```text
+page
+  raw          view [layout, hex]
+  fsm          view [layout]        # --count로 FSM 블록 범위 스캔
+heap
+  items        view [layout]
+btree
+  range-stats  view [chart]         # --field 수치 선택 (기본 live_items)
+  items        view [layout]
+brin
+  revmap       view [map]
+hash
+  stats        view [chart]         # 단일 페이지 수치 항목별 막대
+  items        view [layout]
+  bitmap       view [bitmap]        # overflow 페이지가 있을 때만 (없으면 조회 오류 전달)
+```
+
+```bash
+pageinspect-cli.py --db "$DB" page raw public.t --block 0 view layout
+pageinspect-cli.py --db "$DB" btree range-stats idx --start 0 --count 8 view chart --field free_size
+pageinspect-cli.py --db "$DB" brin revmap idx --block 1 view map
+```
+
+호출 순서 고정: `<부모 명령 인수> view KIND [KIND 옵션]` — 부모 인수(RELATION·--block 등)는
+반드시 `view` 앞에 온다. kind 뒤에 부모 인수를 붙이면 오류이다.
+
+나머지 18개 명령(header/checksum/attrs/split/flags/meta/stats/type/opaque/items 등)은
+표 출력이 충분하거나 반환값만으로 구조를 확정할 수 없어 `view`를 두지 않는다.
+전체 계층은 `--help` / `<그룹> --help` / `<명령> --help`에서 확인 (스펙에서 자동 생성).
+
 ## 테스트
 
 `tests/test_pageinspect_cli.py` — 단위(URI·마스킹·출력) + 스텁 DB(핸들러·폴백·바인딩 순서)

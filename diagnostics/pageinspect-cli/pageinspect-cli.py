@@ -27,13 +27,14 @@ import argparse
 import json
 import os
 import re
+import struct
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Literal, Sequence
 from urllib.parse import quote, unquote, urlencode, urlsplit, urlunsplit
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
 
 # ---------------------------------------------------------------------------
 # 종료 코드 (오류 구분용)
@@ -507,6 +508,259 @@ run_btree_items.requires = [["bt_page_items"]]  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
+# view 렌더러: 표보다 구조·비교가 명확할 때만 (스펙의 views에서 선언)
+# view는 새 검사 명령이 아니라, 부모 명령과 동일한 조회를 다르게 표현한다.
+# --format과 무관하게 텍스트 다이어그램으로 고정 출력한다.
+# ---------------------------------------------------------------------------
+VIEW_WIDTH_DEFAULT = 64
+
+
+def _bar(value: float, maximum: float, width: int) -> str:
+    if maximum <= 0 or value < 0:
+        return ""
+    return "#" * max(1, round(value / maximum * width)) if value > 0 else ""
+
+
+def _scale_map(total: int, segments: list[tuple[int, int, str]], width: int) -> str:
+    """[0, total) 구간을 문자 배치도로 변환. segments는 (start, end, 문자)."""
+    buf = [" "] * width
+    for s, e, ch in segments:
+        if e <= s or s >= total or total <= 0:
+            continue
+        a = min(width - 1, s * width // total)
+        b = max(a + 1, min(width, e * width // total))
+        for i in range(a, b):
+            buf[i] = ch
+    return "".join(buf)
+
+
+def _is_number(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def render_hex(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    data = bytes(rows[0]["page"]) if rows else b""
+    out = [f"-- {args.relation} block {args.block} ({len(data)} bytes) --"]
+    for off in range(0, len(data), 16):
+        chunk = data[off : off + 16]
+        hexs = " ".join(f"{b:02x}" for b in chunk)
+        asc = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
+        out.append(f"{off:08x}  {hexs:<47}  |{asc:<16}|")
+    return "\n".join(out) + "\n"
+
+
+def render_raw_layout(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """원시 페이지 파싱 배치도: 헤더 24B + 라인포인터 + 튜플 + 특수영역."""
+    data = bytes(rows[0]["page"]) if rows else b""
+    if len(data) < 24:
+        raise CliError(f"페이지 데이터 부족 ({len(data)} bytes).", EXIT_QUERY)
+    _, _, _, lower, upper, special, _, _ = struct.unpack("<QHHHHHHI", data[:24])
+    total = len(data)
+    items: list[tuple[int, int, int, int]] = []  # (lp, off, len, flags)
+    for i in range((lower - 24) // 4):
+        (v,) = struct.unpack("<I", data[24 + 4 * i : 28 + 4 * i])
+        items.append((i + 1, v & 0x7FFF, (v >> 17) & 0x7FFF, (v >> 15) & 3))
+    w = args.width
+    bar = _scale_map(total, [(0, 24, "="), (24, lower, "-"), (lower, upper, " "),
+                             (upper, special, "#"), (special, total, "S")], w)
+    out = [f"-- {args.relation} block {args.block} (size={total}) --",
+           f"[{bar}]",
+           f"=:header[0,24) -=lineptr[24,{lower}) ' '=free[{lower},{upper})" + f" #=items[{upper},{special}) S=special[{special},{total})",
+           f"items: {len(items)}"]
+    for lp, off, ln, fl in items:
+        mark = _scale_map(total, [(off, off + ln, "#")], w)
+        out.append(f"lp={lp:<5} off={off:<5} len={ln:<5} flags={fl} [{mark}]")
+    return "\n".join(out) + "\n"
+
+
+def render_heap_layout(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """heap_page_items 행 배치도: 실제 lp_off/lp_len 사용."""
+    items = sorted(
+        ((r.get("lp"), r.get("lp_off") or 0, r.get("lp_len") or 0, r.get("lp_flags"))
+         for r in rows if r.get("lp") is not None),
+        key=lambda t: t[0],
+    )
+    if not items:
+        return "(no heap items)\n"
+    total = max(off + ln for _, off, ln, _ in items)
+    w = args.width
+    nlp = max(lp for lp, _, _, _ in items)
+    bar = _scale_map(total, [(0, 24, "="), (24, 24 + 4 * nlp, "-")] +
+                     [(off, off + ln, "#") for _, off, ln, _ in items], w)
+    out = [f"-- {args.relation} block {args.block} ({len(items)} items, scale 0..{total}) --",
+           f"[{bar}]", f"=:header -=lineptr #=tuple"]
+    for lp, off, ln, fl in items:
+        mark = _scale_map(total, [(off, off + ln, "#")], w)
+        out.append(f"lp={lp:<5} off={off:<5} len={ln:<5} flags={fl} [{mark}]")
+    return "\n".join(out) + "\n"
+
+
+def render_btree_layout(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """bt_page_items 배치도: itemoffset 순서 + itemlen 비례. 부모·자식 관계는 그리지 않음."""
+    if not rows:
+        return "(no btree items)\n"
+    items = sorted(rows, key=lambda r: r.get("itemoffset") or 0)
+    mx = max((r.get("itemlen") or 0 for r in items), default=0)
+    w = args.width
+    out = [f"-- {args.relation} block {args.block} ({len(items)} items) --"]
+    for r in items:
+        ln = r.get("itemlen") or 0
+        dead = " dead" if r.get("dead") else ""
+        out.append(f"off={r.get('itemoffset'):<5} len={ln:<5} ctid={r.get('ctid')}{dead} |{_bar(ln, mx, w)}|")
+    return "\n".join(out) + "\n"
+
+
+def render_hash_items_layout(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """hash_page_items 배치도: 순서 + ctid + 해시값 (길이 필드 없음)."""
+    if not rows:
+        return "(no hash items)\n"
+    out = [f"-- {args.relation} block {args.block} ({len(rows)} items) --"]
+    for r in sorted(rows, key=lambda x: x.get("itemoffset") or 0):
+        out.append(f"off={r.get('itemoffset'):<5} ctid={r.get('ctid'):<10} data={r.get('data')}")
+    return "\n".join(out) + "\n"
+
+
+def render_chart_range(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """range-stats 차트: 블록별 --field 값 막대그래프."""
+    f = args.field
+    if f not in columns:
+        raise CliError(f"없는 필드: {f!r} (사용 가능: {', '.join(columns)})", EXIT_USAGE)
+    vals = [r.get(f) for r in rows]
+    if any(not _is_number(v) for v in vals):
+        raise CliError(f"차트 불가: {f!r} 필드가 수치가 아님.", EXIT_USAGE)
+    mx = max(vals, default=0)
+    w = args.width
+    out = [f"-- {args.relation} blocks {args.start}..{args.start + args.count - 1} field={f} --"]
+    for r, v in zip(rows, vals):
+        out.append(f"blk={r.get('block'):<6} |{_bar(v, mx, w):<{w}}| {v}")
+    return "\n".join(out) + "\n"
+
+
+def render_chart_single(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """단일행 차트(hash stats): 수치 컬럼별 막대그래프."""
+    if not rows:
+        return "(no rows)\n"
+    nums = [(c, rows[0][c]) for c in columns if _is_number(rows[0].get(c))]
+    if not nums:
+        raise CliError("차트 불가: 수치 컬럼이 없음.", EXIT_USAGE)
+    mx = max(v for _, v in nums)
+    w = args.width
+    name_w = max(len(c) for c, _ in nums)
+    out = [f"-- {args.relation} block {args.block} (numeric fields) --"]
+    for c, v in nums:
+        out.append(f"{c:<{name_w}} |{_bar(v, mx, w):<{w}}| {v}")
+    return "\n".join(out) + "\n"
+
+
+def render_revmap(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """brin_revmap_data 매핑도: entry -> tid, (0,0) 빈 구간은 압축 표기."""
+    col = columns[0] if columns else "revmap"
+    tids = [str(r.get(col)) for r in rows]
+    out = [f"-- {args.relation} block {args.block} revmap ({len(tids)} entries) --"]
+    i = 0
+    while i < len(tids):
+        if tids[i] == "(0,0)":
+            j = i
+            while j < len(tids) and tids[j] == "(0,0)":
+                j += 1
+            out.append(f"[{i}..{j - 1}] (0,0) x{j - i} (empty)" if j - i > 1 else f"[{i}] (0,0) (empty)")
+            i = j
+        else:
+            out.append(f"[{i}] -> {tids[i]}")
+            i += 1
+    return "\n".join(out) + "\n"
+
+
+def render_bitmap(columns: list[str], rows: list[dict[str, Any]], args) -> str:
+    """hash_bitmap_info 격자도: 비트맵 페이지별 bitstatus 격자."""
+    if not rows:
+        return "(no bitmap bits)\n"
+    need = {"bitmapblkno", "bitmapbit", "bitstatus"}
+    if not need.issubset(set(columns)):
+        raise CliError(f"격자 불가: 필요 컬럼 {sorted(need)} (실제: {columns})", EXIT_QUERY)
+    w = args.width
+    out = [f"-- {args.relation} block {args.block} bitmap --", "#=used .=free"]
+    groups: dict[Any, list[tuple[int, bool]]] = {}
+    for r in rows:
+        groups.setdefault(r["bitmapblkno"], []).append((r["bitmapbit"], bool(r["bitstatus"])))
+    for blk in sorted(groups):
+        bits = sorted(groups[blk])
+        used = sum(1 for _, s in bits if s)
+        out.append(f"bitmapblkno={blk} ({used}/{len(bits)} used):")
+        for k in range(0, len(bits), w):
+            seg = bits[k : k + w]
+            out.append("".join("#" if s else "." for _, s in seg) + f"  bits {seg[0][0]}..{seg[-1][0]}")
+    return "\n".join(out) + "\n"
+
+
+def _parse_fsm(text: str) -> tuple[list[tuple[int, int]], int | None]:
+    """fsm_page_contents 텍스트 파싱 -> ([(slot, 값)], fp_next_slot)."""
+    slots: list[tuple[int, int]] = []
+    nxt: int | None = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("fp_next_slot"):
+            try:
+                nxt = int(line.split(":", 1)[1])
+            except ValueError:
+                pass
+        elif ":" in line:
+            try:
+                s, v = line.split(":", 1)
+                slots.append((int(s.strip()), int(v.strip())))
+            except ValueError:
+                continue
+    return slots, nxt
+
+
+def run_fsm_layout(conn, args, spec) -> str:
+    """FSM 블록 범위 스캔: --block부터 --count개, 슬롯값 분포 렌더."""
+    ensure_functions(conn, [["get_raw_page"], ["fsm_page_contents"]])
+    w = args.width
+    out = [f"-- {args.relation} fsm blocks {args.block}..{args.block + args.count - 1} (slot values 0-255) --"]
+    for blk in range(args.block, args.block + args.count):
+        expr, params = raw_page_call(args.relation, normalize_fork(args.fork), blk)
+        _, r = fetch(conn, f"SELECT fsm_page_contents(({expr})) AS fsm", params)
+        slots, nxt = _parse_fsm(str(r[0]["fsm"]) if r else "")
+        out.append(f"blk={blk} (fp_next_slot={nxt}):")
+        if not slots:
+            out.append("  (no slot data)")
+            continue
+        for s, v in slots:
+            out.append(f"  slot={s:<5} |{_bar(v, 255, w):<{w}}| {v}")
+    return "\n".join(out) + "\n"
+
+
+def _parent_view(render) -> Callable[[Any, Any, Any], str]:
+    """부모 명령과 동일한 조회를 수행해 렌더한다."""
+
+    def run(conn, args, spec) -> str:
+        columns, rows = spec.run(conn, args)
+        return render(columns, rows, args)
+
+    return run
+
+
+@dataclass(frozen=True)
+class ViewKind:
+    name: str
+    help: str  # 한 줄 설명 (help 계층에 그대로 노출)
+    run: Callable[[Any, Any, Any], str]
+    extra: Literal["none", "field", "count"] = "none"
+
+
+VIEW_PAGE_RAW_LAYOUT = ViewKind("layout", "원시 바이트의 헤더·라인포인터·튜플·특수영역 배치도", _parent_view(render_raw_layout))
+VIEW_PAGE_RAW_HEX = ViewKind("hex", "오프셋·16진수·ASCII 덤프", _parent_view(render_hex))
+VIEW_PAGE_FSM_LAYOUT = ViewKind("layout", "FSM 블록 범위 슬롯값 분포 (--count로 범위)", run_fsm_layout, extra="count")
+VIEW_HEAP_ITEMS_LAYOUT = ViewKind("layout", "라인포인터·튜플 배치도 (오프셋·길이 실측)", _parent_view(render_heap_layout))
+VIEW_BTREE_RANGE_CHART = ViewKind("chart", "블록별 수치 변화 막대그래프 (--field 선택)", _parent_view(render_chart_range), extra="field")
+VIEW_BTREE_ITEMS_LAYOUT = ViewKind("layout", "항목 순서·길이 배치도 (부모·자식 관계 미표시)", _parent_view(render_btree_layout))
+VIEW_BRIN_REVMAP_MAP = ViewKind("map", "역매핑 항목 관계도 (빈 구간 압축 표기)", _parent_view(render_revmap))
+VIEW_HASH_STATS_CHART = ViewKind("chart", "수치 항목별 막대그래프 (단일 페이지)", _parent_view(render_chart_single))
+VIEW_HASH_ITEMS_LAYOUT = ViewKind("layout", "항목 순서·ctid·해시값 목록", _parent_view(render_hash_items_layout))
+VIEW_HASH_BITMAP_BITMAP = ViewKind("bitmap", "비트맵 페이지별 비트 격자도", _parent_view(render_bitmap))
+
+# ---------------------------------------------------------------------------
 # 명령 스펙: 파서·디스패치·함수 검사의 단일 진실 공급원
 # ---------------------------------------------------------------------------
 BLOCK_REQUIRED = "required"  # --block 필수
@@ -527,8 +781,8 @@ class Command:
     fork_default: str | None = None
     fork_help: str = "검사할 포크 (main/fsm/vm/init, 기본: main)"
     detoast: bool = False
-    extra: str = "none"  # none | lp | infomasks | range
-    extra_args: tuple = field(default=())
+    extra: Literal["none", "lp", "infomasks", "range"] = "none"
+    views: tuple = field(default=())  # 지원하는 view (ViewKind), 없으면 view 미제공
 
 
 GROUP_HELP = {
@@ -549,7 +803,7 @@ COMMANDS: list[Command] = [
     # -- page --
     Command("page", "raw", "페이지 원시 데이터 조회 (get_raw_page)",
             raw_query("get_raw_page", "SELECT {raw} AS page", requires=(["get_raw_page"],)),
-            rel_label=BOTH_REL, fork=True),
+            rel_label=BOTH_REL, fork=True, views=(VIEW_PAGE_RAW_LAYOUT, VIEW_PAGE_RAW_HEX)),
     Command("page", "header", "페이지 헤더 조회 (page_header)",
             raw_query("page_header", "SELECT * FROM {fn}({raw})"),
             rel_label=BOTH_REL, fork=True),
@@ -558,11 +812,11 @@ COMMANDS: list[Command] = [
             rel_label=BOTH_REL, fork=True),
     Command("page", "fsm", "FSM 페이지 정보 조회 (fsm_page_contents)",
             raw_query("fsm_page_contents", "SELECT {fn}(({raw})) AS fsm"),
-            rel_label=BOTH_REL, fork=True, fork_default="fsm"),
+            rel_label=BOTH_REL, fork=True, fork_default="fsm", views=(VIEW_PAGE_FSM_LAYOUT,)),
     # -- heap --
     Command("heap", "items", "Heap 튜플 항목 조회 (heap_page_items)",
             raw_query("heap_page_items", "SELECT * FROM {fn}(({raw}))"),
-            rel_label=TABLE_REL, fork=True),
+            rel_label=TABLE_REL, fork=True, views=(VIEW_HEAP_ITEMS_LAYOUT,)),
     Command("heap", "attrs", "튜플 속성값 조회 (heap_page_item_attrs)",
             run_heap_attrs, rel_label=TABLE_REL, fork=True, detoast=True),
     Command("heap", "split", "튜플 내부 구조 분리 조회 (tuple_data_split)",
@@ -581,10 +835,12 @@ COMMANDS: list[Command] = [
                          (["bt_page_stats"],)),
             rel_label=INDEX_REL),
     Command("btree", "range-stats", "페이지 범위 통계 (bt_page_stats 순차 호출)",
-            run_btree_range_stats, rel_label=INDEX_REL, block=BLOCK_NONE, extra="range"),
+            run_btree_range_stats, rel_label=INDEX_REL, block=BLOCK_NONE, extra="range",
+            views=(VIEW_BTREE_RANGE_CHART,)),
     Command("btree", "items", "페이지 내 인덱스 항목 (bt_page_items)",
             run_btree_items, rel_label=INDEX_REL, fork=True,
-            fork_help="검사할 포크 (bytea 폴백용, 기본: main)"),
+            fork_help="검사할 포크 (bytea 폴백용, 기본: main)",
+            views=(VIEW_BTREE_ITEMS_LAYOUT,)),
     # -- brin --
     Command("brin", "type", "페이지 유형 (brin_page_type)",
             raw_query("brin_page_type", "SELECT {fn}(({raw})) AS page_type"),
@@ -595,7 +851,7 @@ COMMANDS: list[Command] = [
     Command("brin", "revmap",
             "역매핑 정보 (brin_revmap_data; revmap 블록 번호는 brin meta의 lastrevmappage 참조)",
             raw_query("brin_revmap_data", "SELECT {fn}(({raw})) AS revmap"),
-            rel_label=INDEX_REL, fork=True),
+            rel_label=INDEX_REL, fork=True, views=(VIEW_BRIN_REVMAP_MAP,)),
     Command("brin", "items", "BRIN 페이지 항목 (brin_page_items)",
             raw_query("brin_page_items", "SELECT * FROM {fn}(({raw}), %s::regclass::oid)",
                       extra=lambda a: [a.relation]),
@@ -627,17 +883,17 @@ COMMANDS: list[Command] = [
             rel_label=INDEX_REL, fork=True),
     Command("hash", "stats", "페이지 통계 (hash_page_stats)",
             raw_query("hash_page_stats", "SELECT * FROM {fn}(({raw}))"),
-            rel_label=INDEX_REL, fork=True),
+            rel_label=INDEX_REL, fork=True, views=(VIEW_HASH_STATS_CHART,)),
     Command("hash", "items", "페이지 항목 (hash_page_items)",
             raw_query("hash_page_items", "SELECT * FROM {fn}(({raw}))"),
-            rel_label=INDEX_REL, fork=True),
+            rel_label=INDEX_REL, fork=True, views=(VIEW_HASH_ITEMS_LAYOUT,)),
     Command("hash", "meta", "메타페이지 정보 (hash_metapage_info)",
             raw_query("hash_metapage_info", "SELECT * FROM {fn}(({raw}))"),
             rel_label=INDEX_REL, fork=True, block=BLOCK_OPTIONAL),
     Command("hash", "bitmap", "비트맵 페이지 정보 (hash_bitmap_info)",
             direct_query("SELECT * FROM hash_bitmap_info(%s::regclass::oid, %s)",
                          lambda a: [a.relation, a.block], (["hash_bitmap_info"],)),
-            rel_label=INDEX_REL),
+            rel_label=INDEX_REL, views=(VIEW_HASH_BITMAP_BITMAP,)),
 ]
 
 SPECS: dict[tuple[str, str], Command] = {(c.group, c.name): c for c in COMMANDS}
@@ -703,7 +959,8 @@ def render(columns: list[str], rows: list[dict[str, Any]], fmt: str) -> str:
     return format_table(columns, rows)
 
 
-def emit(text: str, output: str | None, quiet: bool, nrows: int) -> None:
+def emit(text: str, output: str | None, quiet: bool, nrows: int | None) -> None:
+    """nrows=None이면 다이어그램 저장 메시지."""
     if output:
         try:
             parent = os.path.dirname(os.path.abspath(output))
@@ -714,7 +971,8 @@ def emit(text: str, output: str | None, quiet: bool, nrows: int) -> None:
         except OSError as e:
             raise CliError(f"출력 파일 쓰기 실패 ({output}): {e}", EXIT_OUTPUT) from e
         if not quiet:
-            print(f"wrote {nrows} row(s) to {output}", file=sys.stderr)
+            msg = f"wrote {nrows} row(s) to {output}" if nrows is not None else f"wrote diagram to {output}"
+            print(msg, file=sys.stderr)
     else:
         sys.stdout.write(text)
 
@@ -722,8 +980,37 @@ def emit(text: str, output: str | None, quiet: bool, nrows: int) -> None:
 # ---------------------------------------------------------------------------
 # 인수 파싱 (COMMANDS 스펙에서 생성)
 # ---------------------------------------------------------------------------
-def _add_command_parser(subs, cmd: Command) -> None:
-    p = subs.add_parser(cmd.name, help=cmd.help)
+# ---------------------------------------------------------------------------
+# help 계층: COMMANDS 스펙에서 계층 트리를 생성 (파서·help의 single source of truth)
+# ---------------------------------------------------------------------------
+def _command_tree(group: str | None = None) -> str:
+    """그룹 → 명령 → view 계층. view 한 줄 설명까지 인라인, 서술 없이."""
+    lines: list[str] = []
+    for g in [group] if group else list(GROUP_HELP):
+        lines.append(g)
+        for c in COMMANDS:
+            if c.group != g:
+                continue
+            if c.views:
+                kinds = ", ".join(f"{v.name}: {v.help}" for v in c.views)
+                lines.append(f"  {c.name:<12} view [{kinds}]")
+            else:
+                lines.append(f"  {c.name}")
+    return "\n".join(lines)
+
+
+def _command_epilog(cmd: Command) -> str | None:
+    if not cmd.views:
+        return None
+    lines = ["view (시각화: 부모와 동일한 조회, 텍스트 다이어그램으로 고정 출력, --format과 무관):"]
+    for v in cmd.views:
+        lines.append(f"  {v.name}: {v.help}")
+    lines.append("사용법: <부모 명령 인수> view KIND [KIND 옵션]  (부모 인수는 view 앞에)")
+    return "\n".join(lines)
+
+
+def _add_shared_args(p, cmd: Command) -> None:
+    """부모 명령의 조회 인수. view kind 파서는 선언하지 않는다 (부모 값을 그대로 사용)."""
     if cmd.relation:
         p.add_argument("relation", metavar="RELATION", help=cmd.rel_label)
     if cmd.block == BLOCK_REQUIRED:
@@ -748,12 +1035,41 @@ def _add_command_parser(subs, cmd: Command) -> None:
                        help=f"처리할 페이지 수 (최대 {MAX_RANGE_COUNT})")
 
 
+def _add_view_parsers(p, cmd: Command) -> None:
+    vs = p.add_subparsers(dest="view", metavar="VIEW")
+    vp = vs.add_parser("view", help="시각화 출력 (텍스트 다이어그램, --format과 무관)",
+                        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ks = vp.add_subparsers(dest="view_kind", required=True, metavar="KIND")
+    for v in cmd.views:
+        kp = ks.add_parser(v.name, help=v.help,
+                            formatter_class=argparse.RawDescriptionHelpFormatter)
+        if v.extra == "field":
+            kp.add_argument("--field", default="live_items", metavar="FIELD",
+                            help="차트 대상 수치 필드 (기본: %(default)s)")
+        elif v.extra == "count":
+            kp.add_argument("--count", type=positive_int("--count"), default=1,
+                            help=f"스캔할 FSM 페이지 수 (기본: %(default)s, 최대 {MAX_RANGE_COUNT})")
+        if v.name != "hex":
+            kp.add_argument("--width", type=positive_int("--width"), default=VIEW_WIDTH_DEFAULT,
+                            help="다이어그램 너비 (기본: %(default)s)")
+
+
+def _add_command_parser(subs, cmd: Command) -> None:
+    p = subs.add_parser(cmd.name, help=cmd.help, epilog=_command_epilog(cmd),
+                        formatter_class=argparse.RawDescriptionHelpFormatter)
+    _add_shared_args(p, cmd)
+    if cmd.views:
+        _add_view_parsers(p, cmd)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pageinspect-cli.py",
         description="PostgreSQL pageinspect 확장을 위한 CLI (원본 함수의 인수·반환 보존)",
         epilog=(
-            "예시:\n"
+            "명령 계층 (view는 지원하는 명령에만 있음, --format table|json|yaml은 일반 조회용):\n"
+            + _command_tree()
+            + "\n\n예시:\n"
             "  uv run pageinspect-cli.py --db 'postgresql://user:pass@localhost:5432/mydb' page header public.my_table --block 0\n"
             "  uv run pageinspect-cli.py --db \"$DB\" --format json -o result.json page header public.my_table --block 0\n"
             "  uv run pageinspect-cli.py --db \"$DB\" heap flags --infomask 2308 --infomask2 2\n"
@@ -788,26 +1104,71 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
 
     groups = parser.add_subparsers(dest="group", required=True, metavar="GROUP")
-    group_parsers: dict[str, Any] = {}
-    for cmd in COMMANDS:
-        if cmd.group not in group_parsers:
-            group_parsers[cmd.group] = groups.add_parser(cmd.group, help=GROUP_HELP[cmd.group])
-            group_parsers[cmd.group + ":subs"] = group_parsers[cmd.group].add_subparsers(
-                dest="cmd", required=True, metavar="CMD"
-            )
-        _add_command_parser(group_parsers[cmd.group + ":subs"], cmd)
+    for group, group_help in GROUP_HELP.items():
+        gp = groups.add_parser(
+            group, help=group_help,
+            epilog="명령 계층:\n" + _command_tree(group),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        subs = gp.add_subparsers(dest="cmd", required=True, metavar="CMD")
+        for cmd in COMMANDS:
+            if cmd.group == group:
+                _add_command_parser(subs, cmd)
     return parser
 
 
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+def _preflight(parser, args) -> tuple[Command, ViewKind | None, str, str]:
+    """DB 연결 전 검증: 인수 조합 확인 + conninfo 준비. 실패는 CliError(EXIT_USAGE).
+
+    반환: (스펙, view 종류 또는 None, 원본 URI, libpq용 conninfo)
+    """
+    if args.quiet and args.verbose:
+        parser.error("--quiet와 --verbose를 함께 사용할 수 없습니다.")
+
+    spec = SPECS.get((args.group, args.cmd))
+    if spec is None:
+        raise CliError(f"지원하지 않는 명령: {args.group} {args.cmd}", EXIT_USAGE)
+
+    try:
+        if spec.relation:
+            args.relation = validate_relation(args.relation)
+        if spec.fork:
+            args.fork = normalize_fork(args.fork)
+        if spec.extra == "range" and args.count > MAX_RANGE_COUNT:
+            parser.error(f"--count는 최대 {MAX_RANGE_COUNT}까지 지정할 수 있습니다.")
+        view_kind = None
+        if getattr(args, "view", None) == "view":
+            view_kind = next((v for v in spec.views if v.name == args.view_kind), None)
+            if view_kind is None:
+                raise CliError(
+                    f"{args.group} {args.cmd}에서 지원하지 않는 view: {args.view_kind}",
+                    EXIT_USAGE,
+                )
+            if view_kind.extra == "count" and args.count > MAX_RANGE_COUNT:
+                parser.error(f"--count는 최대 {MAX_RANGE_COUNT}까지 지정할 수 있습니다.")
+    except ValueError as e:
+        raise CliError(str(e), EXIT_USAGE) from e
+
+    db_uri = args.db_uri or os.environ.get("PAGEINSPECT_DB") or os.environ.get("DATABASE_URL")
+    if not db_uri:
+        raise CliError(
+            "--db URI가 필요합니다 (또는 환경변수 PAGEINSPECT_DB/DATABASE_URL). "
+            "예: --db 'postgresql://user:pass@localhost:5432/mydb'",
+            EXIT_USAGE,
+        )
+    try:
+        conninfo = prepare_conninfo(db_uri)
+    except ValueError as e:
+        raise CliError(str(e), EXIT_USAGE) from e
+    return spec, view_kind, db_uri, conninfo
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    if args.quiet and args.verbose:
-        parser.error("--quiet와 --verbose를 함께 사용할 수 없습니다.")
 
     def log(msg: str) -> None:
         if not args.quiet:
@@ -817,41 +1178,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.verbose and not args.quiet:
             print(f"[verbose] {msg}", file=sys.stderr)
 
-    key = (args.group, args.cmd)
-    spec = SPECS.get(key)
-    if spec is None:
-        print(f"오류: 지원하지 않는 명령: {args.group} {args.cmd}", file=sys.stderr)
-        return EXIT_USAGE
-
-    # 관계/포크/범위 검증 (DB 연결 전)
     try:
-        if spec.relation:
-            args.relation = validate_relation(args.relation)
-        if spec.fork:
-            args.fork = normalize_fork(args.fork)
-        if spec.extra == "range" and args.count > MAX_RANGE_COUNT:
-            parser.error(f"--count는 최대 {MAX_RANGE_COUNT}까지 지정할 수 있습니다.")
-    except ValueError as e:
+        spec, view_kind, db_uri, conninfo = _preflight(parser, args)
+    except CliError as e:
         print(f"오류: {e}", file=sys.stderr)
-        return EXIT_USAGE
-
-    db_uri = args.db_uri or os.environ.get("PAGEINSPECT_DB") or os.environ.get("DATABASE_URL")
-    if not db_uri:
-        print(
-            "오류: --db URI가 필요합니다 (또는 환경변수 PAGEINSPECT_DB/DATABASE_URL). "
-            "예: --db 'postgresql://user:pass@localhost:5432/mydb'",
-            file=sys.stderr,
-        )
-        return EXIT_USAGE
+        return e.code
 
     vlog(f"DB: {mask_password(db_uri)}")
     vlog(f"command: {args.group} {args.cmd} / format: {args.fmt}")
-
-    try:
-        conninfo = prepare_conninfo(db_uri)
-    except ValueError as e:
-        print(f"오류: {e}", file=sys.stderr)
-        return EXIT_USAGE
 
     try:
         conn = connect_db(conninfo, db_uri)
@@ -866,6 +1200,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if num < MIN_SERVER_VERSION_NUM:
             log(f"경고: 지원하지 않는 PostgreSQL 버전일 수 있습니다 (server_version={ver}). 일부 함수가 없을 수 있습니다.")
         check_extension(conn, mask_password(db_uri))
+        if view_kind is not None:
+            vlog(f"view: {args.view_kind} (다이어그램 고정 출력, --format={args.fmt} 무시)")
+            text = view_kind.run(conn, args, spec)
+            dt = time.monotonic() - t0
+            vlog(f"elapsed: {dt:.3f}s")
+            emit(text, args.output, args.quiet, None)
+            return EXIT_OK
         columns, rows = spec.run(conn, args)
         dt = time.monotonic() - t0
         vlog(f"rows: {len(rows)} / elapsed: {dt:.3f}s")

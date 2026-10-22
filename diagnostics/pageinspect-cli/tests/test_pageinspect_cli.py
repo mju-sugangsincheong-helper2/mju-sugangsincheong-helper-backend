@@ -124,6 +124,26 @@ def test_command_tree_matches_design():
     assert len(cli.SPECS) == 27
 
 
+EXPECTED_VIEWS = {
+    ("page", "raw"): ["layout", "hex"],
+    ("page", "fsm"): ["layout"],
+    ("heap", "items"): ["layout"],
+    ("btree", "range-stats"): ["chart"],
+    ("btree", "items"): ["layout"],
+    ("brin", "revmap"): ["map"],
+    ("hash", "stats"): ["chart"],
+    ("hash", "items"): ["layout"],
+    ("hash", "bitmap"): ["bitmap"],
+}
+
+
+def test_view_tree_matches_design():
+    actual = {(c.group, c.name): [v.name for v in c.views]
+              for c in cli.COMMANDS if c.views}
+    assert actual == EXPECTED_VIEWS
+    assert "view" not in {c.name for c in cli.COMMANDS}  # view는 하위 명령일 뿐
+
+
 def test_every_run_has_requires_metadata():
     for c in cli.COMMANDS:
         assert getattr(c.run, "requires", None), f"{c.group} {c.name}에 requires 메타데이터 없음"
@@ -332,6 +352,131 @@ def test_brin_revmap_uses_revmap_data():
     assert "brin_revmap_data" in stub.calls[-1][0]
 
 
+# ---------------------------------------------------------------- view
+def _vargs(**kw):
+    base = dict(relation="t", block=0, fork=None, width=64, field="live_items",
+                start=0, count=2)
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_all_views_parse():
+    parser = cli.build_parser()
+    cases = [
+        (["page", "raw", "t", "--block", "0", "view", "hex"], {}),
+        (["page", "raw", "t", "--block", "0", "view", "layout"], {"width": 64}),
+        (["page", "fsm", "t", "--block", "1", "view", "layout", "--count", "3"], {"count": 3}),
+        (["heap", "items", "t", "--block", "0", "view", "layout"], {}),
+        (["btree", "range-stats", "i", "--start", "0", "--count", "2", "view", "chart"],
+         {"field": "live_items"}),
+        (["btree", "items", "i", "--block", "1", "view", "layout"], {}),
+        (["brin", "revmap", "b", "--block", "1", "view", "map"], {}),
+        (["hash", "stats", "h", "--block", "1", "view", "chart"], {}),
+        (["hash", "items", "h", "--block", "1", "view", "layout"], {}),
+        (["hash", "bitmap", "h", "--block", "1", "view", "bitmap"], {}),
+    ]
+    for argv, expect in cases:
+        ns = parser.parse_args(argv)
+        assert ns.view == "view"
+        for k, v in expect.items():
+            assert getattr(ns, k) == v, (argv, k)
+
+
+def test_view_without_view_kind_fails():
+    parser = cli.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["page", "raw", "t", "--block", "0", "view"])
+
+
+def test_view_arg_order_is_strict():
+    # 부모 인수는 view 앞에: kind 뒤의 부모 인수는 거부, kind 옵션은 허용
+    parser = cli.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["page", "raw", "t", "--block", "0", "view", "hex", "--block", "1"])
+    ns = parser.parse_args(["page", "raw", "t", "--block", "0", "view", "layout", "--width", "100"])
+    assert (ns.block, ns.width) == (0, 100)
+
+
+def test_fsm_view_count_cap():
+    with pytest.raises(SystemExit) as e:
+        cli.main(["page", "fsm", "t", "--block", "0", "view", "layout", "--count", "10001"])
+    assert e.value.code == cli.EXIT_USAGE
+
+
+def test_render_hex():
+    out = cli.render_hex(["page"], [{"page": bytes(range(48, 80))}], _vargs())
+    assert "00000000" in out and "00000010" in out
+    assert "|0123456789:;<=>?|" in out and "|@ABCDEFGHIJKLMNO|" in out
+
+
+def test_render_raw_layout_parses_line_pointers():
+    import struct
+    page = bytearray(8192)
+    struct.pack_into("<QHHHHHHI", page, 0, 0, 0, 0, 32, 8100, 8192, 4, 0)
+    struct.pack_into("<I", page, 24, 8000 | (1 << 15) | (92 << 17))
+    struct.pack_into("<I", page, 28, 7900 | (1 << 15) | (100 << 17))
+    out = cli.render_raw_layout(["page"], [{"page": bytes(page)}], _vargs())
+    assert "items: 2" in out and "lp=1" in out and "off=8000" in out and "len=92" in out
+
+
+def test_render_heap_layout():
+    rows = [{"lp": 1, "lp_off": 8096, "lp_len": 96, "lp_flags": 1},
+            {"lp": 2, "lp_off": 7992, "lp_len": 104, "lp_flags": 1}]
+    out = cli.render_heap_layout([], rows, _vargs())
+    assert "2 items" in out and "lp=2" in out and "len=104" in out
+    assert cli.render_heap_layout([], [], _vargs()) == "(no heap items)\n"
+
+
+def test_render_btree_layout():
+    rows = [{"itemoffset": 1, "ctid": "(4,1)", "itemlen": 16, "dead": False},
+            {"itemoffset": 2, "ctid": "(0,1)", "itemlen": 32, "dead": True}]
+    out = cli.render_btree_layout([], rows, _vargs())
+    assert "dead" in out and "ctid=(0,1)" in out
+
+
+def test_render_hash_items_layout():
+    rows = [{"itemoffset": 2, "ctid": "(7,179)", "data": 33833552},
+            {"itemoffset": 1, "ctid": "(5,60)", "data": 10229936}]
+    out = cli.render_hash_items_layout([], rows, _vargs())
+    assert out.index("off=1") < out.index("off=2")
+
+
+def test_render_chart_range_and_field_errors():
+    rows = [{"block": 1, "live_items": 367}, {"block": 3, "live_items": 33}]
+    out = cli.render_chart_range(["block", "live_items"], rows, _vargs(field="live_items"))
+    assert "blk=1" in out and "367" in out
+    with pytest.raises(cli.CliError) as e:
+        cli.render_chart_range(["block", "live_items"], rows, _vargs(field="nope"))
+    assert e.value.code == cli.EXIT_USAGE
+    with pytest.raises(cli.CliError):
+        cli.render_chart_range(["block", "x"], [{"block": 1, "x": "nan"}], _vargs(field="x"))
+
+
+def test_render_chart_single():
+    rows = [{"live_items": 255, "dead_items": 0, "free_size": 3048}]
+    out = cli.render_chart_single(["live_items", "dead_items", "free_size"], rows, _vargs())
+    assert "live_items" in out and "255" in out
+
+
+def test_render_revmap_compacts_empty_runs():
+    rows = [{"revmap": "(2,1)"}] + [{"revmap": "(0,0)"}] * 5 + [{"revmap": "(3,1)"}]
+    out = cli.render_revmap(["revmap"], rows, _vargs())
+    assert "[0] -> (2,1)" in out and "[1..5] (0,0) x5 (empty)" in out and "[6] -> (3,1)" in out
+
+
+def test_render_bitmap_grid():
+    rows = [{"bitmapblkno": 9, "bitmapbit": b, "bitstatus": b % 3 == 0} for b in range(70)]
+    out = cli.render_bitmap(["bitmapblkno", "bitmapbit", "bitstatus"], rows, _vargs(width=32))
+    assert "bitmapblkno=9" in out and "#" in out and "." in out and "bits 0..31" in out
+    with pytest.raises(cli.CliError):
+        cli.render_bitmap(["a"], [{"a": 1}], _vargs())
+
+
+def test_parse_fsm():
+    slots, nxt = cli._parse_fsm("0: 73\n1: 73\nfp_next_slot: 0\n")
+    assert slots == [(0, 73), (1, 73)] and nxt == 0
+
+
 # ---------------------------------------------------------------- 실DB (게이트)
 LIVE_DB = os.environ.get("PAGEINSPECT_TEST_DB")
 needs_live = pytest.mark.skipif(not LIVE_DB, reason="PAGEINSPECT_TEST_DB 미설정 시 생략")
@@ -357,3 +502,53 @@ def test_live_page_header_json(tmp_path):
     assert rc == cli.EXIT_OK
     data = json.loads(out.read_text())
     assert data and "lsn" in data[0]
+
+
+@needs_live
+def test_live_views(capsys):
+    db = ["--db", LIVE_DB]
+    cases = [
+        (db + ["page", "raw", "public.member", "--block", "0", "view", "hex"], "00000000"),
+        (db + ["page", "raw", "public.member", "--block", "0", "view", "layout"], "lp=1"),
+        (db + ["page", "fsm", "public.member", "--block", "0", "view", "layout", "--count", "2"], "slot="),
+        (db + ["heap", "items", "public.member", "--block", "0", "view", "layout"], "lp=1"),
+        (db + ["btree", "range-stats", "member_pkey", "--start", "1", "--count", "2",
+               "view", "chart"], "blk=1"),
+        (db + ["btree", "items", "member_pkey", "--block", "1", "view", "layout"], "off=1"),
+    ]
+    for argv, marker in cases:
+        assert cli.main(argv) == cli.EXIT_OK, argv
+        out, _ = capsys.readouterr()
+        assert marker in out, (argv, marker)
+
+
+@needs_live
+def test_live_revmap_map_and_bitmap_honest_error(capsys):
+    conninfo = cli.prepare_conninfo(LIVE_DB)
+    conn = cli.connect_db(conninfo, LIVE_DB)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE TABLE tmp_live_view(a int)")
+            cur.execute("INSERT INTO tmp_live_view SELECT g FROM generate_series(1,2000) g")
+            cur.execute("CREATE INDEX tmp_live_view_brin ON tmp_live_view USING brin(a)")
+            cur.execute("CREATE INDEX tmp_live_view_hash ON tmp_live_view USING hash(a)")
+    finally:
+        conn.close()
+    try:
+        assert cli.main(["--db", LIVE_DB, "brin", "revmap", "tmp_live_view_brin", "--block", "1",
+                         "view", "map"]) == cli.EXIT_OK
+        out, _ = capsys.readouterr()
+        assert "entries" in out
+        # overflow 페이지가 없으면 부모 조회 오류가 정직하게 전달 (조건부 지원)
+        rc = cli.main(["--db", LIVE_DB, "hash", "bitmap", "tmp_live_view_hash", "--block", "1",
+                       "view", "bitmap"])
+        assert rc == cli.EXIT_QUERY
+        _, err = capsys.readouterr()
+        assert "overflow" in err
+    finally:
+        conn = cli.connect_db(conninfo, LIVE_DB)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DROP TABLE tmp_live_view")
+        finally:
+            conn.close()
