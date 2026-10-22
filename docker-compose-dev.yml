@@ -124,6 +124,10 @@ services:
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -v ON_ERROR_STOP=1 -f /schema-dev.sql
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -v ON_ERROR_STOP=1 -f /schema-dev.sql
 
+        # 4-1. 관측용 확장 (dev/test 전용, prod 제외)
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$DEV_DB_NAME -c "CREATE EXTENSION IF NOT EXISTS pageinspect;"
+        psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$TEST_DB_NAME -c "CREATE EXTENSION IF NOT EXISTS pageinspect;"
+
         # 5. Role의 search_path 설정
         psql -h $$POSTGRES_HOST -U $$POSTGRES_USER -d $$POSTGRES_DB_NAME -c \"ALTER ROLE $$DB_USER SET search_path TO public;\"
         echo 'Database setup complete!'
