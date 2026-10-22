@@ -119,6 +119,19 @@ public class SingleGameHistogramService {
 	}
 
 	/**
+	 * 히스토그램이 비어 있으면 detail 전체로 한 번 채운다.
+	 * 진실의 원천은 single_game_detail이므로, 증분 적재 전에 호출하면 이후 증분과 겹치지 않는다.
+	 */
+	public void backfillIfEmpty() {
+		Boolean exists = jdbcTemplate.queryForObject(
+				"SELECT EXISTS(SELECT 1 FROM single_game_histogram)", Boolean.class);
+		if (Boolean.TRUE.equals(exists)) {
+			return;
+		}
+		rebuild();
+	}
+
+	/**
 	 * 전수 백필. 기존 detail 전체를 히스토그램으로 다시 채운다.
 	 * 시드 적재·시드 삭제(진단용) 뒤 정합성을 맞추는 데 쓴다.
 	 */

@@ -74,6 +74,10 @@ public class SingleGameSaveService {
 			}
 		}
 
+		if (request.isCompleted()) {
+			histogramService.backfillIfEmpty();
+		}
+
 		int tTotal = request.getTEnterMain();
 		for (SingleGameDetailRequest d : request.getDetails()) {
 			tTotal += d.getTClickCourse() + d.getTClickYes() + d.getTClickOk();

@@ -46,3 +46,4 @@ public class SingleGameProperties {
 		private int maxMs = 60000;
 	}
 }
+

@@ -79,7 +79,7 @@ public class SingleGameController {
 					+ "(동점자는 같은 순위, 다음 순위는 건너뜁니다). "
 					+ "scope가 GLOBAL이면 전체 순위, DEPARTMENT면 학과 안 순위입니다. "
 					+ "학과를 적으면 그 학과를 보고, 생략하면 요청자 본인 학과를 씁니다. "
-					+ "학과가 없는 요청자는 DEPARTMENT를 쓸 수 없습니다(400 SINGLEGAME_INVALID_RANK_DEPARTMENT). "
+					+ "학과가 없는 요청자는 DEPARTMENT를 쓸 수 없습니다(400 SINGLEGAME_005). "
 					+ "응답의 department에 적용된 학과가 나갑니다(GLOBAL이면 null). "
 					+ "myRank는 요청자 본인 최고 기록의 순위로 scope을 따릅니다(완료판이 없으면 null).",
 			responses = {

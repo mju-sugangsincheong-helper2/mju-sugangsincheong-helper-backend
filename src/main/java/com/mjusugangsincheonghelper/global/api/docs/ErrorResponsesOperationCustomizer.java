@@ -37,7 +37,7 @@ public class ErrorResponsesOperationCustomizer implements OperationCustomizer {
 				response = new ApiResponse();
 				responses.addApiResponse(status, response);
 			}
-			response.description(errorCode.getMessage());
+			response.description("[" + errorCode.getCode() + "] " + errorCode.getMessage());
 			response.content(defaultErrorContent());
 		}
 
