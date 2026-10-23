@@ -39,7 +39,7 @@ public interface SingleGameHistogramRepository
 				(total_courses, scope, department, sequence, metric, bucket_ms, cnt)
 			WITH vals AS (
 			    SELECT sg.total_courses AS tc,
-			           m.department AS dept,
+			           COALESCE(m.department, '') AS dept,
 			           d.game_id AS gid,
 			           d.sequence AS seq,
 			           (d.t_click_course / 5) * 5 AS b1,
